@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledMcpjsonServers": ["RobloxStudio"],
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(rojo build:*)",
+      "Bash(rojo sourcemap:*)",
+      "Bash(rojo fmt-project:*)",
+      "Bash(lune run scripts/run-tests.luau:*)",
+      "Bash(stylua:*)",
+      "Bash(wally install)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "mcp__RobloxStudio__list_roblox_studios",
+      "mcp__RobloxStudio__get_studio_state",
+      "mcp__RobloxStudio__get_console_output",
+      "mcp__RobloxStudio__inspect_instance",
+      "mcp__RobloxStudio__search_game_tree",
+      "mcp__RobloxStudio__script_read",
+      "mcp__RobloxStudio__script_grep",
+      "mcp__RobloxStudio__script_search",
+      "mcp__RobloxStudio__screen_capture"
+    ],
+    "ask": [
+      "Bash(make upload:*)",
+      "Bash(make sync-assets:*)",
+      "Bash(make syncback:*)",
+      "Bash(rojo upload:*)",
+      "mcp__RobloxStudio__start_stop_play",
+      "mcp__RobloxStudio__execute_luau",
+      "mcp__RobloxStudio__multi_edit"
+    ]
+  }
+}

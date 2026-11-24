@@ -1,0 +1,169 @@
+--[[
+	The fight's HUD: the player's health, the dash and spin cooldowns, and the room's wave.
+
+	Everything it shows is replicated state the server owns — health and cooldowns as attributes
+	on the player, the wave as attributes on the World folder — so there is no store and no remote
+	here. The cooldown bars move every frame, so they are bindings, never state
+	(docs/ui-architecture.md).
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.core.Config)
+
+local React = require(ReplicatedStorage:WaitForChild("Packages").react)
+
+local Client = script:FindFirstAncestor("Client")
+
+local UI = require(Client.ui.Mount)
+local Layout = require(Client.ui.ScreenMetrics)
+local Scaled = require(Client.ui.DesignScale)
+local hooks = require(Client.ui.hooks)
+local ui = require(Client.ui.theme.Widgets)
+
+local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState" }
+
+local HEALTH_COLOR = Color3.fromRGB(90, 210, 120)
+local DASH_COLOR = Color3.fromRGB(120, 190, 255)
+local SPIN_COLOR = Color3.fromRGB(255, 200, 90)
+
+local function Bar(props)
+	return React.createElement("Frame", {
+		Name = props.name,
+		Size = UDim2.new(1, 0, 0, props.height or 16),
+		BackgroundColor3 = ui.INK,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		LayoutOrder = props.order,
+	}, {
+		Corner = React.createElement(ui.Round, { radius = 4 }),
+		Fill = React.createElement("Frame", {
+			Size = props.fill,
+			BackgroundColor3 = props.color,
+			BorderSizePixel = 0,
+		}, {
+			Corner = React.createElement(ui.Round, { radius = 4 }),
+		}),
+		Label = React.createElement("TextLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Font = ui.TITLE_FONT,
+			TextSize = 12,
+			TextColor3 = ui.TEXT,
+			TextStrokeTransparency = 0.6,
+			Text = props.text,
+			ZIndex = 2,
+		}),
+	})
+end
+
+-- 0 just used, 1 ready, from a ready-at time in server seconds and the cooldown's length.
+local function charge(readyAt: any, cooldown: number, now: number): number
+	if type(readyAt) ~= "number" or cooldown <= 0 then
+		return 1
+	end
+	return math.clamp(1 - (readyAt - now) / cooldown, 0, 1)
+end
+
+local function roomText(room: { [string]: any }): string
+	if room.RoomState == "cleared" then
+		return "¡Sala limpia! Vuelve a empezar..."
+	end
+	if room.RoomState ~= "fighting" then
+		return "Preparando la sala..."
+	end
+	return `Oleada {room.Wave or 1}/{room.WaveCount or 1}  ·  Enemigos: {room.EnemiesLeft or 0}`
+end
+
+local function CombatHud(props)
+	local player = Players.LocalPlayer
+	local metrics = Scaled.useLayout()
+
+	local health = hooks.useAttribute(player, "Health") or 0
+	local maxHealth = hooks.useAttribute(player, "MaxHealth") or Config.PLAYER_MAX_HEALTH
+	local room = hooks.useAttributes(props.world, ROOM_ATTRIBUTES)
+
+	-- Per frame, so bindings: React writes the bars' sizes without re-rendering the screen.
+	local dashCharge, setDashCharge = React.useBinding(1)
+	local spinCharge, setSpinCharge = React.useBinding(1)
+	hooks.useSignal(RunService.Heartbeat, function()
+		local now = workspace:GetServerTimeNow()
+		setDashCharge(charge(player:GetAttribute("DashReadyAt"), Config.DASH_COOLDOWN, now))
+		setSpinCharge(charge(player:GetAttribute("SpinReadyAt"), Config.SPIN_COOLDOWN, now))
+	end)
+
+	local function fillOf(binding)
+		return binding:map(function(value: number)
+			return UDim2.fromScale(value, 1)
+		end)
+	end
+
+	local width = math.min(240, metrics.room.X - 2 * ui.MARGIN)
+
+	return React.createElement(Scaled.Frame, nil, {
+		Kit = React.createElement(ui.Panel, {
+			name = "Kit",
+			width = width,
+			padding = 12,
+			-- `inset()` by hand: IgnoreGuiInset is on, so anything pinned to the top pays the top
+			-- bar back itself or sits under it on a phone.
+			position = UDim2.fromOffset(ui.MARGIN, ui.MARGIN + Layout.inset()),
+		}, {
+			List = React.createElement("UIListLayout", {
+				Padding = UDim.new(0, 8),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+			Health = React.createElement(Bar, {
+				name = "Health",
+				order = 1,
+				height = 20,
+				color = HEALTH_COLOR,
+				fill = UDim2.fromScale(math.clamp(health / math.max(maxHealth, 1), 0, 1), 1),
+				text = `Vida {math.ceil(health)}/{maxHealth}`,
+			}),
+			Dash = React.createElement(Bar, {
+				name = "Dash",
+				order = 2,
+				color = DASH_COLOR,
+				fill = fillOf(dashCharge),
+				text = "Dash",
+			}),
+			Spin = React.createElement(Bar, {
+				name = "Spin",
+				order = 3,
+				color = SPIN_COLOR,
+				fill = fillOf(spinCharge),
+				text = "Giro",
+			}),
+		}),
+		Room = React.createElement("TextLabel", {
+			Name = "Room",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, ui.MARGIN + Layout.inset()),
+			Size = UDim2.fromOffset(math.min(420, metrics.room.X - 2 * ui.MARGIN), 28),
+			BackgroundTransparency = 1,
+			Font = ui.TITLE_FONT,
+			TextSize = 20,
+			TextColor3 = ui.TEXT,
+			TextStrokeTransparency = 0.5,
+			TextWrapped = true,
+			Text = roomText(room),
+		}),
+	})
+end
+
+local screen = {}
+
+function screen.start()
+	-- Yields until the server has built the room; the HUD has nothing to show before that.
+	local world = workspace:WaitForChild("World")
+	local mounted = UI.mount("CombatHud", function()
+		return React.createElement(CombatHud, { world = world })
+	end)
+	return mounted
+end
+
+return screen

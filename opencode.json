@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "CLAUDE.md"
+  ],
+  "mcp": {
+    "RobloxStudio": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "node",
+        "scripts/studio-mcp.mjs"
+      ]
+    }
+  },
+  "skills": {
+    "paths": [
+      ".claude/skills",
+      ".opencode/skills"
+    ]
+  },
+  "permission": {
+    "mcp__RobloxStudio__list_roblox_studios": "allow",
+    "mcp__RobloxStudio__get_studio_state": "allow",
+    "mcp__RobloxStudio__get_console_output": "allow",
+    "mcp__RobloxStudio__inspect_instance": "allow",
+    "mcp__RobloxStudio__search_game_tree": "allow",
+    "mcp__RobloxStudio__script_read": "allow",
+    "mcp__RobloxStudio__script_grep": "allow",
+    "mcp__RobloxStudio__screen_capture": "allow",
+    "mcp__RobloxStudio__execute_luau": "ask",
+    "mcp__RobloxStudio__start_stop_play": "ask"
+  }
+}

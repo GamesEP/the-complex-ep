@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+# Pushing three times to a PR should leave one run standing, not three. Keyed by ref
+# so main and staging never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build place
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the toolchain pinned in rokit.toml, so CI and local builds agree.
+      # Cached on rokit.toml's hash — the toolchain only changes when that file does.
+      - uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          cache: true
+
+      - run: rojo --version
+
+      # The registry index `wally install` reads is a ~50 MB git clone, and it makes it fresh
+      # every run otherwise. Keyed on the lock so a dependency change fetches a new one, with a
+      # rolling fallback so the usual case is a hit that wally only has to bring up to date.
+      - name: Cache the Wally index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/wally
+          key: wally-index-${{ hashFiles('wally.lock') }}
+          restore-keys: wally-index-
+
+      # Packages/ is gitignored — wally.lock pins it the way rokit.toml pins the toolchain.
+      # default.project.json mounts it at ReplicatedStorage.Packages, so this has to run
+      # before anything reads the project: rojo will not build a missing $path.
+      - name: Install packages
+        run: |
+          wally install
+          # Wally has no --locked in any tagged release, so there is no way to make it refuse a
+          # lockfile that no longer matches the manifest. This prints the drift into the log
+          # instead of gating on it: if resolving wally.toml rewrote the lock, the diff says what
+          # moved and the build carries on regardless.
+          git diff wally.lock
+
+      # A heads-up, not a gate: the publish job uploads these, and a PR has no key to do it.
+      - name: Check assets
+        run: |
+          ./scripts/sync-assets.sh --check || \
+            echo "::warning::assets/ has files Roblox does not have yet — publishing will upload them"
+
+      # Everything that can be checked without Studio: `rojo build` packs source without
+      # reading it, so a syntax error builds clean and only explodes at runtime, and the
+      # pure logic behind the game's rules is cheaper to assert here than to find on a
+      # device. Suites live in scripts/run-tests.luau — adding one needs no change here.
+      - name: Run tests
+        run: lune run scripts/run-tests.luau
+
+      # The one class of error the steps around this cannot see. `rojo build` packs source
+      # without reading it and the syntax sweep compiles without resolving names, so a require
+      # through a name nobody bound builds clean, passes every suite, and then takes the whole
+      # realm's bootstrap down on the first frame of a real server. Narrower than `make analyze`
+      # so it can gate: the codebase has pre-existing type findings, and an undefined global is
+      # never one of them.
+      - name: Check for undefined globals
+        run: |
+          make lsp-defs
+          make globals
+
+      - name: Build
+        run: rojo build --output game.rbxl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: place
+          path: game.rbxl
+          retention-days: 7

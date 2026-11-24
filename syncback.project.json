@@ -1,0 +1,38 @@
+{
+  "name": "roblox-template",
+  "tree": {
+    "$className": "DataModel",
+    "Workspace": {
+      "$className": "Workspace"
+    }
+  },
+  "syncbackRules": {
+    "syncCurrentCamera": false,
+    "syncUnscriptable": false,
+    "ignoreProperties": {
+      "Workspace": [
+        "PredictiveStreamingMode",
+        "StreamingEnabled",
+        "StreamingIntegrityMode",
+        "StreamingMinRadius",
+        "StreamingTargetRadius"
+      ],
+      "Instance": [
+        "Capabilities",
+        "DefinesCapabilities",
+        "HistoryId",
+        "SourceAssetId",
+        "UniqueId"
+      ],
+      "Model": [
+        "LevelOfDetail",
+        "ModelMeshCFrame",
+        "ModelMeshData",
+        "ModelMeshSize",
+        "ModelStreamingMode",
+        "ScaleFactor",
+        "SlimHash"
+      ]
+    }
+  }
+}

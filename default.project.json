@@ -1,0 +1,48 @@
+{
+  "name": "roblox-template",
+  "tree": {
+    "$className": "DataModel",
+    "Lighting": {
+      "$properties": {
+        "Ambient": [0.35, 0.35, 0.4],
+        "Brightness": 2.0,
+        "ClockTime": 14.0,
+        "EnvironmentDiffuseScale": 1.0,
+        "GeographicLatitude": 20.0,
+        "OutdoorAmbient": [0.45, 0.45, 0.5],
+        "Technology": "ShadowMap"
+      }
+    },
+    "ReplicatedStorage": {
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true,
+        "StreamingEnabled": false
+      }
+    }
+  }
+}

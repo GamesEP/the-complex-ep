@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "RobloxStudio": {
+      "enabled": true,
+      "command": "node",
+      "args": ["scripts/studio-mcp.mjs"]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# Formatting for every .luau file in this repo. StyLua searches upward from the file
+# it is formatting, so this wins over whatever a contributor has in their home
+# directory — which matters, because the common personal setup (2 spaces, single
+# quotes) would rewrite every line of this codebase on first save.
+#
+# These values were measured against the existing source rather than chosen: it is
+# tab-indented throughout (4813 lines, zero space-indented), and uses double quotes
+# 871 times against 3 single.
+
+# 120 is StyLua's default and, of the widths tried, the one that disturbs this
+# codebase least. Lines here sit well under it (median 28, 90th percentile 77); the
+# width mostly decides when a long call gets exploded across lines.
+column_width = 120
+line_endings = "Unix"
+indent_type = "Tabs"
+indent_width = 4
+
+# Prefer double, but leave a string alone when switching would mean escaping a quote
+# inside it.
+quote_style = "AutoPreferDouble"
+
+# `require "Foo"` and `f {…}` are legal Luau but nothing here is written that way.
+call_parentheses = "Always"
+
+# Keep `if x then return end` on one line only where the author already had it —
+# never collapse a multi-line block into one.
+collapse_simple_statement = "Never"
+
+[sort_requires]
+# Requires here are grouped by origin (services, then shared modules, then local
+# ones), which alphabetising would destroy.
+enabled = false

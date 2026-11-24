@@ -1,0 +1,17 @@
+{
+  "language.platform.type": "roblox",
+  "language.fflags.sync": true,
+  "language.diagnostics.strictDatamodelTypes": true,
+  "language.autocomplete.imports.enabled": true,
+  "language.sourcemap.enabled": true,
+  "language.sourcemap.autogenerate": true,
+  "language.sourcemap.rojoProjectFile": "default.project.json",
+  "language.sourcemap.sourcemapFile": "sourcemap.json",
+  "language.diagnostics.libraryFiles": [],
+  "language.diagnostics.globals": [
+    "require",
+    "print",
+    "warn",
+    "error"
+  ]
+}

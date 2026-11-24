@@ -1,0 +1,31 @@
+# This file lists tools managed by Rokit, a toolchain manager for Roblox projects.
+# For more information, see https://github.com/rojo-rbx/rokit
+
+# New tools can be added by running `rokit add <tool>` in a terminal.
+
+[tools]
+rojo = "rojo-rbx/rojo@7.7.0"
+# Luau runtime with Roblox file APIs — real CFrames, real Instances, no Studio.
+# It runs scripts/run-tests.luau, which loads modules straight out of src/ under a
+# sandbox, and it is what any repo script that needs to read or write a .rbxm is
+# written against.
+lune = "lune-org/lune@0.10.5"
+# Language server: autocomplete, go-to-definition and type checking against the
+# Roblox API. Needs `make lsp-defs` once to fetch the type definitions, and a
+# current sourcemap.json to know where a ModuleScript lives in the DataModel.
+luau-lsp = "JohnnyMorganz/luau-lsp@1.69.0"
+# Formatter. Configured by stylua.toml at the repo root — keep it pinned here so
+# nobody's editor reformats the repo to a different house style.
+stylua = "JohnnyMorganz/StyLua@2.5.2"
+# Package manager for the Luau dependencies in wally.toml — React and its renderer.
+#
+# Pinned exactly because rokit gives no other option. A bare `UpliftGames/wally` fails with
+# "missing '@' separator"; ranges like `^0.3.2`, `>=0.3.2` and `*` do not parse either; and a
+# partial `@0.3` is read as the literal 0.3.0 rather than the newest 0.3.x, which installs a
+# three-year-old build that will not even start on a current Linux (it wants libssl.so.1.1).
+# 0.3.2 is the newest tagged release there is — the next one is a nightly prerelease that rokit
+# cannot pin at all — so this and "latest" are the same thing today.
+wally = "UpliftGames/wally@0.3.2"
+# Rewrites the one-line re-export stubs Wally leaves in Packages/ so luau-lsp can follow them to
+# the real types. Only `make packages` uses it; CI never needs it.
+wally-package-types = "JohnnyMorganz/wally-package-types@1.6.2"

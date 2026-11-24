@@ -1,0 +1,199 @@
+# Publishes the place to Roblox on every push to main (production) and staging (develop).
+#
+# Two universes, because a universe is the only thing Roblox isolates DataStores, passes,
+# products and badges by — there is no staging slot. See docs/environments.md.
+#
+# Repository setup, under Settings > Environments, one environment per branch:
+#   main      secret ROBLOX_API_KEY   vars ROBLOX_UNIVERSE_ID, ROBLOX_PLACE_ID  (production place)
+#   staging   secret ROBLOX_API_KEY   vars ROBLOX_UNIVERSE_ID, ROBLOX_PLACE_ID  (develop place)
+#
+# The API key comes from create.roblox.com/dashboard/credentials with the
+# universe-places:write permission on that universe. No account cookie is involved.
+name: Publish
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+# Two pushes in a row must not race each other onto the same place.
+concurrency:
+  group: publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    # Environment names match branch names, so a new branch target is just a new environment.
+    environment: ${{ github.ref_name }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          cache: true
+
+      - run: rojo --version
+
+      # The registry index `wally install` reads is a ~50 MB git clone, and it makes it fresh
+      # every run otherwise. Keyed on the lock so a dependency change fetches a new one, with a
+      # rolling fallback so the usual case is a hit that wally only has to bring up to date.
+      - name: Cache the Wally index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/wally
+          key: wally-index-${{ hashFiles('wally.lock') }}
+          restore-keys: wally-index-
+
+      # Packages/ is gitignored — wally.lock pins it the way rokit.toml pins the toolchain.
+      # default.project.json mounts it at ReplicatedStorage.Packages, so this has to run
+      # before the upload builds the project: rojo will not build a missing $path.
+      - name: Install packages
+        run: |
+          wally install
+          # Wally has no --locked in any tagged release, so there is no way to make it refuse a
+          # lockfile that no longer matches the manifest. This prints the drift into the log
+          # instead of gating on it: if resolving wally.toml rewrote the lock, the diff says what
+          # moved and the build carries on regardless.
+          git diff wally.lock
+
+      - name: Check deployment configuration
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ vars.ROBLOX_PLACE_ID }}
+        run: |
+          missing=""
+          [ -z "$ROBLOX_API_KEY" ] && missing="$missing ROBLOX_API_KEY(secret)"
+          [ -z "$ROBLOX_UNIVERSE_ID" ] && missing="$missing ROBLOX_UNIVERSE_ID(var)"
+          [ -z "$ROBLOX_PLACE_ID" ] && missing="$missing ROBLOX_PLACE_ID(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing in environment '${{ github.ref_name }}':$missing"
+            exit 1
+          fi
+
+      # Before anything with a side effect. `rojo build` packs source without reading it,
+      # so without this a file with a syntax error publishes clean and breaks the live
+      # game at the first require, and a layout threshold that no longer holds ships a UI
+      # that does not fit the screen it lands on. Failing here costs nothing; failing after
+      # the asset sync means uploads and a commit for a version that never should have
+      # shipped. Same command CI runs, so nothing reaches this branch untested.
+      - name: Run tests
+        run: lune run scripts/run-tests.luau
+
+      # Media has to exist on Roblox before the place that references it goes live, so this
+      # runs first and commits the ids it got back.
+      #
+      # Only staging uploads. Both branches publish at once when a change is merged up, and
+      # neither run can see the other's commit, so letting both sync uploaded every file
+      # twice and left the two branches with different ids for the same sound. Assets are
+      # owned by the group, not by a place, so one upload serves both experiences; main
+      # gets the ids through the merge and only checks that none are missing.
+      - name: Sync assets
+        if: github.ref_name == 'staging'
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+        run: |
+          if [ -z "$ROBLOX_API_KEY" ]; then
+            echo "::warning::no API key, skipping asset sync"
+            exit 0
+          fi
+          ./scripts/sync-assets.sh
+
+      - name: Check assets
+        if: github.ref_name != 'staging'
+        run: |
+          ./scripts/sync-assets.sh --check || {
+            echo "::error::assets are missing ids. Merge through staging, which uploads them."
+            exit 1
+          }
+
+      - name: Commit asset ids
+        if: github.ref_name == 'staging'
+        run: |
+          if git diff --quiet -- src/shared/core/Assets/AssetIds.json; then
+            echo "no new asset ids"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/shared/core/Assets/AssetIds.json
+          git commit -m "chore: record uploaded asset ids [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+
+      # Which commit this build is, packed into the place itself.
+      #
+      # Roblox has no deployment page: a place carries a PlaceVersion, which counts publishes and
+      # maps to no source you can check out. Without this, "is the fix live?" is answered by
+      # guessing, and a fault in `make logs` cannot be tied to a diff.
+      #
+      # After the asset-id commit on purpose. A stamp is a property of a build, not of the
+      # source, so it must never land in a commit — the step above adds one path explicitly, and
+      # this one runs after it so it cannot be swept in even if that ever changes.
+      - name: Stamp the build
+        run: ./scripts/stamp-build.sh
+
+      # rojo upload builds and POSTs to the Open Cloud endpoint
+      # /universes/v1/{universe}/places/{place}/versions?versionType=Published,
+      # so the new version goes live immediately. Roblox answers Conflict ("server is
+      # busy") often enough that a single attempt is not a reliable deploy.
+      - name: Publish place
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ vars.ROBLOX_PLACE_ID }}
+        run: |
+          for attempt in 1 2 3 4; do
+            if rojo upload default.project.json \
+              --api_key "$ROBLOX_API_KEY" \
+              --universe_id "$ROBLOX_UNIVERSE_ID" \
+              --asset_id "$ROBLOX_PLACE_ID"
+            then
+              exit 0
+            fi
+            echo "::warning::upload attempt $attempt failed, retrying in 45s"
+            sleep 45
+          done
+          echo "::error::Roblox rejected the upload after 4 attempts"
+          exit 1
+
+      # A tag per production release, so "what is live?" is answerable from git rather than from
+      # memory. Roblox's own answer is a PlaceVersion number that names no commit, and rolling
+      # back means publishing an older commit — which you cannot do without knowing which one it
+      # was. Annotated, so `git show` on the tag says where it went.
+      #
+      # Only main: the develop place republishes constantly and a tag per push would bury the
+      # releases. The build stamp is how a dev server says which commit it is.
+      - name: Tag the release
+        if: github.ref_name == 'main'
+        run: |
+          TAG="release/$(date -u +%Y-%m-%d)-$(echo "${{ github.sha }}" | cut -c1-7)"
+          # The checkout is shallow and fetches no tags, so a local rev-parse would say "new"
+          # for a tag that already exists on the remote. Ask the remote.
+          if [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+            echo "::notice::$TAG already exists — republishing the same commit is the same release"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Published to place ${{ vars.ROBLOX_PLACE_ID }} (universe ${{ vars.ROBLOX_UNIVERSE_ID }})"
+          git push origin "$TAG"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Summary
+        run: |
+          {
+            echo "Published \`${{ github.sha }}\` to place ${{ vars.ROBLOX_PLACE_ID }} (universe ${{ vars.ROBLOX_UNIVERSE_ID }})"
+            echo ""
+            echo "Build stamp: \`${{ github.ref_name }} $(echo "${{ github.sha }}" | cut -c1-7)\` — this is what \`make logs\` and the in-game label will say."
+            if [ -n "${TAG:-}" ]; then
+              echo ""
+              echo "Tagged \`$TAG\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

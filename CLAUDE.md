@@ -424,6 +424,9 @@ than reimplementing it in PowerShell. One implementation, and CI calls it direct
 
 ## Rules for agents specifically
 
+- **Work only on the `develop` branch.** Never commit to, push to, or modify `main` (or any
+  other branch) unless the user explicitly asks to switch. Check the active branch before
+  committing.
 - **Check the design document first.** If `plans/gdd/` does not describe the feature you have
   been asked to build, say so and ask, or offer the `design-doc` skill. Guessing at a design
   produces something plausible that is not what anybody wanted, and its confidence is what makes

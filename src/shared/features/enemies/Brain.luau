@@ -10,31 +10,40 @@
 
 local Brain = {}
 
--- chase: moving into position. windup: about to strike or grab, frozen and telegraphing.
--- recover: just acted, frozen. fuse: the exploder is about to go off. spent: the exploder went
--- off. holding: the grabber is currently immobilising a player.
-export type Phase = "chase" | "windup" | "recover" | "fuse" | "spent" | "holding"
+-- chase: moving into position. windup: about to strike, spin, or grab, frozen and telegraphing.
+-- spin: dual-blade melee whirling continuously for high DPS. lunge: grabber charging forward.
+-- recover: just acted, frozen. fuse: the exploder is about to go off. spent: the exploder went off.
+-- holding: the grabber is currently immobilising a player.
+export type Phase = "chase" | "windup" | "spin" | "lunge" | "recover" | "fuse" | "spent" | "holding"
 
 export type State = {
 	phase: Phase,
 	endsAt: number,
 	nextFireAt: number,
+	nextSpinAt: number?,
+	nextSpinTickAt: number?,
+	pendingSpin: boolean?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold",
-	action: ("strike" | "fire" | "explode" | "grab")?,
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin",
+	action: ("strike" | "spinTick" | "fire" | "explode" | "grab" | "grabLunge" | "grabCheck")?,
 }
 
 -- The fields of a kind this module reads. Config.ENEMY_KINDS entries carry more.
 export type Kind = {
 	reach: number?,
 	windup: number?,
+	lungeDuration: number?,
 	recover: number?,
 	keepAway: number?,
 	fireEvery: number?,
 	trigger: number?,
 	fuse: number?,
+	canSpin: boolean?,
+	spinDuration: number?,
+	spinTickEvery: number?,
+	spinCooldown: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -47,17 +56,57 @@ Brain.FIRE_REACH = 1.6
 Brain.FIRST_SHOT_DELAY = 1
 
 function Brain.initial(now: number): State
-	return { phase = "chase", endsAt = 0, nextFireAt = now + Brain.FIRST_SHOT_DELAY }
+	return {
+		phase = "chase",
+		endsAt = 0,
+		nextFireAt = now + Brain.FIRST_SHOT_DELAY,
+		nextSpinAt = now + 2.0,
+		nextSpinTickAt = 0,
+		pendingSpin = false,
+	}
 end
 
-local function with(state: State, phase: Phase, endsAt: number): State
-	return { phase = phase, endsAt = endsAt, nextFireAt = state.nextFireAt }
+local function with(
+	state: State,
+	phase: Phase,
+	endsAt: number,
+	nextSpinAt: number?,
+	nextSpinTickAt: number?,
+	pendingSpin: boolean?
+): State
+	return {
+		phase = phase,
+		endsAt = endsAt,
+		nextFireAt = state.nextFireAt,
+		nextSpinAt = if nextSpinAt ~= nil then nextSpinAt else state.nextSpinAt,
+		nextSpinTickAt = if nextSpinTickAt ~= nil then nextSpinTickAt else state.nextSpinTickAt,
+		pendingSpin = if pendingSpin ~= nil then pendingSpin else false,
+	}
 end
 
-local function melee(kind: Kind, state: State, distance: number, now: number): (State, Intent)
+local function melee(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
 	local reach = kind.reach or 0
+	if state.phase == "spin" then
+		if now >= state.endsAt then
+			local spinCooldown = kind.spinCooldown or 6.5
+			return with(state, "recover", now + (kind.recover or 0.8) * 1.4, now + spinCooldown, 0, false),
+				{ move = "hold" }
+		end
+		local tickEvery = kind.spinTickEvery or 0.25
+		if now >= (state.nextSpinTickAt or 0) then
+			return with(state, "spin", state.endsAt, state.nextSpinAt, now + tickEvery, false),
+				{ move = "spin", action = "spinTick" }
+		end
+		return state, { move = "spin" }
+	end
 	if state.phase == "windup" then
 		if now >= state.endsAt then
+			if state.pendingSpin and kind.canSpin then
+				local spinDur = kind.spinDuration or 1.6
+				local tickEvery = kind.spinTickEvery or 0.25
+				return with(state, "spin", now + spinDur, state.nextSpinAt, now + tickEvery, false),
+					{ move = "spin", action = "spinTick" }
+			end
 			return with(state, "recover", now + (kind.recover or 0)), { move = "hold", action = "strike" }
 		end
 		return state, { move = "hold" }
@@ -68,13 +117,18 @@ local function melee(kind: Kind, state: State, distance: number, now: number): (
 		end
 		return state, { move = "hold" }
 	end
+	if not canAttack then
+		return state, { move = "flank" }
+	end
 	if distance <= reach then
-		return with(state, "windup", now + (kind.windup or 0)), { move = "hold" }
+		local wantsSpin = kind.canSpin == true and now >= (state.nextSpinAt or 0)
+		local windupTime = if wantsSpin then (kind.windup or 0.45) * 1.2 else (kind.windup or 0)
+		return with(state, "windup", now + windupTime, state.nextSpinAt, 0, wantsSpin), { move = "hold" }
 	end
 	return state, { move = "toward" }
 end
 
-local function ranged(kind: Kind, state: State, distance: number, now: number): (State, Intent)
+local function ranged(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
 	local keepAway = kind.keepAway or 0
 	local move: "toward" | "away" | "hold" = "hold"
 	if distance < keepAway * Brain.TOO_CLOSE then
@@ -82,14 +136,14 @@ local function ranged(kind: Kind, state: State, distance: number, now: number): 
 	elseif distance > keepAway then
 		move = "toward"
 	end
-	if now >= state.nextFireAt and distance <= keepAway * Brain.FIRE_REACH then
+	if canAttack and now >= state.nextFireAt and distance <= keepAway * Brain.FIRE_REACH then
 		local fired = { phase = state.phase, endsAt = state.endsAt, nextFireAt = now + (kind.fireEvery or 1) }
 		return fired, { move = move, action = "fire" }
 	end
 	return state, { move = move }
 end
 
-local function exploder(kind: Kind, state: State, distance: number, now: number): (State, Intent)
+local function exploder(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
 	if state.phase == "spent" then
 		return state, { move = "hold" }
 	end
@@ -105,16 +159,26 @@ local function exploder(kind: Kind, state: State, distance: number, now: number)
 	return state, { move = "toward" }
 end
 
-local function grabber(kind: Kind, state: State, distance: number, now: number): (State, Intent)
+local function grabber(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
 	if state.phase == "holding" then
 		return state, { move = "hold" }
 	end
 	local reach = kind.reach or 0
 	if state.phase == "windup" then
 		if now >= state.endsAt then
+			local lungeDuration = kind.lungeDuration or 0
+			if lungeDuration > 0 then
+				return with(state, "lunge", now + lungeDuration), { move = "lunge", action = "grabLunge" }
+			end
 			return with(state, "recover", now + (kind.recover or 0)), { move = "hold", action = "grab" }
 		end
 		return state, { move = "hold" }
+	end
+	if state.phase == "lunge" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.recover or 0)), { move = "hold" }
+		end
+		return state, { move = "lunge", action = "grabCheck" }
 	end
 	if state.phase == "recover" then
 		if now >= state.endsAt then
@@ -156,13 +220,21 @@ function Brain.escapeProgress(current: number, delta: number, goal: number): (nu
 end
 
 -- An unknown kind stands still rather than erroring: one bad Config row should cost one enemy
--- its brain, not the whole server its Heartbeat.
-function Brain.step(kindName: string, kind: Kind, state: State, distance: number, now: number): (State, Intent)
+-- its brain, not the whole server its Heartbeat. `canAttack` defaults to true when omitted so
+-- single-enemy callers work unchanged while squad tactics can gate melee/ranged pressure.
+function Brain.step(
+	kindName: string,
+	kind: Kind,
+	state: State,
+	distance: number,
+	now: number,
+	canAttack: boolean?
+): (State, Intent)
 	local behaviour = BEHAVIOURS[kindName]
 	if not behaviour then
 		return state, { move = "hold" }
 	end
-	return behaviour(kind, state, distance, now)
+	return behaviour(kind, state, distance, now, if canAttack ~= nil then canAttack else true)
 end
 
 -- Flat (X/Z) blast reach check shared between player hits and enemy friendly-fire hits.
@@ -229,6 +301,36 @@ function Brain.selfTest()
 	s, intent = Brain.step("melee", meleeKind, s, 5, 2.3)
 	assert(is(s.phase, "chase"), "recovery ends")
 
+	-- Without an attack token, a melee unit flanks instead of starting a dogpile windup.
+	local sf, intentF = Brain.step("melee", meleeKind, Brain.initial(0), 4, 1, false)
+	assert(is(sf.phase, "chase") and is(intentF.move, "flank") and is(intentF.action, nil), "melee without token flanks")
+
+	-- Dual-blade spin DPS ability: telegraphs windup -> enters spin -> emits periodic spinTicks -> recovers.
+	local dualKind: Kind = {
+		reach = 6,
+		windup = 0.45,
+		recover = 0.8,
+		canSpin = true,
+		spinDuration = 1.6,
+		spinTickEvery = 0.25,
+		spinCooldown = 6.5,
+	}
+	local sd: any = Brain.initial(0)
+	sd, intent = Brain.step("melee", dualKind, sd, 5, 2.5)
+	assert(is(sd.phase, "windup") and sd.pendingSpin == true, "dual melee winds up into spin when off cooldown")
+	sd, intent = Brain.step("melee", dualKind, sd, 5, 3.1)
+	assert(is(sd.phase, "spin") and is(intent.action, "spinTick") and is(intent.move, "spin"), "windup enters DPS spin")
+	sd, intent = Brain.step("melee", dualKind, sd, 5, 3.2)
+	assert(is(sd.phase, "spin") and is(intent.action, nil), "spin waits tick interval between DPS ticks")
+	sd, intent = Brain.step("melee", dualKind, sd, 5, 3.4)
+	assert(is(sd.phase, "spin") and is(intent.action, "spinTick"), "spin fires next DPS tick")
+	sd, intent = Brain.step("melee", dualKind, sd, 5, 4.8)
+	assert(is(sd.phase, "recover") and is(intent.move, "hold"), "spin ends into recover")
+
+	-- Ranged enemy respects volley stagger gate (`canAttack = false`) without firing.
+	local rHold, rHoldIntent = Brain.step("ranged", { keepAway = 28, fireEvery = 1.6 }, Brain.initial(0), 25, 2, false)
+	assert(is(rHoldIntent.action, nil) and rHold.nextFireAt == 1, "ranged waits for stagger turn before firing")
+
 	local rangedKind: Kind = { keepAway = 28, fireEvery = 1.6 }
 	local r: any = Brain.initial(0)
 	r, intent = Brain.step("ranged", rangedKind, r, 25, 0.5)
@@ -271,6 +373,18 @@ function Brain.selfTest()
 	assert(is(g.phase, "recover"), "release enters recover")
 	g, intent = Brain.step("grabber", grabberKind, g, 1, 4.7)
 	assert(is(g.phase, "chase"), "grabber resumes chasing after recover")
+
+	-- Grabber lunge: windup launches into a timed lunge checking for contact, then recovers if missed.
+	local lungeGrabber: Kind = { reach = 13, windup = 0.55, lungeDuration = 0.28, recover = 1.6 }
+	local gl: any = Brain.initial(0)
+	gl, intent = Brain.step("grabber", lungeGrabber, gl, 10, 1)
+	assert(is(gl.phase, "windup"), "lunge grabber telegraphs first")
+	gl, intent = Brain.step("grabber", lungeGrabber, gl, 10, 1.55)
+	assert(is(gl.phase, "lunge") and is(intent.action, "grabLunge") and is(intent.move, "lunge"), "windup launches lunge")
+	gl, intent = Brain.step("grabber", lungeGrabber, gl, 6, 1.7)
+	assert(is(gl.phase, "lunge") and is(intent.action, "grabCheck"), "lunge checks grab contact each frame")
+	gl, intent = Brain.step("grabber", lungeGrabber, gl, 12, 1.85)
+	assert(is(gl.phase, "recover") and is(intent.move, "hold"), "missed lunge transitions to recover")
 
 	-- Escape progress math (10 presses, plus ally hit contributions).
 	local p1, freed1 = Brain.escapeProgress(0, 1, 10)

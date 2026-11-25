@@ -27,6 +27,8 @@ local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
+local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
+local Tactics = require(Shared.features.enemies.Tactics)
 local Waves = require(Shared.features.enemies.Waves)
 
 local Server = script.Parent
@@ -56,6 +58,8 @@ if RunService:IsStudio() then
 	Drops.selfTest()
 	Melee.selfTest()
 	Brain.selfTest()
+	EnemyAnim.selfTest()
+	Tactics.selfTest()
 	Waves.selfTest()
 end
 

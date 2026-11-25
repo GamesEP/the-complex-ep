@@ -3,8 +3,32 @@
 -- the ranged one to close distance, the exploder to back off or kill it from range.
 local Config = {}
 
+export type EnemyVariant = {
+	model: string,
+	weapon: string,
+	-- Optional relative spawn weight (default 1) so rare specialists like minigun appear occasionally.
+	weight: number?,
+	-- Melee dual-blade spin DPS ability.
+	canSpin: boolean?,
+	spinDuration: number?,
+	spinTickEvery: number?,
+	spinTickDamage: number?,
+	spinRadius: number?,
+	spinCooldown: number?,
+	spinMoveFactor: number?,
+	-- Ranged burst / tracer-line fire overrides.
+	burstCount: number?,
+	burstInterval: number?,
+	burstSpreadDeg: number?,
+	fireEvery: number?,
+	projectileStyle: ("orb" | "tracer")?,
+	projectileSpeed: number?,
+	projectileDamage: number?,
+}
+
 export type EnemyKind = {
 	model: string?,
+	variants: { EnemyVariant }?,
 	health: number,
 	speed: number,
 	size: Vector3,
@@ -16,6 +40,9 @@ export type EnemyKind = {
 	recover: number?,
 	damage: number?,
 	grabDamagePerSecond: number?,
+	lungeDuration: number?,
+	lungeSpeed: number?,
+	grabRadius: number?,
 	-- ranged
 	keepAway: number?,
 	fireEvery: number?,
@@ -30,8 +57,26 @@ export type EnemyKind = {
 }
 
 Config.ENEMY_KINDS = {
-	-- Telegraphs every swing with a windup, so a dash during it always works.
+	-- Telegraphs every swing with a windup, so a dash during it always works. Spawns across
+	-- four rigged `.rbxmx` weapon variants; dual-blade units also unleash a high-DPS spin attack.
 	melee = {
+		model = "EnemyMelee",
+		variants = {
+			{ model = "EnemyMelee", weapon = "sword" },
+			{
+				model = "EnemyMeleeDual",
+				weapon = "dual",
+				canSpin = true,
+				spinDuration = 1.6,
+				spinTickEvery = 0.25,
+				spinTickDamage = 6,
+				spinRadius = 8.0,
+				spinCooldown = 6.5,
+				spinMoveFactor = 0.65,
+			},
+			{ model = "EnemyMeleeAxe", weapon = "axe" },
+			{ model = "EnemyMeleeMace", weapon = "mace" },
+		},
 		health = 30,
 		speed = 14,
 		size = Vector3.new(4, 5, 4),
@@ -42,8 +87,44 @@ Config.ENEMY_KINDS = {
 		recover = 0.8,
 		damage = 10,
 	},
-	-- Holds its distance and shoots; slow projectiles, so a moving player is never hit by accident.
+	-- Holds its distance and shoots across 4 weapon variants: standard plasma rifle, double-burst
+	-- shotgun & plasma cannon (2 shots per attack), and an occasional heavy minigun firing rapid
+	-- ballistic tracer lines.
 	ranged = {
+		model = "EnemyRanged",
+		variants = {
+			{ model = "EnemyRanged", weapon = "rifle", weight = 3, burstCount = 1, projectileStyle = "orb" },
+			{
+				model = "EnemyRangedShotgun",
+				weapon = "shotgun",
+				weight = 3,
+				burstCount = 2,
+				burstInterval = 0.2,
+				burstSpreadDeg = 3,
+				projectileStyle = "orb",
+			},
+			{
+				model = "EnemyRangedCarbine",
+				weapon = "plasma",
+				weight = 2,
+				burstCount = 2,
+				burstInterval = 0.18,
+				burstSpreadDeg = 2,
+				projectileStyle = "orb",
+			},
+			{
+				model = "EnemyRangedMinigun",
+				weapon = "minigun",
+				weight = 2,
+				burstCount = 6,
+				burstInterval = 0.11,
+				burstSpreadDeg = 5,
+				fireEvery = 2.4,
+				projectileStyle = "tracer",
+				projectileSpeed = 72,
+				projectileDamage = 3.5,
+			},
+		},
 		health = 20,
 		speed = 10,
 		size = Vector3.new(3, 5, 3),
@@ -54,13 +135,14 @@ Config.ENEMY_KINDS = {
 		projectileLife = 2.5,
 		damage = 8,
 	},
-	-- The dangerous one: fast, fragile, and lethal if ignored — its blast is a flattened oval
-	-- (blastHeight < blastRadius) so jumping near the outer rim clears the dome cleanly, and it
-	-- also damages nearby enemies (`enemyDamage`) so players can kite it into a pack tactically.
+	-- The dangerous one: fast, fragile, and lethal if ignored — carries strapped C4 and TNT sticks.
+	-- Its blast is a flattened oval (`blastHeight < blastRadius`) so jumping near the outer rim
+	-- clears the dome cleanly, and it also damages nearby enemies (`enemyDamage`).
 	exploder = {
+		model = "EnemyExploder",
 		health = 15,
 		speed = 20,
-		size = Vector3.new(3.5, 3.5, 3.5),
+		size = Vector3.new(3.5, 4.0, 3.5),
 		color = Color3.fromRGB(240, 150, 40),
 		trigger = 6,
 		fuse = 0.8,
@@ -69,16 +151,19 @@ Config.ENEMY_KINDS = {
 		damage = 30,
 		enemyDamage = 30,
 	},
-	-- Immobilises a player after a telegraphed windup so Dash can dodge it; drains 8 HP/s until
-	-- freed by 10 attack presses or by teammates damaging/killing the grabber.
+	-- Huge muscular juggernaut: telegraphs a windup (HUD Dash warning) and then lunges forward
+	-- to seize the player, draining 8 HP/s until freed by 10 attack presses or teammates.
 	grabber = {
 		model = "EnemyGrabber",
 		health = 45,
 		speed = 13,
-		size = Vector3.new(4.2, 5.8, 3.6),
+		size = Vector3.new(4.8, 6.2, 4.2),
 		color = Color3.fromRGB(155, 45, 210),
-		reach = 7,
+		reach = 13,
 		windup = 0.55,
+		lungeDuration = 0.28,
+		lungeSpeed = 52,
+		grabRadius = 4.6,
 		recover = 1.6,
 		damage = 0,
 		grabDamagePerSecond = 8,
@@ -92,8 +177,8 @@ Config.GRAB_DAMAGE_TICK_SECONDS = 0.5
 Config.GRAB_ALLY_HIT_PROGRESS = 2
 -- Brief immunity after breaking free so two grabbers cannot chain-lock a player on the same frame.
 Config.GRAB_IMMUNITY_SECONDS = 1.0
--- Studs in front of the grabber where the trapped player is held.
-Config.GRAB_HOLD_DISTANCE = 3.2
+-- Studs in front of the muscular grabber's chest where the trapped player is clutched.
+Config.GRAB_HOLD_DISTANCE = 3.8
 
 -- Height above the floor (Y = 0) where ranged projectiles travel, and their 3D hit ellipsoid so
 -- standing players are hit reliably while a jump clears the shot cleanly.
@@ -118,13 +203,35 @@ Config.WAVES = {
 Config.WAVE_GAP_SECONDS = 2
 Config.ROOM_RESTART_SECONDS = 5
 
--- Enemies keep at least this far from each other, so a wave reads as a crowd and not one block.
-Config.ENEMY_SPACING = 5
+-- Enemies keep well apart so waves cannot easily be herded into one tight ball.
+Config.ENEMY_SPACING = 9.5
+Config.AI_RANGED_SPACING = 16
+Config.AI_SEPARATION_WEIGHT = 1.45
 
 -- Roaming motion when every living player is currently grabbed (solo play or full-party grab):
 -- enemies keep prowling the room while steering clear of grabbed players instead of freezing.
 Config.ENEMY_WANDER_SPEED_FACTOR = 0.65
 Config.ENEMY_WANDER_INTERVAL = 2.0
 Config.ENEMY_GRAB_AVOID_RADIUS = 12
+
+-- Tactical squad AI: limits simultaneous attackers per player and assigns spread-out 360-degree
+-- angular sectors so every enemy approaches from a different angle instead of clumping together.
+Config.AI_MAX_MELEE_ATTACKERS = 2
+Config.AI_FLANK_RADIUS = 14.5
+Config.AI_FLANK_BAND = 2.5
+Config.AI_FLANK_SPEED_FACTOR = 0.85
+Config.AI_ATTACKER_PINCER_WEIGHT = 0.65
+Config.AI_RECOVER_BACKSTEP_FACTOR = 0.42
+Config.AI_RANGED_STRAFE_FACTOR = 0.62
+Config.AI_RANGED_STAGGER_SECONDS = 0.55
+Config.AI_EXPLODER_LEAD_SECONDS = 0.40
+Config.AI_EXPLODER_CURVE_WEIGHT = 0.55
+Config.AI_GRABBER_FLANK_WEIGHT = 0.65
+-- Interval range (seconds) between unpredictable individual flank/sector shifts.
+Config.AI_SHIFT_MIN_SECONDS = 2.4
+Config.AI_SHIFT_MAX_SECONDS = 5.2
+-- Effective distance penalty (studs) per enemy already targeting a player so co-op squads split
+-- pressure across teammates instead of forming a single conga line.
+Config.AI_COOP_CROWD_PENALTY = 6
 
 return Config

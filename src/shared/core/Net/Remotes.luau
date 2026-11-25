@@ -45,6 +45,10 @@ return {
 	-- HumanoidStateType and needs no remote. No Contract entry for the same reason as CombatSfx.
 	CombatAnim = remote("CombatAnim"),
 
+	-- Server -> client enemy animation events (strike follow-through and death collapse clones).
+	-- No Contract entry: server broadcast only (docs/net-contract.md).
+	EnemyAnim = remote("EnemyAnim"),
+
 	-- Faults a client saw and the server could not. Client -> server, and the one remote whose
 	-- payload outlives the session, so it is validated twice — once by the contract and once
 	-- field by field in LogSink.

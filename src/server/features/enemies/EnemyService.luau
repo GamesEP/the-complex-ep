@@ -22,15 +22,27 @@ local Remotes = require(Shared.core.Net.Remotes)
 local Brain = require(Shared.features.enemies.Brain)
 local Hitbox = require(Shared.features.enemies.Hitbox)
 local SpatialGrid = require(Shared.features.enemies.SpatialGrid)
+local Tactics = require(Shared.features.enemies.Tactics)
 local Waves = require(Shared.features.enemies.Waves)
 
 local EnemyService = {}
 
+type PartVisual = {
+	part: BasePart,
+	color: Color3,
+	material: Enum.Material,
+}
+
 export type Enemy = {
 	kind: string,
+	modelName: string?,
+	weapon: string?,
+	hasJoints: boolean,
 	spec: any,
 	model: Model,
 	body: BasePart,
+	visuals: { PartVisual },
+	flashToken: number,
 	fill: Frame,
 	radius: number,
 	health: number,
@@ -41,6 +53,13 @@ export type Enemy = {
 	nextGrabDamageAt: number,
 	wanderHeading: Vector3,
 	wanderUntil: number,
+	orbitSign: number,
+	orbitFlipAt: number,
+	sectorJitter: number,
+	radiusBias: number,
+	lungeDirection: Vector3?,
+	burstLeft: number,
+	nextBurstAt: number,
 }
 
 type Projectile = {
@@ -49,6 +68,7 @@ type Projectile = {
 	expiresAt: number,
 	damage: number,
 	reflected: boolean,
+	isTracer: boolean,
 	shooter: Enemy?,
 }
 
@@ -67,9 +87,67 @@ local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
 local projectiles: { Projectile } = {}
+local variantCursor: { [string]: number } = {}
+local lastRangedShotAt: { [Player]: number } = {}
+local nextOrbitSign = 1
 local grid = SpatialGrid.new(Config.ENEMY_GRID_CELL_SIZE)
 local separationScratch: { Enemy } = {}
+local neighborPosScratch: { Vector3 } = {}
 local maxEnemyRadius = 0
+
+local function pickVariant(kind: string, spec: any): (string?, string?, any?)
+	local variants = spec.variants
+	if type(variants) == "table" and #variants > 0 then
+		local totalWeight = 0
+		local hasWeights = false
+		for _, v in ipairs(variants) do
+			if type(v.weight) == "number" and v.weight > 0 then
+				hasWeights = true
+				totalWeight += v.weight
+			else
+				totalWeight += 1
+			end
+		end
+		if hasWeights and totalWeight > 0 then
+			local roll = math.random() * totalWeight
+			local acc = 0
+			for _, v in ipairs(variants) do
+				acc += if type(v.weight) == "number" and v.weight > 0 then v.weight else 1
+				if roll <= acc then
+					return v.model, v.weapon, v
+				end
+			end
+			local last = variants[#variants]
+			return last.model, last.weapon, last
+		end
+		local idx = variantCursor[kind]
+		if not idx then
+			idx = math.random(1, #variants)
+		else
+			idx = (idx % #variants) + 1
+		end
+		variantCursor[kind] = idx
+		local choice = variants[idx]
+		return choice.model, choice.weapon, choice
+	end
+	return spec.model, nil, nil
+end
+
+-- Moves an enemy cleanly: rigged Motor6D models only update `Body.CFrame` so the client's
+-- 60 FPS `Motor6D.C0` limb animations are never overwritten by server replication.
+local function moveEnemy(enemy: Enemy, nextCFrame: CFrame)
+	if enemy.hasJoints then
+		enemy.body.CFrame = nextCFrame
+	else
+		enemy.model:PivotTo(nextCFrame)
+	end
+end
+
+local function syncPhase(enemy: Enemy, t: number)
+	enemy.model:SetAttribute("Phase", enemy.state.phase)
+	enemy.model:SetAttribute("PhaseStartedAt", t)
+	enemy.model:SetAttribute("PhaseDuration", math.max((enemy.state.endsAt or 0) - t, 0))
+end
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -100,20 +178,20 @@ local function randomHeading(): Vector3
 	return Vector3.new(math.cos(angle), 0, math.sin(angle))
 end
 
--- Separation via the spatial grid, so a wave spreads into a crowd in O(local) rather than O(N^2).
+-- Strong anti-clumping repulsion via the spatial grid in O(local) rather than O(N^2).
+-- Ranged units push farther apart from each other (`AI_RANGED_SPACING`) to form crossfire angles.
 local function separationPush(enemy: Enemy, position: Vector3): Vector3
-	local push = Vector3.zero
-	local neighbors = grid:queryRadius(position.X, position.Z, Config.ENEMY_SPACING, separationScratch)
+	local spacing = if enemy.kind == "ranged" then Config.AI_RANGED_SPACING else Config.ENEMY_SPACING
+	local neighbors = grid:queryRadius(position.X, position.Z, spacing, separationScratch)
+	table.clear(neighborPosScratch)
 	for _, other in ipairs(neighbors) do
 		if other ~= enemy and not other.dead then
-			local apart = Vector3.new(position.X - other.body.Position.X, 0, position.Z - other.body.Position.Z)
-			local gap = apart.Magnitude
-			if gap > 1e-3 and gap < Config.ENEMY_SPACING then
-				push += apart.Unit * (Config.ENEMY_SPACING - gap) / Config.ENEMY_SPACING
+			if enemy.kind ~= "ranged" or other.kind == "ranged" or (position - other.body.Position).Magnitude < Config.ENEMY_SPACING then
+				table.insert(neighborPosScratch, other.body.Position)
 			end
 		end
 	end
-	return push
+	return Tactics.antiClumpPush(position, neighborPosScratch, spacing, enemy.orbitSign, Config.AI_SEPARATION_WEIGHT)
 end
 
 local function nearest(position: Vector3, list: { { player: Player, root: BasePart } })
@@ -183,15 +261,12 @@ local function burst(position: Vector3, radius: number, color: Color3, verticalR
 end
 
 local function setTelegraph(enemy: Enemy, on: boolean)
-	-- Neon while winding up or fused: the tell a player reads to know when to dash.
-	local mat = if on then Enum.Material.Neon else Enum.Material.SmoothPlastic
-	enemy.body.Material = mat
-	if enemy.kind == "grabber" then
-		for _, armName in ipairs({ "LeftArm", "RightArm" }) do
-			local arm = enemy.model:FindFirstChild(armName)
-			if arm and arm:IsA("BasePart") then
-				arm.Material = mat
-			end
+	-- Neon while winding up or fused: the tell a player reads to know when to dash or parry.
+	-- Restores each part's authored material (e.g. Metal on EnemyMelee, SmoothPlastic on
+	-- single-part fallbacks) so multi-part `.rbxmx` enemies keep their look after windup.
+	for _, entry in ipairs(enemy.visuals) do
+		if entry.material ~= Enum.Material.Neon then
+			entry.part.Material = if on then Enum.Material.Neon else entry.material
 		end
 	end
 end
@@ -204,8 +279,10 @@ local function releaseGrab(enemy: Enemy, t: number, playEscapeSfx: boolean)
 	enemy.grabTarget = nil
 	enemy.grabProgress = 0
 	enemy.nextGrabDamageAt = 0
+	enemy.lungeDirection = nil
 	if not enemy.dead then
 		enemy.state = Brain.releaseGrab(enemy.state, enemy.spec.recover or 1.6, t)
+		syncPhase(enemy, t)
 	end
 	if setGrabbed then
 		setGrabbed(victim, false, 0, Config.GRAB_ESCAPE_PRESSES)
@@ -223,7 +300,12 @@ local function kill(enemy: Enemy)
 	grid:remove(enemy)
 	releaseGrab(enemy, now(), true)
 	local position = enemy.body.Position
-	burst(position, enemy.radius, enemy.spec.color)
+	if enemy.hasJoints and enemy.modelName then
+		Remotes.EnemyAnim:FireAllClients("death", enemy.modelName, enemy.weapon, enemy.body.CFrame)
+		burst(position, enemy.radius * 0.6, enemy.spec.color)
+	else
+		burst(position, enemy.radius, enemy.spec.color)
+	end
 	enemy.model:Destroy()
 	if onKill then
 		onKill(position)
@@ -236,27 +318,51 @@ local function fire(enemy: Enemy, target: BasePart)
 	if aim.Magnitude < 1e-3 then
 		return
 	end
+	local dir = aim.Unit
+	local spreadDeg = enemy.spec.burstSpreadDeg or 0
+	if spreadDeg > 0 then
+		local rad = math.rad((math.random() * 2 - 1) * spreadDeg)
+		local cosA, sinA = math.cos(rad), math.sin(rad)
+		dir = Vector3.new(dir.X * cosA - dir.Z * sinA, 0, dir.X * sinA + dir.Z * cosA).Unit
+	end
+
+	local isTracer = enemy.spec.projectileStyle == "tracer"
+	local speed = enemy.spec.projectileSpeed or 45
+	local damage = enemy.spec.projectileDamage or enemy.spec.damage or 8
+	local spawnPos = Vector3.new(origin.X, Config.PROJECTILE_HEIGHT, origin.Z)
+
 	local part = Instance.new("Part")
-	part.Name = "Shot"
-	part.Shape = Enum.PartType.Ball
+	part.Name = if isTracer then "Tracer" else "Shot"
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
 	part.Material = Enum.Material.Neon
-	part.Color = enemy.spec.color
-	part.Size = Vector3.one * 1.5
-	-- Low enough (Config.PROJECTILE_HEIGHT = 2) that jumping clears the shot cleanly.
-	part.Position = Vector3.new(origin.X, Config.PROJECTILE_HEIGHT, origin.Z)
+	if isTracer then
+		-- Sleek glowing ballistic tracer line for minigun bursts.
+		part.Shape = Enum.PartType.Block
+		part.Color = Color3.fromRGB(255, 205, 65)
+		part.Size = Vector3.new(0.28, 0.28, 3.8)
+		part.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+	else
+		part.Shape = Enum.PartType.Ball
+		part.Color = enemy.spec.color
+		part.Size = Vector3.one * 1.5
+		part.Position = spawnPos
+	end
 	part.Parent = folder
 	table.insert(projectiles, {
 		part = part,
-		velocity = aim.Unit * enemy.spec.projectileSpeed,
-		expiresAt = now() + enemy.spec.projectileLife,
-		damage = enemy.spec.damage,
+		velocity = dir * speed,
+		expiresAt = now() + (enemy.spec.projectileLife or 2.5),
+		damage = damage,
 		reflected = false,
+		isTracer = isTracer,
 		shooter = enemy,
 	})
+	if enemy.hasJoints then
+		Remotes.EnemyAnim:FireAllClients("fire", enemy.model, enemy.weapon)
+	end
 	Remotes.CombatSfx:FireAllClients("enemyRangedFire", origin)
 end
 
@@ -338,7 +444,17 @@ local function stepHeldGrab(enemy: Enemy, t: number)
 	end
 end
 
-local function stepEnemy(enemy: Enemy, list, grabbedPositions: { Vector3 }, dt: number, t: number)
+local function stepEnemy(
+	enemy: Enemy,
+	list,
+	grabbedPositions: { Vector3 },
+	target: { player: Player, root: BasePart }?,
+	distance: number,
+	canAttack: boolean,
+	sectorAngle: number,
+	dt: number,
+	t: number
+)
 	if enemy.grabTarget then
 		stepHeldGrab(enemy, t)
 		return
@@ -346,13 +462,20 @@ local function stepEnemy(enemy: Enemy, list, grabbedPositions: { Vector3 }, dt: 
 
 	local body = enemy.body
 	local position = body.Position
-	local target, distance = nearest(position, list)
 	if not target then
-		-- Cancel any in-progress windup/fuse so an ignored enemy cannot fire an instant buffered
-		-- strike or blast the frame the player breaks free.
-		if enemy.state.phase == "windup" or enemy.state.phase == "fuse" then
+		-- Cancel any in-progress windup/spin/lunge/fuse/burst so an ignored enemy cannot fire an
+		-- instant buffered strike, spin, grab, burst, or blast the frame the player breaks free.
+		enemy.burstLeft = 0
+		if
+			enemy.state.phase == "windup"
+			or enemy.state.phase == "spin"
+			or enemy.state.phase == "lunge"
+			or enemy.state.phase == "fuse"
+		then
 			enemy.state = Brain.initial(t)
+			enemy.lungeDirection = nil
 			setTelegraph(enemy, false)
+			syncPhase(enemy, t)
 		end
 		-- Keep prowling around the room while steering clear of grabbed players instead of
 		-- freezing like statues when playing solo (or when every teammate is grabbed).
@@ -378,32 +501,70 @@ local function stepEnemy(enemy: Enemy, list, grabbedPositions: { Vector3 }, dt: 
 		end
 		local look = Vector3.new(moved.X + roamDir.X, moved.Y, moved.Z + roamDir.Z)
 		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
-		enemy.model:PivotTo(nextCFrame)
+		moveEnemy(enemy, nextCFrame)
 		grid:move(enemy, moved.X, moved.Z)
 		return
 	end
 
+	-- Periodically shift flank direction, sector jitter, and standoff radius unpredictably so
+	-- enemies resist being herded into predictable circles.
+	if t >= enemy.orbitFlipAt then
+		if math.random() < 0.7 then
+			enemy.orbitSign = -enemy.orbitSign
+		end
+		enemy.sectorJitter = math.random() * 0.6 - 0.3
+		enemy.radiusBias = math.random() * 5 - 2.5
+		enemy.orbitFlipAt = t + Config.AI_SHIFT_MIN_SECONDS + math.random() * (Config.AI_SHIFT_MAX_SECONDS - Config.AI_SHIFT_MIN_SECONDS)
+	end
+
+	if enemy.kind == "melee" then
+		enemy.model:SetAttribute("Role", if canAttack then "attacker" else "flanker")
+	end
+
 	local before = enemy.state.phase
-	local state, intent = Brain.step(enemy.kind, enemy.spec, enemy.state, distance, t)
+	local state, intent = Brain.step(enemy.kind, enemy.spec, enemy.state, distance, t, canAttack)
 	enemy.state = state
 	if state.phase ~= before then
-		setTelegraph(enemy, state.phase == "windup" or state.phase == "fuse")
+		setTelegraph(
+			enemy,
+			state.phase == "windup" or state.phase == "spin" or state.phase == "lunge" or state.phase == "fuse"
+		)
+		syncPhase(enemy, t)
 		if state.phase == "windup" then
 			if enemy.kind == "grabber" then
 				Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
 				if warnGrab then
-					warnGrab(target.player, state.endsAt)
+					warnGrab(target.player, state.endsAt + (enemy.spec.lungeDuration or 0))
 				end
 			else
 				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 			end
+		elseif state.phase == "spin" then
+			Remotes.CombatSfx:FireAllClients("playerSpin", position)
 		elseif state.phase == "fuse" then
 			Remotes.CombatSfx:FireAllClients("enemyExploderFuse", position)
 		end
 	end
 
+	local function latchGrab(victim: Player)
+		enemy.state = Brain.enterHolding(enemy.state)
+		enemy.grabTarget = victim
+		enemy.grabProgress = 0
+		enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
+		enemy.lungeDirection = nil
+		setTelegraph(enemy, false)
+		syncPhase(enemy, t)
+		if setGrabbed then
+			setGrabbed(victim, true, 0, Config.GRAB_ESCAPE_PRESSES)
+		end
+		Remotes.CombatSfx:FireAllClients("enemyGrabberGrab", enemy.body.Position)
+	end
+
 	if intent.action == "strike" then
 		Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
+		if enemy.hasJoints then
+			Remotes.EnemyAnim:FireAllClients("strike", enemy.model, enemy.weapon)
+		end
 		-- Checked in 3D at the moment of the strike: dashing out or jumping over during the windup
 		-- both earn the miss.
 		local strikeRadius = (enemy.spec.reach + enemy.radius) * 1.2
@@ -413,46 +574,195 @@ local function stepEnemy(enemy: Enemy, list, grabbedPositions: { Vector3 }, dt: 
 			if outcome == "parry" then
 				-- Parrying a melee strike staggers the attacker into an extended recover window.
 				enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
+				syncPhase(enemy, t)
+			end
+		end
+	elseif intent.action == "spinTick" then
+		-- Dual-blade tornado spin DPS tick: hits every living free player inside `spinRadius`.
+		-- Parrying a tick interrupts the spin and staggers the attacker into `recover`.
+		Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
+		local spinRadius = enemy.spec.spinRadius or 8.0
+		local strikeHeight = enemy.spec.strikeHeight or enemy.spec.size.Y
+		local tickDamage = enemy.spec.spinTickDamage or 6
+		for _, candidate in ipairs(list) do
+			if Hitbox.inEllipsoid(position, candidate.root.Position, spinRadius, strikeHeight) then
+				local _, outcome = hurt(candidate.player, tickDamage, { canBlock = true, canParry = true })
+				if outcome == "parry" then
+					enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
+					setTelegraph(enemy, false)
+					syncPhase(enemy, t)
+					break
+				end
 			end
 		end
 	elseif intent.action == "grab" then
 		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 and (not canGrab or canGrab(target.player)) then
-			enemy.state = Brain.enterHolding(enemy.state)
-			enemy.grabTarget = target.player
-			enemy.grabProgress = 0
-			enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
-			if setGrabbed then
-				setGrabbed(target.player, true, 0, Config.GRAB_ESCAPE_PRESSES)
-			end
-			Remotes.CombatSfx:FireAllClients("enemyGrabberGrab", position)
+			latchGrab(target.player)
 			return
 		end
+	elseif intent.action == "grabLunge" or intent.action == "grabCheck" then
+		if intent.action == "grabLunge" then
+			-- Lock charge heading when the lunge launches so a well-timed lateral Dash dodges it.
+			local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+			local fallback = Vector3.new(body.CFrame.LookVector.X, 0, body.CFrame.LookVector.Z)
+			if toTarget.Magnitude > 1e-3 then
+				enemy.lungeDirection = toTarget.Unit
+			elseif fallback.Magnitude > 1e-3 then
+				enemy.lungeDirection = fallback.Unit
+			else
+				enemy.lungeDirection = Vector3.new(0, 0, -1)
+			end
+			Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
+		end
+		local catchRadius = enemy.spec.grabRadius or 4.6
+		for _, candidate in ipairs(list) do
+			local dXZ = Vector3.new(candidate.root.Position.X - position.X, 0, candidate.root.Position.Z - position.Z).Magnitude
+			if dXZ <= catchRadius and (not canGrab or canGrab(candidate.player)) then
+				latchGrab(candidate.player)
+				return
+			end
+		end
 	elseif intent.action == "fire" then
+		lastRangedShotAt[target.player] = t
+		local burstCount = enemy.spec.burstCount or 1
+		if burstCount > 1 then
+			enemy.burstLeft = burstCount - 1
+			enemy.nextBurstAt = t + (enemy.spec.burstInterval or 0.18)
+		end
 		fire(enemy, target.root)
 	elseif intent.action == "explode" then
 		explode(enemy, list)
 		return
 	end
 
+	-- Continue any in-progress multi-shot burst (double-shot shotgun/plasma or 6-round minigun).
+	if enemy.burstLeft > 0 and t >= enemy.nextBurstAt then
+		enemy.burstLeft -= 1
+		enemy.nextBurstAt = t + (enemy.spec.burstInterval or 0.18)
+		fire(enemy, target.root)
+	end
+
 	local toward = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
 	local direction = Vector3.zero
-	if toward.Magnitude > 1e-3 then
-		if intent.move == "toward" then
+	local speedScale = 1
+	local isLunging = intent.move == "lunge"
+	if isLunging then
+		local chargeDir = enemy.lungeDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
+		local lungeSpeed = enemy.spec.lungeSpeed or (enemy.spec.speed * 3.5)
+		local moved = Waves.clamp(position + chargeDir * lungeSpeed * dt, Config.ROOM_SIZE, WALL_MARGIN)
+		local look = Vector3.new(moved.X + chargeDir.X, moved.Y, moved.Z + chargeDir.Z)
+		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, moved.X, moved.Z)
+		-- Check again after advancing this frame's lunge step so high-speed dashes never tunnel past.
+		local catchRadius = enemy.spec.grabRadius or 4.6
+		for _, candidate in ipairs(list) do
+			local dXZ = Vector3.new(candidate.root.Position.X - moved.X, 0, candidate.root.Position.Z - moved.Z).Magnitude
+			if dXZ <= catchRadius and (not canGrab or canGrab(candidate.player)) then
+				latchGrab(candidate.player)
+				return
+			end
+		end
+		return
+	elseif intent.move == "spin" then
+		-- Dual-blade spin slowly tracks the player while whirling so players must Dash or Parry.
+		if toward.Magnitude > 1e-3 then
 			direction = toward.Unit
-		elseif intent.move == "away" then
-			direction = -toward.Unit
+		end
+		speedScale = enemy.spec.spinMoveFactor or 0.65
+	elseif intent.move == "flank" then
+		-- Melee units without an attack token peel off to their own angular sector around the
+		-- player so waiting enemies surround from every side instead of clumping together.
+		direction = Tactics.steerToSector(
+			position,
+			target.root.Position,
+			sectorAngle,
+			Config.AI_FLANK_RADIUS + enemy.radiusBias,
+			Config.AI_FLANK_BAND,
+			enemy.orbitSign,
+			0.55
+		)
+		speedScale = Config.AI_FLANK_SPEED_FACTOR
+	elseif intent.move == "toward" then
+		if enemy.kind == "melee" then
+			-- Active attackers curve in along their assigned sector for pincer pressure.
+			direction = Tactics.pincerApproach(
+				position,
+				target.root.Position,
+				sectorAngle,
+				Config.AI_ATTACKER_PINCER_WEIGHT
+			)
+		elseif enemy.kind == "exploder" then
+			local intercept = Tactics.interceptPoint(
+				position,
+				target.root.Position,
+				target.root.AssemblyLinearVelocity,
+				Config.AI_EXPLODER_LEAD_SECONDS
+			)
+			direction = Tactics.pincerApproach(position, intercept, sectorAngle, Config.AI_EXPLODER_CURVE_WEIGHT)
+		elseif enemy.kind == "grabber" then
+			local ambush = Tactics.grabberApproach(
+				position,
+				target.root.Position,
+				target.root.CFrame.LookVector,
+				enemy.orbitSign,
+				Config.AI_GRABBER_FLANK_WEIGHT
+			)
+			local pincer = Tactics.pincerApproach(position, target.root.Position, sectorAngle, 0.5)
+			local blend = Vector3.new(ambush.X + pincer.X, 0, ambush.Z + pincer.Z)
+			direction = if blend.Magnitude > 1e-3 then blend.Unit else ambush
+		elseif enemy.kind == "ranged" then
+			direction = Tactics.steerToSector(
+				position,
+				target.root.Position,
+				sectorAngle,
+				(enemy.spec.keepAway or 28) + enemy.radiusBias,
+				3.5,
+				enemy.orbitSign,
+				0.35
+			)
+		elseif toward.Magnitude > 1e-3 then
+			direction = toward.Unit
+		end
+	elseif intent.move == "away" and toward.Magnitude > 1e-3 then
+		-- Retreat diagonally toward own angular sector so backing ranged enemies split apart.
+		local back = -toward.Unit
+		local side = Vector3.new(-back.Z * enemy.orbitSign, 0, back.X * enemy.orbitSign) * 0.45
+		direction = (back + side).Unit
+	elseif intent.move == "hold" then
+		if enemy.kind == "melee" and enemy.state.phase == "recover" and distance < Config.AI_FLANK_RADIUS * 0.75 and toward.Magnitude > 1e-3 then
+			-- Diagonal tactical backstep after striking to open room for a flanker rotating in.
+			local back = -toward.Unit
+			local side = Vector3.new(-back.Z * enemy.orbitSign, 0, back.X * enemy.orbitSign) * 0.45
+			direction = (back + side).Unit
+			speedScale = Config.AI_RECOVER_BACKSTEP_FACTOR
+		elseif enemy.kind == "ranged" then
+			-- Ranged units spread across opposite firing sectors around the player for crossfire.
+			direction = Tactics.steerToSector(
+				position,
+				target.root.Position,
+				sectorAngle,
+				(enemy.spec.keepAway or 28) + enemy.radiusBias,
+				4,
+				enemy.orbitSign,
+				0.48
+			)
+			speedScale = Config.AI_RANGED_STRAFE_FACTOR
 		end
 	end
 
 	-- Separation via the spatial grid, so a wave spreads into a crowd in O(local) rather than O(N^2).
 	local push = separationPush(enemy, position)
 
-	local moved = position + (direction * enemy.spec.speed + push * enemy.spec.speed) * dt
-	moved = Waves.clamp(moved, Config.ROOM_SIZE, WALL_MARGIN)
+	local candidate = position + (direction * (enemy.spec.speed * speedScale) + push * enemy.spec.speed) * dt
+	local moved = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
+	if (moved.X ~= candidate.X or moved.Z ~= candidate.Z) and (intent.move == "flank" or enemy.kind == "ranged") then
+		enemy.orbitSign = -enemy.orbitSign
+		enemy.orbitFlipAt = t + 3.5 + math.random() * 2.5
+	end
 	local look = Vector3.new(target.root.Position.X, moved.Y, target.root.Position.Z)
 	local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
-	-- PivotTo moves multi-part `.rbxmx` enemies (like EnemyGrabber) together with Body.
-	enemy.model:PivotTo(nextCFrame)
+	moveEnemy(enemy, nextCFrame)
 	grid:move(enemy, moved.X, moved.Z)
 end
 
@@ -528,7 +838,11 @@ local function stepProjectiles(list, dt: number, t: number)
 							shot.damage = Config.PARRY_PROJECTILE_DAMAGE
 							shot.expiresAt = t + Config.PARRY_PROJECTILE_LIFE
 							shot.part.Color = PARRIED_SHOT_COLOR
-							shot.part.Size = Vector3.one * 2.1
+							if shot.isTracer then
+								shot.part.Size = Vector3.new(0.45, 0.45, 4.4)
+							else
+								shot.part.Size = Vector3.one * 2.1
+							end
 							position = position + dir * 2
 							break
 						elseif landed then
@@ -543,7 +857,11 @@ local function stepProjectiles(list, dt: number, t: number)
 			shot.part:Destroy()
 			table.remove(projectiles, i)
 		else
-			shot.part.Position = position
+			if shot.isTracer and shot.velocity.Magnitude > 1e-3 then
+				shot.part.CFrame = CFrame.lookAt(position, position + shot.velocity)
+			else
+				shot.part.Position = position
+			end
 		end
 	end
 end
@@ -551,9 +869,87 @@ end
 local function step(dt: number)
 	local t = now()
 	local list, grabbedPositions = targets()
+
+	-- Pass 1: squad-level target assignment (with co-op crowd spreading) and melee attack-token
+	-- budgeting so at most `Config.AI_MAX_MELEE_ATTACKERS` melee enemies commit per player while
+	-- extras flank and rotate in cleanly.
+	local targetInfos: { Tactics.TargetInfo } = {}
+	local targetByPlayer: { [Player]: { player: Player, root: BasePart } } = {}
+	for _, entry in ipairs(list) do
+		table.insert(targetInfos, { key = entry.player, position = entry.root.Position })
+		targetByPlayer[entry.player] = entry
+	end
+
+	local assignedCounts: { [Player]: number } = {}
+	local assignedTarget: { [Enemy]: { player: Player, root: BasePart } } = {}
+	local assignedDistance: { [Enemy]: number } = {}
+	local meleeCandidates: { Tactics.MeleeCandidate } = {}
+	local closeSectorEntries: { Tactics.SectorEntry } = {}
+	local rangedSectorEntries: { Tactics.SectorEntry } = {}
+
+	if #targetInfos > 0 then
+		for _, enemy in ipairs(enemies) do
+			if not enemy.dead and not enemy.grabTarget then
+				local chosen, dist = Tactics.chooseTarget(
+					enemy.body.Position,
+					targetInfos,
+					assignedCounts,
+					Config.AI_COOP_CROWD_PENALTY
+				)
+				if chosen then
+					local playerKey = chosen.key :: Player
+					assignedCounts[playerKey] = (assignedCounts[playerKey] or 0) + 1
+					assignedTarget[enemy] = targetByPlayer[playerKey]
+					assignedDistance[enemy] = dist
+					local sectorEntry: Tactics.SectorEntry = {
+						id = enemy,
+						targetKey = playerKey,
+						position = enemy.body.Position,
+						targetPosition = chosen.position,
+						jitter = enemy.sectorJitter,
+					}
+					if enemy.kind == "ranged" then
+						table.insert(rangedSectorEntries, sectorEntry)
+					else
+						table.insert(closeSectorEntries, sectorEntry)
+					end
+					if enemy.kind == "melee" then
+						table.insert(meleeCandidates, {
+							id = enemy,
+							targetKey = playerKey,
+							distance = dist,
+							phase = enemy.state.phase,
+						})
+					end
+				end
+			end
+		end
+	end
+
+	local meleeTokens = Tactics.assignMeleeTokens(meleeCandidates, Config.AI_MAX_MELEE_ATTACKERS)
+	local drift = math.sin(t * 0.32) * 0.45
+	local closeSectors = Tactics.assignSectors(closeSectorEntries, drift)
+	local rangedSectors = Tactics.assignSectors(rangedSectorEntries, -drift * 0.7)
+
+	-- Pass 2: execute each enemy's Brain + tactical movement.
 	for _, enemy in ipairs(enemies) do
 		if not enemy.dead then
-			stepEnemy(enemy, list, grabbedPositions, dt, t)
+			local target = assignedTarget[enemy]
+			local dist = assignedDistance[enemy] or math.huge
+			local canAttack = true
+			local sectorAngle = 0
+			if target then
+				if enemy.kind == "melee" then
+					canAttack = meleeTokens[enemy] == true
+					sectorAngle = closeSectors[enemy] or 0
+				elseif enemy.kind == "ranged" then
+					canAttack = Tactics.canFireStaggered(lastRangedShotAt[target.player], t, Config.AI_RANGED_STAGGER_SECONDS)
+					sectorAngle = rangedSectors[enemy] or 0
+				else
+					sectorAngle = closeSectors[enemy] or 0
+				end
+			end
+			stepEnemy(enemy, list, grabbedPositions, target, dist, canAttack, sectorAngle, dt, t)
 		end
 	end
 	for i = #enemies, 1, -1 do
@@ -599,6 +995,7 @@ function EnemyService.onGrabEscape(player: Player)
 end
 
 function EnemyService.forget(player: Player)
+	lastRangedShotAt[player] = nil
 	for _, enemy in ipairs(enemies) do
 		if enemy.grabTarget == player then
 			releaseGrab(enemy, now(), false)
@@ -615,20 +1012,56 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 
 	local model: Model
 	local body: BasePart
-	local models = spec.model and ReplicatedStorage:FindFirstChild("Models")
-	local template = models and models:FindFirstChild(spec.model)
+	local modelName, weapon, variantSpec = pickVariant(kind, spec)
+	-- Merge variant-specific combat overrides (e.g. dual spin DPS, double-burst, minigun tracers)
+	-- onto a per-enemy copy of `spec` so `Brain` and `fire` stay generic.
+	local effectiveSpec = if variantSpec then table.clone(spec) else spec
+	if variantSpec then
+		for k, v in pairs(variantSpec) do
+			if k ~= "model" and k ~= "weapon" and k ~= "weight" then
+				effectiveSpec[k] = v
+			end
+		end
+	end
+	local hasJoints = false
+	local models = modelName and ReplicatedStorage:FindFirstChild("Models")
+	local template = models and models:FindFirstChild(modelName)
 	if template and template:IsA("Model") then
 		model = template:Clone()
 		local foundBody = model.PrimaryPart or model:FindFirstChild("Body")
-		assert(foundBody and foundBody:IsA("BasePart"), `enemy model {spec.model} must carry a Body BasePart`)
+		assert(foundBody and foundBody:IsA("BasePart"), `enemy model {modelName} must carry a Body BasePart`)
 		body = foundBody
-		-- Re-stamp PrimaryPart/WorldPivot because Rojo 7 live-sync can drop PrimaryPart on .rbxmx.
+		-- Re-stamp PrimaryPart/WorldPivot and self-heal Motor6D Refs in case Rojo 7 live-sync
+		-- dropped Instance Refs on `.rbxmx` imports.
 		model.PrimaryPart = body
 		model.WorldPivot = body.CFrame
+		for _, child in ipairs(body:GetChildren()) do
+			if child:IsA("Motor6D") then
+				hasJoints = true
+				if not child.Part0 then
+					child.Part0 = body
+				end
+				if not child.Part1 and child.Name:sub(1, 6) == "Joint_" then
+					local part = model:FindFirstChild(child.Name:sub(7))
+					if part and part:IsA("BasePart") then
+						child.Part1 = part
+					end
+				end
+			end
+		end
 		model.Name = kind
 		model:SetAttribute("Kind", kind)
-		model:PivotTo(CFrame.new(position.X, spec.size.Y / 2, position.Z))
+		if weapon then
+			model:SetAttribute("Weapon", weapon)
+		end
+		local spawnCFrame = CFrame.new(position.X, spec.size.Y / 2, position.Z)
+		if hasJoints then
+			body.CFrame = spawnCFrame
+		else
+			model:PivotTo(spawnCFrame)
+		end
 	else
+		modelName = nil
 		model = Instance.new("Model")
 		model.Name = kind
 		model:SetAttribute("Kind", kind)
@@ -653,22 +1086,50 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		body = part
 	end
 
+	local visuals: { PartVisual } = {}
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			table.insert(visuals, {
+				part = desc,
+				color = desc.Color,
+				material = desc.Material,
+			})
+		end
+	end
+
+	local orbitSign = nextOrbitSign
+	nextOrbitSign = -nextOrbitSign
+
+	local spawnNow = now()
 	local enemy: Enemy = {
 		kind = kind,
-		spec = spec,
+		modelName = modelName,
+		weapon = weapon,
+		hasJoints = hasJoints,
+		spec = effectiveSpec,
 		model = model,
 		body = body,
-		fill = healthBar(body, spec.size.Y),
-		radius = math.max(spec.size.X, spec.size.Z) / 2,
-		health = spec.health,
-		state = Brain.initial(now()),
+		visuals = visuals,
+		flashToken = 0,
+		fill = healthBar(body, effectiveSpec.size.Y),
+		radius = math.max(effectiveSpec.size.X, effectiveSpec.size.Z) / 2,
+		health = effectiveSpec.health,
+		state = Brain.initial(spawnNow),
 		dead = false,
 		grabTarget = nil,
 		grabProgress = 0,
 		nextGrabDamageAt = 0,
 		wanderHeading = randomHeading(),
-		wanderUntil = now() + Config.ENEMY_WANDER_INTERVAL * math.random(),
+		wanderUntil = spawnNow + Config.ENEMY_WANDER_INTERVAL * math.random(),
+		orbitSign = orbitSign,
+		orbitFlipAt = spawnNow + Config.AI_SHIFT_MIN_SECONDS + math.random() * (Config.AI_SHIFT_MAX_SECONDS - Config.AI_SHIFT_MIN_SECONDS),
+		sectorJitter = math.random() * 0.6 - 0.3,
+		radiusBias = math.random() * 5 - 2.5,
+		lungeDirection = nil,
+		burstLeft = 0,
+		nextBurstAt = 0,
 	}
+	syncPhase(enemy, spawnNow)
 	model.Parent = folder
 	table.insert(enemies, enemy)
 	grid:insert(enemy, body.Position.X, body.Position.Z)
@@ -714,11 +1175,17 @@ function EnemyService.damage(enemy: Enemy, amount: number)
 		end
 	end
 	-- A flash on every hit: the feedback that a swing connected, which a hack&slash lives on.
-	local body = enemy.body
-	body.Color = HIT_COLOR
+	-- Token-gated so rapid combo hits always restore every part's authored color cleanly.
+	enemy.flashToken += 1
+	local token = enemy.flashToken
+	for _, entry in ipairs(enemy.visuals) do
+		entry.part.Color = HIT_COLOR
+	end
 	task.delay(FLASH_SECONDS, function()
-		if not enemy.dead then
-			body.Color = enemy.spec.color
+		if not enemy.dead and enemy.flashToken == token then
+			for _, entry in ipairs(enemy.visuals) do
+				entry.part.Color = entry.color
+			end
 		end
 	end)
 end
@@ -732,6 +1199,7 @@ function EnemyService.clear()
 		enemy.model:Destroy()
 	end
 	table.clear(enemies)
+	table.clear(lastRangedShotAt)
 	grid:clear()
 	maxEnemyRadius = 0
 	for _, shot in ipairs(projectiles) do

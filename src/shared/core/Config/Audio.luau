@@ -130,6 +130,35 @@ Config.SFX = {
 		pitchSpread = 0.05,
 		maxDistance = 70,
 	},
+	-- Grabber telegraph alert before latching on (gives player audio cue to Dash).
+	enemyGrabberWindup = {
+		file = "enemy-grabber-windup.ogg",
+		fallbackId = 9117060368,
+		volume = 0.65,
+		pitch = 1.15,
+		pitchSpread = 0.05,
+		maxDistance = 85,
+		maxDuration = 0.55,
+	},
+	-- Grabber latch impact when immobilising a player.
+	enemyGrabberGrab = {
+		file = "enemy-grabber-grab.ogg",
+		fallbackId = 9116701240,
+		volume = 0.75,
+		pitch = 0.9,
+		pitchSpread = 0.05,
+		maxDistance = 85,
+	},
+	-- Break-free release burst when escaping a grabber.
+	enemyGrabberEscape = {
+		file = "enemy-grabber-escape.ogg",
+		fallbackId = 9125415441,
+		volume = 0.7,
+		pitch = 1.15,
+		pitchSpread = 0.05,
+		maxDistance = 80,
+		maxDuration = 0.45,
+	},
 } :: { [string]: SfxSpec }
 
 -- Fallback lifetime for a temporary 3D sound anchor when `Sound.Ended` never fires (e.g. a muted

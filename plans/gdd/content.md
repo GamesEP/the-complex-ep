@@ -54,22 +54,23 @@ Cada tipo obliga al grupo a hacer algo distinto; una sala se diseña mezclándol
 | En área | Ataca una zona marcada en el suelo. | Salir de la zona a tiempo. |
 | Por contacto | Hace daño al tocarlo. | No chocar con él; atacarlo sin pegarse. |
 | Explosivo | Se acerca y explota. Su explosión daña tanto a jugadores cercanos como a otros enemigos dentro del radio (`Config.ENEMY_KINDS.exploder.enemyDamage`). | Matarlo de lejos, alejarse antes de que explote o atraerlo hacia un grupo de enemigos para usar su explosión a favor. |
-| Agarrador | Agarra a un jugador y lo inmoviliza. | Pulsar una tecla repetidamente para liberarse; los compañeros pueden liberarlo atacando al agarrador. |
+| Agarrador | Avisa con un telegraph breve (`windup` + alerta en HUD) y, si el jugador no usa Dash, lo agarra e inmoviliza quitándole 8 de vida por segundo (`Config.ENEMY_KINDS.grabber.grabDamagePerSecond`). | Esquivar con Dash durante el aviso; si queda atrapado, pulsar el botón de ataque 10 veces (`Config.GRAB_ESCAPE_PRESSES`) o recibir ayuda de compañeros atacando al agarrador. |
 
 Los números de cada tipo (vida, velocidad, daño, alcance, tiempos) están en
-`Config.ENEMY_KINDS`, y las oleadas de la sala de prueba en `Config.WAVES`. Por ahora existen los
-tres del corte de combate: cuerpo a cuerpo, a distancia y explosivo.
+`Config.ENEMY_KINDS`, y las oleadas de la sala de prueba en `Config.WAVES` (5 oleadas; el agarrador
+aparece a partir de la oleada 4). Por ahora existen cuatro tipos en el corte de combate: cuerpo a
+cuerpo, a distancia, explosivo y agarrador.
 
 El agarrador es el caso extremo: el único enemigo que castiga ir solo, porque un compañero puede
-salvarte. En móvil, "pulsar una tecla" es tocar repetidamente un botón en pantalla; en mando, un
-botón.
+salvarte. En los tres controles (PC, mando y móvil) se escapa pulsando el mismo botón de ataque
+(`Attack` -> remoto `GrabEscape`).
 
-**Open:** "el escuadrón puede contribuir atacándolo solo si el jugador no presiona la tecla":
-¿significa que el ataque de los compañeros es la alternativa para quien no puede liberarse, o que
-los golpes de los compañeros solo cuentan mientras el atrapado no pulsa? (Propuesta: ambas vías
-suman a la vez, y la que llegue antes libera.) Bloquea el agarrador.
-
-**Open:** cuántas pulsaciones hacen falta para liberarse (`Config.GRAB_ESCAPE_PRESSES`), y qué
-pasa si nadie lo libera (¿daño continuo?). Bloquea el agarrador.
-
+- **Ayuda en paralelo:** los compañeros pueden atacar al agarrador en cualquier momento (pulse el
+  botón el jugador atrapado o no). Cada golpe de un compañero daña al agarrador y además suma
+  progreso de liberación (`Config.GRAB_ALLY_HIT_PROGRESS`); matarlo libera de inmediato.
+- **Escape y castigo:** hacen falta **10 pulsaciones** (`Config.GRAB_ESCAPE_PRESSES`) para soltarse,
+  y mientras está sujeto pierde **8 HP/s** (`Config.ENEMY_KINDS.grabber.grabDamagePerSecond`). Mientras
+  el jugador está atrapado, **el resto de enemigos lo ignoran** (en solitario esperan y en cooperativo
+  cambian de objetivo a los compañeros libres) para evitar muertes instantáneas injustas. Tras
+  liberarse hay 1 s de inmunidad (`Config.GRAB_IMMUNITY_SECONDS`) y el agarrador entra en `recover`.
 - **Fuego amigo del explosivo:** al detonar, daña a cualquier jugador dentro de `blastRadius` y también a los demás enemigos dentro de `blastRadius + enemy.radius` (`Config.ENEMY_KINDS.exploder.enemyDamage`), permitiendo al jugador usar su explosión como ventaja táctica. Los enemigos eliminados por la explosión pueden soltar drops normalmente.

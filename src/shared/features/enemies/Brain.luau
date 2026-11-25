@@ -10,9 +10,10 @@
 
 local Brain = {}
 
--- chase: moving into position. windup: about to strike, frozen and telegraphing. recover: just
--- struck, frozen. fuse: the exploder is about to go off. spent: the exploder went off.
-export type Phase = "chase" | "windup" | "recover" | "fuse" | "spent"
+-- chase: moving into position. windup: about to strike or grab, frozen and telegraphing.
+-- recover: just acted, frozen. fuse: the exploder is about to go off. spent: the exploder went
+-- off. holding: the grabber is currently immobilising a player.
+export type Phase = "chase" | "windup" | "recover" | "fuse" | "spent" | "holding"
 
 export type State = {
 	phase: Phase,
@@ -22,7 +23,7 @@ export type State = {
 
 export type Intent = {
 	move: "toward" | "away" | "hold",
-	action: ("strike" | "fire" | "explode")?,
+	action: ("strike" | "fire" | "explode" | "grab")?,
 }
 
 -- The fields of a kind this module reads. Config.ENEMY_KINDS entries carry more.
@@ -104,11 +105,55 @@ local function exploder(kind: Kind, state: State, distance: number, now: number)
 	return state, { move = "toward" }
 end
 
+local function grabber(kind: Kind, state: State, distance: number, now: number): (State, Intent)
+	if state.phase == "holding" then
+		return state, { move = "hold" }
+	end
+	local reach = kind.reach or 0
+	if state.phase == "windup" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.recover or 0)), { move = "hold", action = "grab" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+	if distance <= reach then
+		return with(state, "windup", now + (kind.windup or 0)), { move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
 local BEHAVIOURS = {
 	melee = melee,
 	ranged = ranged,
 	exploder = exploder,
+	grabber = grabber,
 }
+
+-- Transitions a grabber into `holding` once EnemyService confirms the target was caught.
+function Brain.enterHolding(state: State): State
+	return with(state, "holding", 0)
+end
+
+-- Transitions a grabber out of `holding` into `recover` so it cannot re-grab on the next frame.
+function Brain.releaseGrab(state: State, recover: number, now: number): State
+	return with(state, "recover", now + recover)
+end
+
+-- Advances grab-escape progress (from the trapped player's presses or teammates' hits) and
+-- reports whether the player has broken free.
+function Brain.escapeProgress(current: number, delta: number, goal: number): (number, boolean)
+	if goal <= 0 then
+		return 0, true
+	end
+	local nextVal = math.clamp(current + math.max(delta, 0), 0, goal)
+	return nextVal, nextVal >= goal
+end
 
 -- An unknown kind stands still rather than erroring: one bad Config row should cost one enemy
 -- its brain, not the whole server its Heartbeat.
@@ -186,6 +231,29 @@ function Brain.selfTest()
 	assert(is(intent.action, "explode"), "the fuse runs out")
 	e, intent = Brain.step("exploder", exploderKind, e, 1, 5)
 	assert(is(intent.action, nil), "it only explodes once")
+
+	-- Grabber: telegraphs with windup before grabbing, holds still while holding, recovers on release.
+	local grabberKind: Kind = { reach = 7, windup = 0.55, recover = 1.6 }
+	local g: any = Brain.initial(0)
+	g, intent = Brain.step("grabber", grabberKind, g, 20, 0)
+	assert(is(intent.move, "toward") and is(intent.action, nil), "grabber chases from afar")
+	g, intent = Brain.step("grabber", grabberKind, g, 6, 1)
+	assert(is(g.phase, "windup") and is(intent.action, nil), "grabber telegraphs before grabbing")
+	g, intent = Brain.step("grabber", grabberKind, g, 6, 1.55)
+	assert(is(intent.action, "grab") and is(g.phase, "recover"), "grab fires after windup ends")
+	g = Brain.enterHolding(g)
+	g, intent = Brain.step("grabber", grabberKind, g, 1, 2)
+	assert(is(g.phase, "holding") and is(intent.move, "hold") and is(intent.action, nil), "holding stays put")
+	g = Brain.releaseGrab(g, 1.6, 3)
+	assert(is(g.phase, "recover"), "release enters recover")
+	g, intent = Brain.step("grabber", grabberKind, g, 1, 4.7)
+	assert(is(g.phase, "chase"), "grabber resumes chasing after recover")
+
+	-- Escape progress math (10 presses, plus ally hit contributions).
+	local p1, freed1 = Brain.escapeProgress(0, 1, 10)
+	assert(p1 == 1 and not freed1, "first press advances escape progress")
+	local p2, freed2 = Brain.escapeProgress(8, 2, 10)
+	assert(p2 == 10 and freed2, "reaching goal frees the player")
 
 	local _, unknown = Brain.step("nonsense", {}, Brain.initial(0), 1, 1)
 	assert(is(unknown.move, "hold") and is(unknown.action, nil), "an unknown kind stands still")

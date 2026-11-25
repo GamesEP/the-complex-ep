@@ -4,15 +4,17 @@
 local Config = {}
 
 export type EnemyKind = {
+	model: string?,
 	health: number,
 	speed: number,
 	size: Vector3,
 	color: Color3,
-	-- melee
+	-- melee / grabber
 	reach: number?,
 	windup: number?,
 	recover: number?,
 	damage: number?,
+	grabDamagePerSecond: number?,
 	-- ranged
 	keepAway: number?,
 	fireEvery: number?,
@@ -62,18 +64,43 @@ Config.ENEMY_KINDS = {
 		damage = 30,
 		enemyDamage = 30,
 	},
+	-- Immobilises a player after a telegraphed windup so Dash can dodge it; drains 8 HP/s until
+	-- freed by 10 attack presses or by teammates damaging/killing the grabber.
+	grabber = {
+		model = "EnemyGrabber",
+		health = 45,
+		speed = 13,
+		size = Vector3.new(4.2, 5.8, 3.6),
+		color = Color3.fromRGB(155, 45, 210),
+		reach = 7,
+		windup = 0.55,
+		recover = 1.6,
+		damage = 0,
+		grabDamagePerSecond = 8,
+	},
 } :: { [string]: EnemyKind }
+
+-- Grabber escape & damage tuning (plans/gdd/content.md).
+Config.GRAB_ESCAPE_PRESSES = 10
+Config.GRAB_DAMAGE_TICK_SECONDS = 0.5
+-- Each ally hit on the grabber also contributes progress toward freeing the trapped player.
+Config.GRAB_ALLY_HIT_PROGRESS = 2
+-- Brief immunity after breaking free so two grabbers cannot chain-lock a player on the same frame.
+Config.GRAB_IMMUNITY_SECONDS = 1.0
+-- Studs in front of the grabber where the trapped player is held.
+Config.GRAB_HOLD_DISTANCE = 3.2
 
 -- What the ranged enemy's shot hits with, in studs from the player's root.
 Config.PROJECTILE_HIT_RADIUS = 3
 
--- One table per wave: kind -> count. When the last wave is cleared the room is clean, and after
--- ROOM_RESTART_SECONDS it starts over from wave 1 — the slice is for playing the fight again and
--- again, not for finishing it.
+-- One table per wave: kind -> count. Grabber enters starting on wave 4. When the last wave is
+-- cleared the room is clean, and after ROOM_RESTART_SECONDS it starts over from wave 1.
 Config.WAVES = {
 	{ melee = 3 },
 	{ melee = 3, ranged = 2 },
 	{ melee = 3, ranged = 2, exploder = 2 },
+	{ melee = 3, ranged = 2, exploder = 1, grabber = 1 },
+	{ melee = 4, ranged = 3, exploder = 2, grabber = 2 },
 } :: { { [string]: number } }
 
 Config.WAVE_GAP_SECONDS = 2

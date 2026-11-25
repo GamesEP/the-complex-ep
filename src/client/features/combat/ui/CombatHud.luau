@@ -32,6 +32,8 @@ local DASH_COLOR = Color3.fromRGB(120, 190, 255)
 local SPIN_COLOR = Color3.fromRGB(255, 200, 90)
 local DAMAGE_BUFF_COLOR = Color3.fromRGB(255, 105, 60)
 local SPEED_BUFF_COLOR = Color3.fromRGB(70, 225, 255)
+local GRAB_COLOR = Color3.fromRGB(235, 85, 225)
+local GRAB_WARN_COLOR = Color3.fromRGB(255, 195, 60)
 
 local function Bar(props)
 	return React.createElement("Frame", {
@@ -88,6 +90,9 @@ local function CombatHud(props)
 
 	local health = hooks.useAttribute(player, "Health") or 0
 	local maxHealth = hooks.useAttribute(player, "MaxHealth") or Config.PLAYER_MAX_HEALTH
+	local grabbed = hooks.useAttribute(player, "Grabbed") == true
+	local grabProgress = hooks.useAttribute(player, "GrabProgress") or 0
+	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
 	local room = hooks.useAttributes(props.world, ROOM_ATTRIBUTES)
 
 	-- Per frame, so bindings: React writes the bars' sizes without re-rendering the screen.
@@ -95,12 +100,15 @@ local function CombatHud(props)
 	local spinCharge, setSpinCharge = React.useBinding(1)
 	local damageBuff, setDamageBuff = React.useBinding(0)
 	local speedBuff, setSpeedBuff = React.useBinding(0)
+	local grabWarn, setGrabWarn = React.useBinding(false)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
 		setDashCharge(charge(player:GetAttribute("DashReadyAt"), Config.DASH_COOLDOWN, now))
 		setSpinCharge(charge(player:GetAttribute("SpinReadyAt"), Config.SPIN_COOLDOWN, now))
 		setDamageBuff(Drops.buffRemaining(player:GetAttribute("DamageBuffUntil"), Config.BUFF_DAMAGE_DURATION, now))
 		setSpeedBuff(Drops.buffRemaining(player:GetAttribute("SpeedBuffUntil"), Config.BUFF_SPEED_DURATION, now))
+		local warnUntil = player:GetAttribute("GrabWarningUntil")
+		setGrabWarn(type(warnUntil) == "number" and now < warnUntil and player:GetAttribute("Grabbed") ~= true)
 	end)
 
 	local function fillOf(binding)
@@ -182,6 +190,41 @@ local function CombatHud(props)
 			TextWrapped = true,
 			Text = roomText(room),
 		}),
+		GrabWarning = React.createElement("TextLabel", {
+			Name = "GrabWarning",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, ui.MARGIN + Layout.inset() + 36),
+			Size = UDim2.fromOffset(math.min(420, metrics.room.X - 2 * ui.MARGIN), 30),
+			BackgroundColor3 = ui.INK,
+			BackgroundTransparency = 0.25,
+			BorderSizePixel = 0,
+			Font = ui.TITLE_FONT,
+			TextSize = 18,
+			TextColor3 = GRAB_WARN_COLOR,
+			TextStrokeTransparency = 0.4,
+			Text = "¡AGARRE INMINENTE! Usa Dash",
+			Visible = grabWarn,
+		}, {
+			Corner = React.createElement(ui.Round, { radius = 6 }),
+		}),
+		GrabEscape = if grabbed
+			then React.createElement(ui.Panel, {
+				name = "GrabEscape",
+				width = math.min(340, metrics.room.X - 2 * ui.MARGIN),
+				padding = 12,
+				anchorPoint = Vector2.new(0.5, 1),
+				position = UDim2.new(0.5, 0, 1, -ui.MARGIN * 2),
+			}, {
+				Bar = React.createElement(Bar, {
+					name = "EscapeProgress",
+					order = 1,
+					height = 26,
+					color = GRAB_COLOR,
+					fill = UDim2.fromScale(math.clamp(grabProgress / math.max(grabGoal, 1), 0, 1), 1),
+					text = `¡ATRAPADO! Pulsa Atacar ({grabProgress}/{grabGoal})`,
+				}),
+			})
+			else nil,
 	})
 end
 

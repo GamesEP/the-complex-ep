@@ -71,7 +71,14 @@ local world = WorldBuilder.build()
 -- Before anybody can join, so a first character is already set up.
 CombatService.start({ enemies = EnemyService })
 DropService.start({ world = world, onPickup = CombatService.applyDrop })
-EnemyService.start({ hurt = CombatService.hurt, world = world, onKill = DropService.maybeSpawn })
+EnemyService.start({
+	hurt = CombatService.hurt,
+	world = world,
+	onKill = DropService.maybeSpawn,
+	canGrab = CombatService.canGrab,
+	setGrabbed = CombatService.setGrabbed,
+	warnGrab = CombatService.warnGrab,
+})
 -- After EnemyService and DropService, whose folders it populates and resets.
 WaveDirector.start({ world = world, onReset = DropService.clear })
 
@@ -115,6 +122,7 @@ Dispatcher.init({
 Dispatcher.connect("Attack", CombatService.attack)
 Dispatcher.connect("Dash", CombatService.dash)
 Dispatcher.connect("Spin", CombatService.spin)
+Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
 Dispatcher.connect("Diagnostic", LogSink.onClientReport)
 
 local function onPlayerRemoving(player: Player)
@@ -122,6 +130,7 @@ local function onPlayerRemoving(player: Player)
 	-- same file as the joins, so "what leaks when somebody leaves" is answerable by reading
 	-- rather than by grepping for PlayerRemoving.
 	CombatService.forget(player)
+	EnemyService.forget(player)
 end
 
 Players.PlayerRemoving:Connect(onPlayerRemoving)

@@ -120,6 +120,15 @@ local function attack()
 	if not root or not humanoid then
 		return
 	end
+	-- While held by a grabber, every Attack press (click / X / R2 / touch button) feeds the
+	-- escape struggle instead of launching a melee swing.
+	if player:GetAttribute("Grabbed") == true then
+		lungeToken += 1
+		clearLunge()
+		Effects.attackWindup(1)
+		Remotes.GrabEscape:FireServer()
+		return
+	end
 	local clock = os.clock()
 	if clock - lastSwingAt < Config.ATTACK_INTERVAL then
 		return
@@ -204,6 +213,9 @@ local function attack()
 end
 
 local function dash()
+	if player:GetAttribute("Grabbed") == true then
+		return
+	end
 	local root, humanoid = body()
 	if not root or not humanoid or not ready(dashReadyAt, "DashReadyAt") then
 		return
@@ -240,6 +252,9 @@ local function dash()
 end
 
 local function spin()
+	if player:GetAttribute("Grabbed") == true then
+		return
+	end
 	local root, humanoid = body()
 	if not root or not humanoid or not ready(spinReadyAt, "SpinReadyAt") then
 		return

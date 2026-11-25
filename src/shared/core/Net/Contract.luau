@@ -25,6 +25,9 @@ return {
 	Attack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
 	Dash = { rate = Config.ACTION_RATE },
 	Spin = { rate = Config.ACTION_RATE },
+	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
+	-- feel responsive without opening an unbounded channel.
+	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
 
 	-- A client saying what broke on it. Metered hard and shape-checked twice — once here as a
 	-- table, once field by field in LogSink — because unlike every other remote in this file it

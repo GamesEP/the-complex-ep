@@ -34,6 +34,9 @@ export type Enemy = {
 	health: number,
 	state: Brain.State,
 	dead: boolean,
+	grabTarget: Player?,
+	grabProgress: number,
+	nextGrabDamageAt: number,
 }
 
 type Projectile = {
@@ -50,6 +53,9 @@ local HIT_COLOR = Color3.new(1, 1, 1)
 
 local hurt: (Player, number) -> boolean = nil :: any
 local onKill: ((Vector3) -> ())? = nil
+local canGrab: ((Player) -> boolean)? = nil
+local setGrabbed: ((Player, boolean, number?, number?) -> ())? = nil
+local warnGrab: ((Player, number) -> ())? = nil
 local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
@@ -59,10 +65,15 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
--- Every living player's root, for the enemies to choose from.
+-- Every living, non-grabbed player's root, for other enemies to target. Grabbed players are
+-- excluded so the rest of the horde ignores them (and redirects to free teammates in co-op)
+-- instead of instakilling them while immobilised. See plans/gdd/content.md.
 local function targets(): { { player: Player, root: BasePart } }
 	local list = {}
 	for _, player in ipairs(Players:GetPlayers()) do
+		if player:GetAttribute("Grabbed") == true then
+			continue
+		end
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -130,7 +141,35 @@ end
 
 local function setTelegraph(enemy: Enemy, on: boolean)
 	-- Neon while winding up or fused: the tell a player reads to know when to dash.
-	enemy.body.Material = if on then Enum.Material.Neon else Enum.Material.SmoothPlastic
+	local mat = if on then Enum.Material.Neon else Enum.Material.SmoothPlastic
+	enemy.body.Material = mat
+	if enemy.kind == "grabber" then
+		for _, armName in ipairs({ "LeftArm", "RightArm" }) do
+			local arm = enemy.model:FindFirstChild(armName)
+			if arm and arm:IsA("BasePart") then
+				arm.Material = mat
+			end
+		end
+	end
+end
+
+local function releaseGrab(enemy: Enemy, t: number, playEscapeSfx: boolean)
+	local victim = enemy.grabTarget
+	if not victim then
+		return
+	end
+	enemy.grabTarget = nil
+	enemy.grabProgress = 0
+	enemy.nextGrabDamageAt = 0
+	if not enemy.dead then
+		enemy.state = Brain.releaseGrab(enemy.state, enemy.spec.recover or 1.6, t)
+	end
+	if setGrabbed then
+		setGrabbed(victim, false, 0, Config.GRAB_ESCAPE_PRESSES)
+	end
+	if playEscapeSfx and enemy.body and enemy.body.Parent then
+		Remotes.CombatSfx:FireAllClients("enemyGrabberEscape", enemy.body.Position)
+	end
 end
 
 local function kill(enemy: Enemy)
@@ -138,6 +177,7 @@ local function kill(enemy: Enemy)
 		return
 	end
 	enemy.dead = true
+	releaseGrab(enemy, now(), true)
 	local position = enemy.body.Position
 	burst(position, enemy.radius, enemy.spec.color)
 	enemy.model:Destroy()
@@ -202,11 +242,59 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 	enemy.model:Destroy()
 end
 
+local function stepHeldGrab(enemy: Enemy, t: number)
+	local victim = enemy.grabTarget
+	if not victim then
+		return
+	end
+	local character = victim.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not victim.Parent or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+		releaseGrab(enemy, t, false)
+		return
+	end
+
+	-- Hold the player visibly inside the grabber's front claws.
+	local origin = enemy.body.Position
+	local forward = enemy.body.CFrame.LookVector
+	local holdXZ = Waves.clamp(origin + forward * Config.GRAB_HOLD_DISTANCE, Config.ROOM_SIZE, WALL_MARGIN)
+	local holdPos = Vector3.new(holdXZ.X, root.Position.Y, holdXZ.Z)
+	local facePos = Vector3.new(origin.X, root.Position.Y, origin.Z)
+	if (facePos - holdPos).Magnitude > 1e-3 then
+		root.CFrame = CFrame.lookAt(holdPos, facePos)
+	else
+		root.CFrame = CFrame.new(holdPos)
+	end
+	root.AssemblyLinearVelocity = Vector3.zero
+
+	-- Continuous drain (8 HP/s in Config.GRAB_DAMAGE_TICK_SECONDS ticks) while held.
+	if t >= enemy.nextGrabDamageAt then
+		enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
+		local dps = enemy.spec.grabDamagePerSecond or 8
+		hurt(victim, dps * Config.GRAB_DAMAGE_TICK_SECONDS)
+		if humanoid.Health <= 0 then
+			releaseGrab(enemy, t, false)
+		end
+	end
+end
+
 local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
+	if enemy.grabTarget then
+		stepHeldGrab(enemy, t)
+		return
+	end
+
 	local body = enemy.body
 	local position = body.Position
 	local target, distance = nearest(position, list)
 	if not target then
+		-- Cancel any in-progress melee/grabber windup so an ignored enemy cannot fire an instant
+		-- buffered strike the frame the player breaks free.
+		if enemy.state.phase == "windup" then
+			enemy.state = Brain.initial(t)
+			setTelegraph(enemy, false)
+		end
 		return
 	end
 
@@ -216,7 +304,14 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	if state.phase ~= before then
 		setTelegraph(enemy, state.phase == "windup" or state.phase == "fuse")
 		if state.phase == "windup" then
-			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+			if enemy.kind == "grabber" then
+				Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
+				if warnGrab then
+					warnGrab(target.player, state.endsAt)
+				end
+			else
+				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+			end
 		elseif state.phase == "fuse" then
 			Remotes.CombatSfx:FireAllClients("enemyExploderFuse", position)
 		end
@@ -228,6 +323,18 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 		-- is the warning, and a player who dashed out during it has earned the miss.
 		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 then
 			hurt(target.player, enemy.spec.damage)
+		end
+	elseif intent.action == "grab" then
+		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 and (not canGrab or canGrab(target.player)) then
+			enemy.state = Brain.enterHolding(enemy.state)
+			enemy.grabTarget = target.player
+			enemy.grabProgress = 0
+			enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
+			if setGrabbed then
+				setGrabbed(target.player, true, 0, Config.GRAB_ESCAPE_PRESSES)
+			end
+			Remotes.CombatSfx:FireAllClients("enemyGrabberGrab", position)
+			return
 		end
 	elseif intent.action == "fire" then
 		fire(enemy, target.root)
@@ -261,11 +368,9 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	local moved = position + (direction * enemy.spec.speed + push * enemy.spec.speed) * dt
 	moved = Waves.clamp(moved, Config.ROOM_SIZE, WALL_MARGIN)
 	local look = Vector3.new(target.root.Position.X, moved.Y, target.root.Position.Z)
-	if (look - moved).Magnitude > 1e-3 then
-		body.CFrame = CFrame.lookAt(moved, look)
-	else
-		body.CFrame = CFrame.new(moved)
-	end
+	local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
+	-- PivotTo moves multi-part `.rbxmx` enemies (like EnemyGrabber) together with Body.
+	enemy.model:PivotTo(nextCFrame)
 end
 
 local function stepProjectiles(list, dt: number, t: number)
@@ -312,13 +417,46 @@ local function step(dt: number)
 	stepProjectiles(list, dt, t)
 end
 
-function EnemyService.start(dependencies: { hurt: (Player, number) -> boolean, world: Instance, onKill: ((Vector3) -> ())? })
+function EnemyService.start(dependencies: {
+	hurt: (Player, number) -> boolean,
+	world: Instance,
+	onKill: ((Vector3) -> ())?,
+	canGrab: ((Player) -> boolean)?,
+	setGrabbed: ((Player, boolean, number?, number?) -> ())?,
+	warnGrab: ((Player, number) -> ())?,
+})
 	hurt = dependencies.hurt
 	onKill = dependencies.onKill
+	canGrab = dependencies.canGrab
+	setGrabbed = dependencies.setGrabbed
+	warnGrab = dependencies.warnGrab
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
 	RunService.Heartbeat:Connect(step)
+end
+
+-- Remote "GrabEscape": each Attack press by a trapped player advances their escape counter.
+function EnemyService.onGrabEscape(player: Player)
+	for _, enemy in ipairs(enemies) do
+		if not enemy.dead and enemy.grabTarget == player then
+			local nextVal, freed = Brain.escapeProgress(enemy.grabProgress, 1, Config.GRAB_ESCAPE_PRESSES)
+			enemy.grabProgress = nextVal
+			player:SetAttribute("GrabProgress", nextVal)
+			if freed then
+				releaseGrab(enemy, now(), true)
+			end
+			return
+		end
+	end
+end
+
+function EnemyService.forget(player: Player)
+	for _, enemy in ipairs(enemies) do
+		if enemy.grabTarget == player then
+			releaseGrab(enemy, now(), false)
+		end
+	end
 end
 
 function EnemyService.spawn(kind: string, position: Vector3): Enemy?
@@ -328,26 +466,45 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		return nil
 	end
 
-	local model = Instance.new("Model")
-	model.Name = kind
-	model:SetAttribute("Kind", kind)
+	local model: Model
+	local body: BasePart
+	local models = spec.model and ReplicatedStorage:FindFirstChild("Models")
+	local template = models and models:FindFirstChild(spec.model)
+	if template and template:IsA("Model") then
+		model = template:Clone()
+		local foundBody = model.PrimaryPart or model:FindFirstChild("Body")
+		assert(foundBody and foundBody:IsA("BasePart"), `enemy model {spec.model} must carry a Body BasePart`)
+		body = foundBody
+		-- Re-stamp PrimaryPart/WorldPivot because Rojo 7 live-sync can drop PrimaryPart on .rbxmx.
+		model.PrimaryPart = body
+		model.WorldPivot = body.CFrame
+		model.Name = kind
+		model:SetAttribute("Kind", kind)
+		model:PivotTo(CFrame.new(position.X, spec.size.Y / 2, position.Z))
+	else
+		model = Instance.new("Model")
+		model.Name = kind
+		model:SetAttribute("Kind", kind)
 
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Anchored = true
-	-- Players pass through enemies rather than being shoved by a part the server teleports
-	-- every frame. Hits are judged by distance, so nothing needs the collision.
-	body.CanCollide = false
-	body.CanTouch = false
-	body.Size = spec.size
-	body.Color = spec.color
-	body.Material = Enum.Material.SmoothPlastic
-	if kind == "exploder" then
-		body.Shape = Enum.PartType.Ball
+		local part = Instance.new("Part")
+		part.Name = "Body"
+		part.Anchored = true
+		-- Players pass through enemies rather than being shoved by a part the server teleports
+		-- every frame. Hits are judged by distance, so nothing needs the collision.
+		part.CanCollide = false
+		part.CanTouch = false
+		part.Size = spec.size
+		part.Color = spec.color
+		part.Material = Enum.Material.SmoothPlastic
+		if kind == "exploder" then
+			part.Shape = Enum.PartType.Ball
+		end
+		part.Position = Vector3.new(position.X, spec.size.Y / 2, position.Z)
+		part.Parent = model
+		model.PrimaryPart = part
+		model.WorldPivot = part.CFrame
+		body = part
 	end
-	body.Position = Vector3.new(position.X, spec.size.Y / 2, position.Z)
-	body.Parent = model
-	model.PrimaryPart = body
 
 	local enemy: Enemy = {
 		kind = kind,
@@ -359,6 +516,9 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		health = spec.health,
 		state = Brain.initial(now()),
 		dead = false,
+		grabTarget = nil,
+		grabProgress = 0,
+		nextGrabDamageAt = 0,
 	}
 	model.Parent = folder
 	table.insert(enemies, enemy)
@@ -389,6 +549,17 @@ function EnemyService.damage(enemy: Enemy, amount: number)
 		kill(enemy)
 		return
 	end
+	-- Teammates attacking a grabber contribute toward breaking the trapped player free even if
+	-- the trapped player is not pressing the escape button (plans/gdd/content.md).
+	if enemy.grabTarget then
+		local nextVal, freed =
+			Brain.escapeProgress(enemy.grabProgress, Config.GRAB_ALLY_HIT_PROGRESS, Config.GRAB_ESCAPE_PRESSES)
+		enemy.grabProgress = nextVal
+		enemy.grabTarget:SetAttribute("GrabProgress", nextVal)
+		if freed then
+			releaseGrab(enemy, now(), true)
+		end
+	end
 	-- A flash on every hit: the feedback that a swing connected, which a hack&slash lives on.
 	local body = enemy.body
 	body.Color = HIT_COLOR
@@ -401,8 +572,10 @@ end
 
 -- Everything off the board at once: the room resetting after everybody died.
 function EnemyService.clear()
+	local t = now()
 	for _, enemy in ipairs(enemies) do
 		enemy.dead = true
+		releaseGrab(enemy, t, false)
 		enemy.model:Destroy()
 	end
 	table.clear(enemies)

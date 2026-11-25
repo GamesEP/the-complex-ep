@@ -98,6 +98,9 @@ function CombatAudio.selfTest()
 		"enemyRangedFire",
 		"enemyExploderFuse",
 		"enemyExploderBlast",
+		"enemyGrabberWindup",
+		"enemyGrabberGrab",
+		"enemyGrabberEscape",
 		"dropHeal",
 		"dropBuff",
 	}

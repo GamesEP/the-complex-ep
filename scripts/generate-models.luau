@@ -298,7 +298,81 @@ local function buildDropSpeed(): any
 	return model
 end
 
+-- Tall violet grabber enemy with outstretched glowing claws facing -Z (CFrame.lookAt forward).
+local function buildEnemyGrabber(): any
+	local model = Instance.new("Model")
+	model.Name = "EnemyGrabber"
+	local bodyColor = Color3.fromRGB(155, 45, 210)
+	local armColor = Color3.fromRGB(115, 30, 165)
+	local glowColor = Color3.fromRGB(255, 85, 225)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(4.2, 5.8, 3.6),
+		cframe = CFrame.new(0, 0, 0),
+		color = bodyColor,
+		material = Enum.Material.SmoothPlastic,
+		anchored = true,
+		castShadow = true,
+	})
+	body.Parent = model
+
+	local parts = {
+		makePart({
+			name = "Visor",
+			size = Vector3.new(2.5, 1.0, 0.35),
+			cframe = CFrame.new(0, 1.35, -1.75),
+			color = glowColor,
+			material = Enum.Material.Neon,
+			anchored = true,
+		}),
+		makePart({
+			name = "LeftArm",
+			size = Vector3.new(0.95, 1.1, 3.1),
+			cframe = CFrame.new(-2.35, 0.35, -1.65),
+			color = armColor,
+			material = Enum.Material.SmoothPlastic,
+			anchored = true,
+			castShadow = true,
+		}),
+		makePart({
+			name = "RightArm",
+			size = Vector3.new(0.95, 1.1, 3.1),
+			cframe = CFrame.new(2.35, 0.35, -1.65),
+			color = armColor,
+			material = Enum.Material.SmoothPlastic,
+			anchored = true,
+			castShadow = true,
+		}),
+		makePart({
+			name = "LeftClaw",
+			size = Vector3.new(0.75, 0.9, 1.55),
+			cframe = CFrame.new(-1.85, 0.35, -3.45) * CFrame.Angles(0, math.rad(-28), 0),
+			color = glowColor,
+			material = Enum.Material.Neon,
+			anchored = true,
+		}),
+		makePart({
+			name = "RightClaw",
+			size = Vector3.new(0.75, 0.9, 1.55),
+			cframe = CFrame.new(1.85, 0.35, -3.45) * CFrame.Angles(0, math.rad(28), 0),
+			color = glowColor,
+			material = Enum.Material.Neon,
+			anchored = true,
+		}),
+	}
+
+	for _, part in ipairs(parts) do
+		part.Parent = model
+	end
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
 writeModel("TestSword.rbxmx", buildTestSword())
 writeModel("DropHeal.rbxmx", buildDropHeal())
 writeModel("DropDamage.rbxmx", buildDropDamage())
 writeModel("DropSpeed.rbxmx", buildDropSpeed())
+writeModel("EnemyGrabber.rbxmx", buildEnemyGrabber())

@@ -86,6 +86,20 @@ reach again at the moment it lands, so dashing out during the windup always work
 Enemies killed by the blast still go through `EnemyService.damage` -> `kill` and roll drops; the
 self-destructing exploder itself does not.
 
+**Grabbers telegraph, immobilise, and drain 8 HP/s.** Modeled as `assets/models/EnemyGrabber.rbxmx`
+(mounted at `ReplicatedStorage.Models.EnemyGrabber`, moved via `Model:PivotTo`), a grabber enters
+`windup` (`0.55 s`) turning Neon, playing `enemyGrabberWindup`, and setting `GrabWarningUntil` on
+the targeted player so `CombatHud` flashes `"¡AGARRE INMINENTE! Usa Dash"`. If the player does not
+escape reach or Dash i-frames (`CombatService.canGrab`), the grabber enters `holding`, locks
+movement (`Grabbed = true`), and ticks 8 HP/s (`Config.GRAB_DAMAGE_TICK_SECONDS`). While trapped,
+pressing Attack (mouse/gamepad/touch) fires the contracted `GrabEscape` remote (10 presses,
+`Config.GRAB_ESCAPE_PRESSES`); teammates attacking the grabber also contribute
+`Config.GRAB_ALLY_HIT_PROGRESS` per hit and killing it frees the player immediately. While a player
+is `Grabbed`, `EnemyService`'s `targets()` skips them so every other enemy (and in-flight
+projectiles/explosions) ignores the trapped player — pausing in solo or redirecting to free
+teammates in co-op — and any active enemy windup resets cleanly. Grabbers enter `Config.WAVES`
+starting on wave 4 of 5.
+
 **Separation** pushes enemies apart inside `ENEMY_SPACING`, so a wave reads as a crowd.
 
 ## Waves

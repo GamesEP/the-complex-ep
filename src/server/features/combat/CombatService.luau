@@ -139,6 +139,11 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("SpinReadyAt", 0)
 	player:SetAttribute("DamageBuffUntil", 0)
 	player:SetAttribute("SpeedBuffUntil", 0)
+	player:SetAttribute("Grabbed", false)
+	player:SetAttribute("GrabProgress", 0)
+	player:SetAttribute("GrabGoal", Config.GRAB_ESCAPE_PRESSES)
+	player:SetAttribute("GrabWarningUntil", 0)
+	player:SetAttribute("GrabImmuneUntil", 0)
 	task.spawn(equipTestSword, character)
 end
 
@@ -189,6 +194,65 @@ function CombatService.hurt(player: Player, amount: number): boolean
 	return true
 end
 
+-- Returns whether a grabber may latch onto `player` right now. Respects Dash invulnerability
+-- (`InvulnerableUntil`), existing grabs, and post-escape immunity so Dash cleanly dodges grabs.
+function CombatService.canGrab(player: Player): boolean
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+	if player:GetAttribute("Grabbed") == true then
+		return false
+	end
+	local t = now()
+	local invulnerableUntil = character:GetAttribute("InvulnerableUntil")
+	if type(invulnerableUntil) == "number" and t < invulnerableUntil then
+		return false
+	end
+	local immuneUntil = player:GetAttribute("GrabImmuneUntil")
+	if type(immuneUntil) == "number" and t < immuneUntil then
+		return false
+	end
+	return true
+end
+
+-- Signals an incoming grabber windup so the HUD displays the Dash warning for `player`.
+function CombatService.warnGrab(player: Player, untilAt: number)
+	local current = player:GetAttribute("GrabWarningUntil")
+	if type(current) ~= "number" or untilAt > current then
+		player:SetAttribute("GrabWarningUntil", untilAt)
+	end
+end
+
+-- Locks or restores player movement when grabbed/released by a grabber. Restores speed buff if
+-- active so escaping a grab never strips a running speed pickup.
+function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: number?, goal: number?)
+	local t = now()
+	player:SetAttribute("Grabbed", grabbed)
+	player:SetAttribute("GrabProgress", progress or 0)
+	player:SetAttribute("GrabGoal", goal or Config.GRAB_ESCAPE_PRESSES)
+	if grabbed then
+		player:SetAttribute("GrabWarningUntil", 0)
+	else
+		player:SetAttribute("GrabImmuneUntil", t + Config.GRAB_IMMUNITY_SECONDS)
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	if grabbed then
+		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+	else
+		humanoid.WalkSpeed =
+			Drops.moveSpeed(Config.MOVE_SPEED, player:GetAttribute("SpeedBuffUntil"), t, Config.BUFF_SPEED_MULTIPLIER)
+		humanoid.JumpPower = Config.JUMP_POWER
+	end
+end
+
 -- Applies a combat drop collected from DropService. Returns whether the drop was consumed so a
 -- full-health player leaves heal pickups on the floor for later or for teammates.
 function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
@@ -212,11 +276,13 @@ function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
 	elseif kind == "speed" then
 		local untilAt = t + Config.BUFF_SPEED_DURATION
 		player:SetAttribute("SpeedBuffUntil", untilAt)
-		humanoid.WalkSpeed = Drops.moveSpeed(Config.MOVE_SPEED, untilAt, t, Config.BUFF_SPEED_MULTIPLIER)
+		if player:GetAttribute("Grabbed") ~= true then
+			humanoid.WalkSpeed = Drops.moveSpeed(Config.MOVE_SPEED, untilAt, t, Config.BUFF_SPEED_MULTIPLIER)
+		end
 		-- Re-check the attribute when the timer fires so picking up a second speed buff refreshes
 		-- the timer instead of being reset early by the first timer.
 		task.delay(Config.BUFF_SPEED_DURATION + 0.05, function()
-			if humanoid.Parent and humanoid.Health > 0 then
+			if humanoid.Parent and humanoid.Health > 0 and player:GetAttribute("Grabbed") ~= true then
 				humanoid.WalkSpeed = Drops.moveSpeed(
 					Config.MOVE_SPEED,
 					player:GetAttribute("SpeedBuffUntil"),
@@ -234,6 +300,9 @@ end
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
 function CombatService.attack(player: Player, aim: Vector3)
+	if player:GetAttribute("Grabbed") == true then
+		return
+	end
 	local root = rootOf(player)
 	if not root then
 		return
@@ -271,6 +340,9 @@ end
 -- Remote "Dash". The motion already happened on the client; this grants the invulnerability and
 -- starts the cooldown, both of which have to be the server's or a client could keep them forever.
 function CombatService.dash(player: Player)
+	if player:GetAttribute("Grabbed") == true then
+		return
+	end
 	local character = player.Character
 	local root = rootOf(player)
 	if not character or not root then
@@ -289,6 +361,9 @@ end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
 function CombatService.spin(player: Player)
+	if player:GetAttribute("Grabbed") == true then
+		return
+	end
 	local root = rootOf(player)
 	if not root then
 		return

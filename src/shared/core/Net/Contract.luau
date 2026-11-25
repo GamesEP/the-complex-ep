@@ -23,6 +23,10 @@ return {
 	-- only stops a script flooding the channel. The aim is shape-checked here and normalised in
 	-- CombatService, because only the handler knows what a direction means.
 	Attack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
+	-- Hold-to-charge heavy attack: `HeavyCharge(true/false)` opens/cancels the server's 3 s charge
+	-- clock, and `HeavyAttack(aim)` unleashes the cleave once the server confirms full charge.
+	HeavyCharge = { rate = Config.ACTION_RATE, args = { Validate.boolean } },
+	HeavyAttack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
 	Dash = { rate = Config.ACTION_RATE },
 	Spin = { rate = Config.ACTION_RATE },
 	-- Boolean press/release for guard & parry (`true` raises guard, `false` lowers it).

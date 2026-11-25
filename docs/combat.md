@@ -41,6 +41,7 @@ Each action is predicted on the client and confirmed by the server:
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
 | Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, plays swing anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
+| Heavy Attack (hold Attack 3 s) | Tap still swings immediately; holding past `HEAVY_CHARGE_DELAY` starts charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (3 s) lunges, draws shockwave, plays `heavyAttack` anim/SFX, fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), damages every enemy in the wide `HEAVY_ATTACK_ARC` |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
 | Spin | Draws the ring, fires `Spin()` | Checks the cooldown, sets `SpinReadyAt`, damages everything in the radius |
 
@@ -140,7 +141,7 @@ the camera — so WASD, the thumbstick and the gamepad stick all mean "up the sc
 
 | Action | Keyboard / mouse | Gamepad | Touch |
 |---|---|---|---|
-| Attack | Left click | X, R2 | "Atacar" button |
+| Attack (tap) / Heavy Attack (hold 3 s) | Left click | X, R2 | "Atacar" button |
 | Dash | Left Shift, Q | B, L2 | "Dash" button |
 | Spin | E | Y, R1 | "Giro" button |
 | Block / Parry (hold) | Right click, F | L1 | "Bloquear" button |
@@ -193,6 +194,9 @@ Combat sound effects live in `Config/Audio.luau` (`Config.SFX`) and are played b
   `enemy-exploder-fuse.ogg`, `enemy-exploder-blast.ogg`). `CombatAudio.resolveId` prefers
   `Assets.id(spec.file)` once uploaded via `make sync-assets`, and falls back to a verified
   public Creator Store `fallbackId` so unpublished local Studio sessions are audible immediately.
+- **Looped playtest soundtrack (`Config.BGM`):** `SoundPlayer.start` loops a non-spatial 2D
+  `Sound` (`ComplexBgm`) under `SoundService` backed by `assets/bgm-complex.ogg` once synced into
+  `Assets/AssetIds.json`, falling back to `Config.BGM.fallbackId` until uploaded.
 
 ## Player animations
 

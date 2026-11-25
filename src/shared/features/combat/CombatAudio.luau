@@ -90,6 +90,8 @@ function CombatAudio.selfTest()
 	local requiredCues = {
 		"playerAttack",
 		"playerAttackHeavy",
+		"playerHeavyCharge",
+		"playerHeavyAttack",
 		"playerDash",
 		"playerSpin",
 		"playerHit",
@@ -113,6 +115,12 @@ function CombatAudio.selfTest()
 		assert(spec.volume > 0 and spec.volume <= 10, `{cue} volume must be positive`)
 		assert(spec.pitch > 0, `{cue} pitch must be positive`)
 	end
+
+	local bgm = Config.BGM
+	assert(bgm ~= nil, "missing Config.BGM")
+	assert(bgm.file:match("%.ogg$") ~= nil or bgm.file:match("%.mp3$") ~= nil, "BGM file must be .ogg or .mp3")
+	assert(bgm.volume > 0 and bgm.volume <= 10, "BGM volume must be positive")
+	assert(bgm.pitch > 0, "BGM pitch must be positive")
 end
 
 return CombatAudio

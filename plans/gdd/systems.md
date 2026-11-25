@@ -86,9 +86,16 @@ servidor de run.
 
 **Reglas:**
 
-- Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash, **bloqueo / parry** y el ataque básico
-  que encadena un combo. Son los que definen la alta velocidad del juego, así que su rapidez y
-  fluidez son lo primero que se ajusta.
+- Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash, **bloqueo / parry**,
+  el ataque básico que encadena un combo y el **ataque pesado cargado** (manteniendo pulsado el
+  botón de ataque durante 3 segundos). Son los que definen la alta velocidad del juego, así que su
+  rapidez y fluidez son lo primero que se ajusta.
+- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora; mantener
+  pulsado Atacar durante **3 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un corte frontal
+  amplio de alto daño (`Config.HEAVY_ATTACK_DAMAGE`, arco de `160°` y `13` studs de alcance) que se
+  libera automáticamente al completarse la carga. Durante la carga el jugador se desplaza más
+  despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede
+  cancelar soltando antes o usando Dash/Bloqueo.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
   `"Bloquear"`) reduce el daño entrante en un 70% (`Config.BLOCK_DAMAGE_REDUCTION`) a cambio de
   moverse más despacio (`Config.BLOCK_MOVE_MULTIPLIER`). Si se levanta la guardia justo antes de un
@@ -141,6 +148,7 @@ Valores de prueba del corte de combate, para ajustar jugando:
 |---|---|
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
+| Ataque pesado cargado | Mantener Atacar 3 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
 | Tiempo para encadenar el combo | 0,6 s (`Config.COMBO_WINDOW`) |
 | Enganche frontal del ataque básico | Cono de 120° (±60° desde la dirección pulsada) hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
 | Velocidad al correr | 26 studs/s; la de Roblox por defecto es 16 (`Config.MOVE_SPEED`) |

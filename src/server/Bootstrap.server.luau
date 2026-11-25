@@ -126,6 +126,8 @@ Dispatcher.init({
 })
 
 Dispatcher.connect("Attack", CombatService.attack)
+Dispatcher.connect("HeavyCharge", CombatService.heavyCharge)
+Dispatcher.connect("HeavyAttack", CombatService.heavyAttack)
 Dispatcher.connect("Dash", CombatService.dash)
 Dispatcher.connect("Spin", CombatService.spin)
 Dispatcher.connect("Block", CombatService.block)

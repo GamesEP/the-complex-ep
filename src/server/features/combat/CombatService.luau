@@ -34,9 +34,10 @@ type Enemies = {
 
 local enemies: Enemies = nil :: any
 
--- Per player, server-only: the combo is judged on the server's own clock, which a client cannot
--- move. Forgotten in `forget`, from the bootstrap's PlayerRemoving.
+-- Per player, server-only: the combo and heavy-charge clocks are judged on the server's own
+-- `os.clock()`, which a client cannot move. Forgotten in `forget`, from PlayerRemoving.
 local swings: { [Player]: { step: number, lastAt: number } } = {}
+local heavyCharges: { [Player]: number } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -134,8 +135,19 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 		player:GetAttribute("Grabbed") == true,
 		now(),
 		Config.BUFF_SPEED_MULTIPLIER,
-		Config.BLOCK_MOVE_MULTIPLIER
+		Config.BLOCK_MOVE_MULTIPLIER,
+		player:GetAttribute("ChargingHeavy") == true,
+		Config.HEAVY_CHARGE_MOVE_MULTIPLIER
 	)
+end
+
+local function cancelCharge(player: Player)
+	heavyCharges[player] = nil
+	if player:GetAttribute("ChargingHeavy") == true then
+		player:SetAttribute("ChargingHeavy", false)
+		player:SetAttribute("HeavyChargeStart", 0)
+		refreshWalkSpeed(player)
+	end
 end
 
 local function onCharacter(player: Player, character: Model)
@@ -156,11 +168,15 @@ local function onCharacter(player: Player, character: Model)
 	humanoid.HealthChanged:Connect(mirror)
 
 	swings[player] = nil
+	heavyCharges[player] = nil
 	player:SetAttribute("DashReadyAt", 0)
 	player:SetAttribute("SpinReadyAt", 0)
 	player:SetAttribute("BlockReadyAt", 0)
 	player:SetAttribute("Blocking", false)
 	player:SetAttribute("ParryUntil", 0)
+	player:SetAttribute("ChargingHeavy", false)
+	player:SetAttribute("HeavyChargeStart", 0)
+	player:SetAttribute("HeavyReadyAt", 0)
 	player:SetAttribute("DamageBuffUntil", 0)
 	player:SetAttribute("SpeedBuffUntil", 0)
 	player:SetAttribute("DefenseBuffUntil", 0)
@@ -201,6 +217,7 @@ end
 
 function CombatService.forget(player: Player)
 	swings[player] = nil
+	heavyCharges[player] = nil
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -294,6 +311,9 @@ function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: nu
 		player:SetAttribute("GrabWarningUntil", 0)
 		player:SetAttribute("Blocking", false)
 		player:SetAttribute("ParryUntil", 0)
+		heavyCharges[player] = nil
+		player:SetAttribute("ChargingHeavy", false)
+		player:SetAttribute("HeavyChargeStart", 0)
 	else
 		player:SetAttribute("GrabImmuneUntil", t + Config.GRAB_IMMUNITY_SECONDS)
 	end
@@ -375,9 +395,91 @@ function CombatService.block(player: Player, active: boolean)
 	if t < readyAt - COOLDOWN_SLACK then
 		return
 	end
+	cancelCharge(player)
 	player:SetAttribute("Blocking", true)
 	player:SetAttribute("ParryUntil", t + Config.PARRY_WINDOW)
 	refreshWalkSpeed(player)
+end
+
+-- Remote "HeavyCharge": starts or cancels the server-authoritative 3-second heavy-attack charge.
+function CombatService.heavyCharge(player: Player, active: boolean)
+	if not active then
+		cancelCharge(player)
+		return
+	end
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+		return
+	end
+	if player:GetAttribute("ChargingHeavy") == true then
+		return
+	end
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local t = now()
+	local readyAt = player:GetAttribute("HeavyReadyAt") or 0
+	if t < readyAt - COOLDOWN_SLACK then
+		return
+	end
+	heavyCharges[player] = os.clock()
+	player:SetAttribute("ChargingHeavy", true)
+	-- Backdate by HEAVY_CHARGE_DELAY so the replicated HUD bar reflects the full 3 s button hold.
+	player:SetAttribute("HeavyChargeStart", t - Config.HEAVY_CHARGE_DELAY)
+	refreshWalkSpeed(player)
+	broadcastOthers(player, "playerHeavyCharge", root.Position)
+end
+
+-- Remote "HeavyAttack": unleashes the wide crushing cleave once the server confirms the full
+-- 3-second hold completed.
+function CombatService.heavyAttack(player: Player, aim: Vector3)
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+		cancelCharge(player)
+		return
+	end
+	local startedAt = heavyCharges[player]
+	local requiredServerCharge = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0)
+	if not Melee.isChargeReady(startedAt, os.clock(), requiredServerCharge, Config.HEAVY_CHARGE_SLACK) then
+		cancelCharge(player)
+		return
+	end
+	cancelCharge(player)
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local facing = Melee.flat(aim) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+
+	local t = now()
+	player:SetAttribute("HeavyReadyAt", t + Config.HEAVY_ATTACK_COOLDOWN)
+	swings[player] = { step = 0, lastAt = os.clock() }
+
+	local damage = Config.HEAVY_ATTACK_DAMAGE
+		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
+	broadcastOthers(player, "playerHeavyAttack", root.Position)
+	broadcastAnimOthers(player, "heavyAttack")
+
+	local hitAt: Vector3? = nil
+	for _, enemy in ipairs(enemies.list()) do
+		if
+			Melee.inArc(
+				root.Position,
+				facing,
+				enemy.body.Position,
+				Config.HEAVY_ATTACK_RANGE + enemy.radius,
+				Config.HEAVY_ATTACK_ARC
+			)
+		then
+			hitAt = hitAt or enemy.body.Position
+			enemies.damage(enemy, damage)
+		end
+	end
+	if hitAt then
+		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+	end
 end
 
 -- Remote "Attack". `aim` is shape-checked by the contract; what it *means* is decided here. The
@@ -442,6 +544,7 @@ function CombatService.dash(player: Player)
 		player:SetAttribute("ParryUntil", 0)
 		refreshWalkSpeed(player)
 	end
+	cancelCharge(player)
 	player:SetAttribute("DashReadyAt", t + Config.DASH_COOLDOWN)
 	character:SetAttribute("InvulnerableUntil", t + Config.DASH_IFRAMES)
 	broadcastOthers(player, "playerDash", root.Position)
@@ -462,6 +565,7 @@ function CombatService.spin(player: Player)
 	if t < readyAt - COOLDOWN_SLACK then
 		return
 	end
+	cancelCharge(player)
 	player:SetAttribute("SpinReadyAt", t + Config.SPIN_COOLDOWN)
 	broadcastOthers(player, "playerSpin", root.Position)
 	broadcastAnimOthers(player, "spin")

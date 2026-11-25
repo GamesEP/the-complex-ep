@@ -21,6 +21,44 @@ local CombatAudio = require(Shared.features.combat.CombatAudio)
 
 local SoundPlayer = {}
 
+local bgmSound: Sound? = nil
+
+local function startBgm()
+	local spec = Config.BGM
+	if not spec then
+		return
+	end
+	local assetId = CombatAudio.resolveId(spec, Assets.id(spec.file))
+	if assetId == 0 then
+		return
+	end
+	if bgmSound and bgmSound.Parent then
+		bgmSound:Destroy()
+	end
+	local sound = Instance.new("Sound")
+	sound.Name = "ComplexBgm"
+	sound.SoundId = `rbxassetid://{assetId}`
+	sound.Volume = spec.volume
+	sound.PlaybackSpeed = spec.pitch or 1
+	sound.Looped = true
+	sound.Parent = SoundService
+	bgmSound = sound
+	ContentProvider:PreloadAsync({ sound })
+	if not sound.Parent then
+		return
+	end
+	-- Private user audio (>6 s) cannot load in an unpublished local place (`GameId == 0`) or while
+	-- awaiting Roblox moderation; fall back cleanly to the public Creator Store track instead of
+	-- leaving the session silent.
+	if (not sound.IsLoaded or sound.TimeLength <= 0) and spec.fallbackId and spec.fallbackId > 0 and spec.fallbackId ~= assetId then
+		sound.SoundId = `rbxassetid://{spec.fallbackId}`
+		ContentProvider:PreloadAsync({ sound })
+	end
+	if sound.Parent then
+		sound:Play()
+	end
+end
+
 local function preloadAll()
 	local seen: { [number]: boolean } = {}
 	local probes: { Sound } = {}
@@ -134,6 +172,7 @@ end
 function SoundPlayer.start()
 	bindListener()
 	task.spawn(preloadAll)
+	task.spawn(startBgm)
 	Remotes.CombatSfx.OnClientEvent:Connect(function(cue: string, position: Vector3?, step: number?)
 		SoundPlayer.play(cue, position, step)
 	end)

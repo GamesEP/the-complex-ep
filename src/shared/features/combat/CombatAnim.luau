@@ -224,7 +224,39 @@ local function evaluateParry(u: number): { [string]: CFrame }
 	}
 end
 
--- Evaluates an active one-shot action (`attack`, `dash`, `spin`, `parry`, `land`) at `elapsed` seconds.
+local function evaluateHeavyAttack(u: number): { [string]: CFrame }
+	-- Coiled overhead-right windup (0..0.22) erupting into a massive full-body diagonal slam
+	-- cleave across the entire front arc (0.22..1.0).
+	local split = 0.22
+	if u < split then
+		local p = easeInOutQuad(u / split)
+		return {
+			Root = CFrame.new(0, lerpNumber(-0.12, 0.16, p), 0) * CFrame.Angles(lerpNumber(0.05, 0.34, p), lerpNumber(-0.3, -0.55, p), 0),
+			Waist = CFrame.Angles(lerpNumber(0.12, 0.36, p), lerpNumber(-0.45, -0.75, p), 0),
+			Neck = CFrame.Angles(-0.18, 0.55, 0),
+			RightShoulder = CFrame.Angles(lerpNumber(2.15, 2.75, p), -0.35, lerpNumber(0.45, 0.72, p)),
+			RightElbow = CFrame.Angles(0.65, 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(1.65, 2.25, p), 0.25, -0.45),
+			LeftElbow = CFrame.Angles(0.55, 0, 0),
+		}
+	end
+	local p = easeOutCubic((u - split) / (1 - split))
+	return {
+		Root = CFrame.new(0, lerpNumber(0.16, -0.42, p), 0) * CFrame.Angles(lerpNumber(0.34, -0.42, p), lerpNumber(-0.55, 0.65, p), 0),
+		Waist = CFrame.Angles(lerpNumber(0.36, -0.52, p), lerpNumber(-0.75, 0.95, p), lerpNumber(0, -0.18, p)),
+		Neck = CFrame.Angles(lerpNumber(-0.18, 0.38, p), lerpNumber(0.55, -0.65, p), 0),
+		RightShoulder = CFrame.Angles(lerpNumber(2.75, 0.28, p), lerpNumber(-0.35, 1.05, p), lerpNumber(0.72, -0.65, p)),
+		RightElbow = CFrame.Angles(lerpNumber(0.65, 0.22, p), 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(2.25, -0.65, p), lerpNumber(0.25, -0.45, p), lerpNumber(-0.45, -0.75, p)),
+		LeftElbow = CFrame.Angles(0.45, 0, 0),
+		RightHip = CFrame.Angles(0.45 * p, 0, 0),
+		RightKnee = CFrame.Angles(-0.75 * p, 0, 0),
+		LeftHip = CFrame.Angles(-0.35 * p, 0, 0),
+		LeftKnee = CFrame.Angles(-0.55 * p, 0, 0),
+	}
+end
+
+-- Evaluates an active one-shot action (`attack`, `heavyAttack`, `dash`, `spin`, `parry`, `land`) at `elapsed` seconds.
 function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Pose
 	local key = CombatAnim.specKey(action, step)
 	local spec = Config.ANIMATIONS[key]
@@ -237,6 +269,8 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 	local joints: { [string]: CFrame }
 	if action == "attack" then
 		joints = evaluateAttack(step or 1, u)
+	elseif action == "heavyAttack" then
+		joints = evaluateHeavyAttack(u)
 	elseif action == "dash" then
 		joints = evaluateDash(u)
 	elseif action == "spin" then
@@ -253,6 +287,24 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 		active = true,
 		weight = weight,
 		joints = joints,
+	}
+end
+
+-- Continuous power-charge stance while holding Attack toward the 3-second heavy attack. Pulls
+-- the sword further back over the shoulder as `progress` rises from 0 to 1.
+function CombatAnim.chargePose(progress: number): Pose
+	local p = easeOutCubic(clamp01(progress))
+	return {
+		active = true,
+		weight = Config.ANIM_CHARGE_WEIGHT,
+		joints = {
+			Waist = CFrame.Angles(lerpNumber(0.05, 0.24, p), lerpNumber(-0.35, -0.72, p), 0),
+			Neck = CFrame.Angles(lerpNumber(-0.04, -0.14, p), lerpNumber(0.28, 0.58, p), 0),
+			RightShoulder = CFrame.Angles(lerpNumber(1.45, 2.38, p), lerpNumber(-0.2, -0.45, p), lerpNumber(0.35, 0.65, p)),
+			RightElbow = CFrame.Angles(lerpNumber(0.75, 0.55, p), 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(0.95, 1.75, p), lerpNumber(0.25, 0.35, p), lerpNumber(-0.2, -0.35, p)),
+			LeftElbow = CFrame.Angles(0.7, 0, 0),
+		},
 	}
 end
 
@@ -353,14 +405,19 @@ function CombatAnim.selfTest()
 	local land = CombatAnim.evaluate("land", nil, Config.ANIMATIONS.land.duration * 0.5)
 	assert(land.active and land.joints.Root.Position.Y < -0.1, "landing squashes root downward")
 
-	-- Block & Parry poses.
+	-- Block, Parry, and Heavy Charge/Attack poses.
 	local blk = CombatAnim.blockPose()
 	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose raises sword guard")
 	local pry = CombatAnim.evaluate("parry", nil, Config.ANIMATIONS.parry.duration * 0.4)
 	assert(pry.active and pry.joints.RightShoulder ~= nil, "parry animates deflect sweep")
+	local chg0 = CombatAnim.chargePose(0)
+	local chg1 = CombatAnim.chargePose(1)
+	assert(chg0.active and chg1.active and chg0.joints.RightShoulder ~= chg1.joints.RightShoulder, "charge pose coils further as progress rises")
+	local hvy = CombatAnim.evaluate("heavyAttack", nil, Config.ANIMATIONS.heavyAttack.duration * 0.5)
+	assert(hvy.active and hvy.joints.Root ~= nil and hvy.joints.RightShoulder ~= nil, "heavyAttack drives full-body slam cleave")
 
 	-- Every required action spec exists with valid positive duration.
-	for _, key in ipairs({ "attack", "attackHeavy", "dash", "spin", "parry", "land" }) do
+	for _, key in ipairs({ "attack", "attackHeavy", "heavyAttack", "dash", "spin", "parry", "land" }) do
 		local spec = Config.ANIMATIONS[key]
 		assert(spec ~= nil and spec.duration > 0, `Config.ANIMATIONS.{key} must exist with positive duration`)
 	end

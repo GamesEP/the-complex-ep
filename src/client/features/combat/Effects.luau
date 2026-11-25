@@ -7,6 +7,7 @@
 
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -17,6 +18,9 @@ local PlayerAnimator = require(script.Parent.PlayerAnimator)
 local SoundPlayer = require(script.Parent.SoundPlayer)
 
 local Effects = {}
+
+local chargeRing: Part? = nil
+local chargeConn: RBXScriptConnection? = nil
 
 local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.PartType?): Part
 	local part = Instance.new("Part")
@@ -71,6 +75,83 @@ function Effects.dash(root: BasePart)
 	Debris:AddItem(part, 0.25)
 	SoundPlayer.play("playerDash")
 	PlayerAnimator.playLocal("dash")
+end
+
+-- Pulsing golden-orange energy ring at the player's feet while charging the 3 s heavy attack.
+function Effects.startCharge(root: BasePart)
+	Effects.stopCharge()
+	local startedAt = os.clock()
+	local duration = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0.1)
+	local ring = ghost(
+		Vector3.new(0.3, 5, 5),
+		CFrame.new(root.Position - Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(255, 175, 55),
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.45
+	chargeRing = ring
+	SoundPlayer.play("playerHeavyCharge")
+
+	chargeConn = RunService.RenderStepped:Connect(function()
+		if not ring.Parent or not root.Parent then
+			Effects.stopCharge()
+			return
+		end
+		local elapsed = os.clock() - startedAt
+		local progress = math.clamp(elapsed / duration, 0, 1)
+		local pulse = 0.65 * math.sin(elapsed * (7 + progress * 10))
+		local diameter = 4.5 + progress * 4.5 + pulse
+		ring.Size = Vector3.new(0.25 + progress * 0.15, diameter, diameter)
+		ring.CFrame = CFrame.new(root.Position - Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Color = Color3.fromRGB(255, math.round(175 - progress * 80), math.round(55 - progress * 25))
+		ring.Transparency = 0.55 - progress * 0.35
+	end)
+end
+
+function Effects.stopCharge()
+	if chargeConn then
+		chargeConn:Disconnect()
+		chargeConn = nil
+	end
+	if chargeRing then
+		chargeRing:Destroy()
+		chargeRing = nil
+	end
+end
+
+-- Massive forward shockwave burst + ground ring when the charged heavy attack unleashes.
+function Effects.heavyAttack(root: BasePart, direction: Vector3)
+	Effects.stopCharge()
+	local ringDiameter = Config.HEAVY_ATTACK_RANGE * 1.65
+	local groundPos = root.Position - Vector3.new(0, 2.2, 0)
+	local ring = ghost(
+		Vector3.new(0.5, 5, 5),
+		CFrame.new(groundPos) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(255, 120, 45),
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.15
+	TweenService:Create(
+		ring,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.5, ringDiameter, ringDiameter), Transparency = 1 }
+	):Play()
+	Debris:AddItem(ring, 0.32)
+
+	-- Sweeping forward energy wave along `direction` so the wide 160-deg reach reads clearly.
+	local waveStart = CFrame.lookAt(root.Position + direction * 2.5, root.Position + direction * 10)
+	local waveEnd = CFrame.lookAt(root.Position + direction * (Config.HEAVY_ATTACK_RANGE * 0.72), root.Position + direction * (Config.HEAVY_ATTACK_RANGE + 5))
+	local wave = ghost(Vector3.new(8, 2.2, 1.4), waveStart, Color3.fromRGB(255, 200, 85))
+	wave.Transparency = 0.1
+	TweenService:Create(
+		wave,
+		TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(Config.HEAVY_ATTACK_RANGE * 1.45, 0.6, 2.4), CFrame = waveEnd, Transparency = 1 }
+	):Play()
+	Debris:AddItem(wave, 0.28)
+
+	SoundPlayer.play("playerHeavyAttack")
+	PlayerAnimator.playLocal("heavyAttack")
 end
 
 return Effects

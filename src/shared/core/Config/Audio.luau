@@ -38,6 +38,25 @@ Config.SFX = {
 		pitchSpread = 0.05,
 		maxDistance = 75,
 	},
+	-- Rising power hum while holding Attack to charge the 3-second heavy attack.
+	playerHeavyCharge = {
+		file = "player-heavy-charge.ogg",
+		fallbackId = 9117060347,
+		volume = 0.45,
+		pitch = 0.72,
+		pitchSpread = 0.03,
+		maxDistance = 75,
+		maxDuration = 2.75,
+	},
+	-- Devastating shockwave cleave unleashed at the end of a full 3-second charge.
+	playerHeavyAttack = {
+		file = "player-heavy-attack.ogg",
+		fallbackId = 140277245983305,
+		volume = 0.95,
+		pitch = 0.75,
+		pitchSpread = 0.04,
+		maxDistance = 110,
+	},
 	-- Fast evasive dash burst.
 	playerDash = {
 		file = "player-dash.ogg",
@@ -183,5 +202,15 @@ Config.SFX = {
 -- or slow-loading asset). Keeps Terrain from accumulating orphaned Attachments.
 Config.SFX_MAX_CLEANUP_SECONDS = 4
 Config.SFX_FADE_OUT_SECONDS = 0.08
+
+-- Temporary looped combat soundtrack for playtesting. Uses `assets/bgm-complex.ogg` automatically
+-- once uploaded into `Assets/AssetIds.json`, falling back to a public Creator Store combat track
+-- in unpublished local Studio sessions.
+Config.BGM = {
+	file = "bgm-complex.ogg",
+	fallbackId = 1839300971,
+	volume = 0.28,
+	pitch = 1.0,
+} :: SfxSpec
 
 return Config

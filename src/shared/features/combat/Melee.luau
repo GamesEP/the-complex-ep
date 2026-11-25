@@ -181,6 +181,23 @@ function Melee.lungeDistance(distance: number, targetRadius: number, stopDistanc
 	return math.min(gap, maxDistance)
 end
 
+-- Normalised [0, 1] heavy-attack charge progress from a start timestamp and required duration.
+function Melee.chargeProgress(startedAt: any, now: number, duration: number): number
+	if type(startedAt) ~= "number" or startedAt <= 0 or duration <= 0 then
+		return 0
+	end
+	return math.clamp((now - startedAt) / duration, 0, 1)
+end
+
+-- True once a charge started at `startedAt` has reached `duration` (minus optional network slack).
+function Melee.isChargeReady(startedAt: any, now: number, duration: number, slack: number?): boolean
+	if type(startedAt) ~= "number" or startedAt <= 0 or duration <= 0 then
+		return false
+	end
+	local required = math.max(duration - (slack or 0), 0)
+	return now - startedAt >= required
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -285,6 +302,14 @@ function Melee.selfTest()
 	assert(Melee.lungeDistance(4, 2, 2.5, 8) == 0, "no lunge when already within stop distance")
 	assert(math.abs(Melee.lungeDistance(8, 2, 2.5, 8) - 3.5) < 1e-4, "mid-range lunges exact remaining gap")
 	assert(Melee.lungeDistance(15, 2, 2.5, 8) == 8, "far target clamps lunge to max distance")
+
+	-- Charged heavy attack progress & readiness.
+	assert(Melee.chargeProgress(0, 10, 3) == 0, "inactive charge reports 0 progress")
+	assert(math.abs(Melee.chargeProgress(10, 11.5, 3) - 0.5) < 1e-6, "halfway through 3 s charge is 0.5")
+	assert(Melee.chargeProgress(10, 15, 3) == 1, "progress clamps to 1 at or past duration")
+	assert(not Melee.isChargeReady(10, 12.5, 3, 0.15), "2.5 s is not ready for a 3 s charge")
+	assert(Melee.isChargeReady(10, 12.86, 3, 0.15), "within slack of 3 s is accepted")
+	assert(Melee.isChargeReady(10, 13.0, 3, 0), "exact 3 s is ready")
 end
 
 return Melee

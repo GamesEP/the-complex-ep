@@ -41,6 +41,19 @@ Config.ATTACK_LUNGE_MAX_DISTANCE = 8
 Config.ATTACK_LUNGE_STOP_DISTANCE = 2.5
 Config.ATTACK_LUNGE_SPEED = 90
 
+-- Charged heavy attack: holding Attack continuously for HEAVY_CHARGE_SECONDS (3 s) charges a
+-- devastating wide forward cleave that unleashes automatically at full charge. Normal taps still
+-- swing immediately on Begin; holding past HEAVY_CHARGE_DELAY enters the visible charge stance.
+Config.HEAVY_CHARGE_DELAY = 0.25
+Config.HEAVY_CHARGE_SECONDS = 3.0
+Config.HEAVY_CHARGE_SLACK = 0.15
+Config.HEAVY_CHARGE_MOVE_MULTIPLIER = 0.60
+Config.HEAVY_ATTACK_DAMAGE = 55
+Config.HEAVY_ATTACK_RANGE = 13
+Config.HEAVY_ATTACK_ARC = 160
+Config.HEAVY_ATTACK_LUNGE_MAX_DISTANCE = 10
+Config.HEAVY_ATTACK_COOLDOWN = 0.6
+
 -- The dash is a basic move, always available (plans/gdd/systems.md, Combate). Distance over
 -- duration is its speed; IFRAMES is how long it ignores damage, slightly longer than the dash
 -- itself so dashing *through* an attack is reliable rather than a coin flip.

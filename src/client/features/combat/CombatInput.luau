@@ -33,7 +33,11 @@ local lastSwingAt = -math.huge
 local dashReadyAt = 0
 local spinReadyAt = 0
 local blockReadyAt = 0
+local heavyReadyAt = 0
 local blocking = false
+local attackHeld = false
+local chargingHeavy = false
+local chargeToken = 0
 
 -- Active attack lunge state; gated on `lungeToken` so a dash or respawn cancels any in-flight
 -- step-in cleanly without firing a stale swing.
@@ -52,6 +56,21 @@ local function clearLunge()
 		activeLunge.velocity:Destroy()
 		activeLunge.attachment:Destroy()
 		activeLunge = nil
+	end
+end
+
+local function cancelHeavyCharge(notifyServer: boolean)
+	chargeToken += 1
+	attackHeld = false
+	if chargingHeavy then
+		chargingHeavy = false
+		Effects.stopCharge()
+		if notifyServer then
+			Remotes.HeavyCharge:FireServer(false)
+		end
+	elseif notifyServer and player:GetAttribute("ChargingHeavy") == true then
+		Effects.stopCharge()
+		Remotes.HeavyCharge:FireServer(false)
 	end
 end
 
@@ -217,6 +236,139 @@ local function attack()
 	end
 end
 
+local function releaseHeavyAttack()
+	chargingHeavy = false
+	attackHeld = false
+	chargeToken += 1
+	Effects.stopCharge()
+
+	if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
+		Remotes.HeavyCharge:FireServer(false)
+		return
+	end
+	local root, humanoid = body()
+	if not root or not humanoid then
+		Remotes.HeavyCharge:FireServer(false)
+		return
+	end
+
+	local clock = os.clock()
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		Remotes.HeavyCharge:FireServer(false)
+		return
+	end
+
+	local pick, targetBody = selectTarget(root, facing, clock)
+	local aim = if pick then pick.direction else facing
+
+	local lungeDist = 0
+	if pick and clock >= dashEndsAt then
+		lungeDist = Melee.lungeDistance(
+			pick.distance,
+			pick.radius,
+			Config.ATTACK_LUNGE_STOP_DISTANCE,
+			Config.HEAVY_ATTACK_LUNGE_MAX_DISTANCE
+		)
+	end
+	local lungeDuration = if lungeDist > 0 and Config.ATTACK_LUNGE_SPEED > 0
+		then lungeDist / Config.ATTACK_LUNGE_SPEED
+		else 0
+
+	comboStep = 0
+	lastSwingAt = clock + lungeDuration
+	heavyReadyAt = now() + Config.HEAVY_ATTACK_COOLDOWN
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock + lungeDuration else -math.huge
+	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+
+	if lungeDuration > 0 then
+		lungeToken += 1
+		local myToken = lungeToken
+		clearLunge()
+
+		local attachment = Instance.new("Attachment")
+		attachment.Parent = root
+		local velocity = Instance.new("LinearVelocity")
+		velocity.Attachment0 = attachment
+		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+		velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+		velocity.LineDirection = aim
+		velocity.LineVelocity = Config.ATTACK_LUNGE_SPEED
+		velocity.MaxForce = math.huge
+		velocity.Parent = root
+		activeLunge = { velocity = velocity, attachment = attachment }
+
+		task.delay(lungeDuration, function()
+			if lungeToken ~= myToken then
+				return
+			end
+			clearLunge()
+			local currentRoot = body()
+			if currentRoot ~= root then
+				return
+			end
+			local finalAim = aim
+			if targetBody and targetBody:IsDescendantOf(workspace) then
+				finalAim = Melee.flat(targetBody.Position - root.Position) or aim
+			end
+			root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
+			Effects.heavyAttack(root, finalAim)
+			Remotes.HeavyAttack:FireServer(finalAim)
+		end)
+	else
+		Effects.heavyAttack(root, aim)
+		Remotes.HeavyAttack:FireServer(aim)
+	end
+end
+
+local function beginAttackHold()
+	attack()
+	if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
+		return
+	end
+	if not ready(heavyReadyAt, "HeavyReadyAt") then
+		return
+	end
+	local root = body()
+	if not root then
+		return
+	end
+
+	chargeToken += 1
+	local myToken = chargeToken
+	attackHeld = true
+
+	-- Keep normal combo taps instant on Begin; holding past HEAVY_CHARGE_DELAY transitions cleanly
+	-- into the 3-second heavy-attack charge and unleashes automatically at full charge.
+	task.delay(Config.HEAVY_CHARGE_DELAY, function()
+		if chargeToken ~= myToken or not attackHeld then
+			return
+		end
+		if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
+			cancelHeavyCharge(false)
+			return
+		end
+		local currentRoot = body()
+		if not currentRoot or not ready(heavyReadyAt, "HeavyReadyAt") then
+			cancelHeavyCharge(false)
+			return
+		end
+
+		chargingHeavy = true
+		Effects.startCharge(currentRoot)
+		Remotes.HeavyCharge:FireServer(true)
+
+		local remaining = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0)
+		task.delay(remaining, function()
+			if chargeToken ~= myToken or not chargingHeavy then
+				return
+			end
+			releaseHeavyAttack()
+		end)
+	end)
+end
+
 local function dash()
 	if player:GetAttribute("Grabbed") == true then
 		return
@@ -229,6 +381,7 @@ local function dash()
 	if not direction then
 		return
 	end
+	cancelHeavyCharge(true)
 	lungeToken += 1
 	clearLunge()
 	blocking = false
@@ -265,6 +418,7 @@ local function spin()
 	if not root or not humanoid or not ready(spinReadyAt, "SpinReadyAt") then
 		return
 	end
+	cancelHeavyCharge(true)
 	-- Seed or refresh the sticky target on ability use so basic attacks right after stay locked
 	-- onto the same enemy while the player keeps heading toward it.
 	local clock = os.clock()
@@ -288,6 +442,7 @@ local function setBlock(active: boolean)
 		if not root or not ready(blockReadyAt, "BlockReadyAt") then
 			return
 		end
+		cancelHeavyCharge(true)
 		lungeToken += 1
 		clearLunge()
 		blocking = true
@@ -303,11 +458,6 @@ local function setBlock(active: boolean)
 end
 
 local ACTIONS = {
-	Attack = {
-		run = attack,
-		title = "Atacar",
-		inputs = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonR2 },
-	},
 	Dash = {
 		run = dash,
 		title = "Dash",
@@ -320,6 +470,7 @@ local ACTIONS = {
 	},
 }
 
+local ATTACK_INPUTS = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonR2 }
 local BLOCK_INPUTS = { Enum.UserInputType.MouseButton2, Enum.KeyCode.F, Enum.KeyCode.ButtonL1 }
 
 function CombatInput.start()
@@ -334,6 +485,20 @@ function CombatInput.start()
 		ContextActionService:SetTitle(name, action.title)
 	end
 
+	-- Attack: tap fires the basic combo immediately; holding continuously for HEAVY_CHARGE_SECONDS
+	-- (3 s) charges and unleashes the Heavy Attack. Releasing early cancels the charge cleanly.
+	ContextActionService:BindActionAtPriority("Attack", function(_, state: Enum.UserInputState)
+		if state == Enum.UserInputState.Begin then
+			beginAttackHold()
+			return Enum.ContextActionResult.Sink
+		elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+			cancelHeavyCharge(true)
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, true, Enum.ContextActionPriority.High.Value, table.unpack(ATTACK_INPUTS))
+	ContextActionService:SetTitle("Attack", "Atacar")
+
 	-- Hold-to-block action: Begin raises guard (and opens the Parry window), End/Cancel lowers it.
 	ContextActionService:BindActionAtPriority("Block", function(_, state: Enum.UserInputState)
 		if state == Enum.UserInputState.Begin then
@@ -347,8 +512,16 @@ function CombatInput.start()
 	end, true, Enum.ContextActionPriority.High.Value, table.unpack(BLOCK_INPUTS))
 	ContextActionService:SetTitle("Block", "Bloquear")
 
+	-- Clear local charge visuals immediately if a grabber catches the player mid-charge.
+	player:GetAttributeChangedSignal("Grabbed"):Connect(function()
+		if player:GetAttribute("Grabbed") == true then
+			cancelHeavyCharge(false)
+		end
+	end)
+
 	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
 	player.CharacterAdded:Connect(function()
+		cancelHeavyCharge(false)
 		lungeToken += 1
 		clearLunge()
 		dashEndsAt = 0
@@ -359,6 +532,7 @@ function CombatInput.start()
 		dashReadyAt = 0
 		spinReadyAt = 0
 		blockReadyAt = 0
+		heavyReadyAt = 0
 		blocking = false
 	end)
 end

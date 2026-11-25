@@ -40,6 +40,13 @@ Config.ANIMATIONS = {
 		blendIn = 0.12,
 		blendOut = 0.28,
 	},
+	-- Charged 3-second heavy attack: massive full-body lunge and crushing cleave.
+	heavyAttack = {
+		duration = 0.52,
+		priority = 4,
+		blendIn = 0.1,
+		blendOut = 0.34,
+	},
 	-- Crisp outward sword deflect when a Parry lands.
 	parry = {
 		duration = 0.26,
@@ -58,6 +65,8 @@ Config.ANIMATIONS = {
 
 -- Continuous defensive guard pose weight while holding Block.
 Config.ANIM_BLOCK_WEIGHT = 0.9
+-- Continuous charged heavy windup pose weight while holding Attack to charge.
+Config.ANIM_CHARGE_WEIGHT = 0.92
 
 -- Airborne jump pose blending (driven from HumanoidStateType + root vertical velocity).
 Config.ANIM_JUMP_WEIGHT = 0.85

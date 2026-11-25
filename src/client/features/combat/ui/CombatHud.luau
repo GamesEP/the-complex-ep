@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Drops = require(Shared.features.drops.Drops)
+local Melee = require(Shared.features.combat.Melee)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -36,6 +37,7 @@ local SPEED_BUFF_COLOR = Color3.fromRGB(70, 225, 255)
 local DEFENSE_BUFF_COLOR = Color3.fromRGB(75, 145, 255)
 local GRAB_COLOR = Color3.fromRGB(235, 85, 225)
 local GRAB_WARN_COLOR = Color3.fromRGB(255, 195, 60)
+local HEAVY_CHARGE_COLOR = Color3.fromRGB(255, 135, 45)
 
 local function Bar(props)
 	return React.createElement("Frame", {
@@ -93,6 +95,7 @@ local function CombatHud(props)
 	local health = hooks.useAttribute(player, "Health") or 0
 	local maxHealth = hooks.useAttribute(player, "MaxHealth") or Config.PLAYER_MAX_HEALTH
 	local blocking = hooks.useAttribute(player, "Blocking") == true
+	local chargingHeavy = hooks.useAttribute(player, "ChargingHeavy") == true
 	local grabbed = hooks.useAttribute(player, "Grabbed") == true
 	local grabProgress = hooks.useAttribute(player, "GrabProgress") or 0
 	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
@@ -105,6 +108,7 @@ local function CombatHud(props)
 	local damageBuff, setDamageBuff = React.useBinding(0)
 	local speedBuff, setSpeedBuff = React.useBinding(0)
 	local defenseBuff, setDefenseBuff = React.useBinding(0)
+	local heavyCharge, setHeavyCharge = React.useBinding(0)
 	local grabWarn, setGrabWarn = React.useBinding(false)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
@@ -114,6 +118,11 @@ local function CombatHud(props)
 		setDamageBuff(Drops.buffRemaining(player:GetAttribute("DamageBuffUntil"), Config.BUFF_DAMAGE_DURATION, now))
 		setSpeedBuff(Drops.buffRemaining(player:GetAttribute("SpeedBuffUntil"), Config.BUFF_SPEED_DURATION, now))
 		setDefenseBuff(Drops.buffRemaining(player:GetAttribute("DefenseBuffUntil"), Config.BUFF_DEFENSE_DURATION, now))
+		if player:GetAttribute("ChargingHeavy") == true then
+			setHeavyCharge(Melee.chargeProgress(player:GetAttribute("HeavyChargeStart"), now, Config.HEAVY_CHARGE_SECONDS))
+		else
+			setHeavyCharge(0)
+		end
 		local warnUntil = player:GetAttribute("GrabWarningUntil")
 		setGrabWarn(type(warnUntil) == "number" and now < warnUntil and player:GetAttribute("Grabbed") ~= true)
 	end)
@@ -229,6 +238,27 @@ local function CombatHud(props)
 		}, {
 			Corner = React.createElement(ui.Round, { radius = 6 }),
 		}),
+		HeavyCharge = if chargingHeavy and not grabbed
+			then React.createElement(ui.Panel, {
+				name = "HeavyCharge",
+				width = math.min(300, metrics.room.X - 2 * ui.MARGIN),
+				padding = 10,
+				anchorPoint = Vector2.new(0.5, 1),
+				position = UDim2.new(0.5, 0, 1, -ui.MARGIN * 2),
+			}, {
+				Bar = React.createElement(Bar, {
+					name = "ChargeProgress",
+					order = 1,
+					height = 24,
+					color = HEAVY_CHARGE_COLOR,
+					fill = fillOf(heavyCharge),
+					text = heavyCharge:map(function(value: number)
+						local secs = math.min(value * Config.HEAVY_CHARGE_SECONDS, Config.HEAVY_CHARGE_SECONDS)
+						return string.format("Ataque Pesado  %.1fs / %.1fs", secs, Config.HEAVY_CHARGE_SECONDS)
+					end),
+				}),
+			})
+			else nil,
 		GrabEscape = if grabbed
 			then React.createElement(ui.Panel, {
 				name = "GrabEscape",

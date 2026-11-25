@@ -53,7 +53,8 @@ function Defense.resolveHit(rawDamage: number, ctx: HitContext): (number, HitOut
 	return rawDamage * defenseFactor, "hit"
 end
 
--- Computes WalkSpeed combining base speed, speed buff, blocking slowdown, and grab lock.
+-- Computes WalkSpeed combining base speed, speed buff, blocking slowdown, heavy-attack charge
+-- slowdown, and grab lock.
 function Defense.walkSpeed(
 	baseSpeed: number,
 	speedBuffUntil: any,
@@ -61,7 +62,9 @@ function Defense.walkSpeed(
 	grabbed: boolean,
 	now: number,
 	speedMultiplier: number,
-	blockMultiplier: number
+	blockMultiplier: number,
+	charging: boolean?,
+	chargeMultiplier: number?
 ): number
 	if grabbed then
 		return 0
@@ -72,6 +75,8 @@ function Defense.walkSpeed(
 	end
 	if blocking then
 		speed *= blockMultiplier
+	elseif charging then
+		speed *= (chargeMultiplier or 1)
 	end
 	return speed
 end
@@ -143,6 +148,10 @@ function Defense.selfTest()
 	assert(Defense.walkSpeed(26, 0, false, true, 10, 1.35, 0.55) == 0, "grabbed player has 0 WalkSpeed")
 	assert(math.abs(Defense.walkSpeed(26, 0, true, false, 10, 1.35, 0.55) - 26 * 0.55) < 1e-6, "blocking slows WalkSpeed")
 	assert(math.abs(Defense.walkSpeed(26, 20, true, false, 10, 1.35, 0.55) - 26 * 1.35 * 0.55) < 1e-6, "speed buff stacks with blocking")
+	assert(
+		math.abs(Defense.walkSpeed(26, 0, false, false, 10, 1.35, 0.55, true, 0.6) - 26 * 0.6) < 1e-6,
+		"charging heavy attack slows WalkSpeed"
+	)
 end
 
 return Defense

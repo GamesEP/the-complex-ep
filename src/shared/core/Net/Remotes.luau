@@ -28,6 +28,8 @@ return {
 	-- results come back as state: enemy health on the enemy, cooldowns and health as attributes
 	-- on the player. None of them waits for a reply.
 	Attack = remote("Attack"),
+	HeavyCharge = remote("HeavyCharge"),
+	HeavyAttack = remote("HeavyAttack"),
 	Dash = remote("Dash"),
 	Spin = remote("Spin"),
 	Block = remote("Block"),

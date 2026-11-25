@@ -14,8 +14,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local CombatAnim = require(Shared.features.combat.CombatAnim)
+local Melee = require(Shared.features.combat.Melee)
 
 local PlayerAnimator = {}
 
@@ -211,9 +213,17 @@ local function onStepped()
 			applyPose(rig, CombatAnim.jumpPose(rig.root.AssemblyLinearVelocity.Y))
 		end
 
-		-- Layer 1.5: continuous sword guard while holding Block (replicated via player attribute).
+		-- Layer 1.5: continuous sword guard while holding Block, or coiled power-charge stance
+		-- while holding Attack for the 3-second heavy attack (both replicated via player attributes).
 		if player:GetAttribute("Blocking") == true then
 			applyPose(rig, CombatAnim.blockPose())
+		elseif player:GetAttribute("ChargingHeavy") == true then
+			local progress = Melee.chargeProgress(
+				player:GetAttribute("HeavyChargeStart"),
+				workspace:GetServerTimeNow(),
+				Config.HEAVY_CHARGE_SECONDS
+			)
+			applyPose(rig, CombatAnim.chargePose(progress))
 		end
 
 		-- Layer 2: one-shot combat or landing action.

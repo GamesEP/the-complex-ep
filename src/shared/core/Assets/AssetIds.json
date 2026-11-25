@@ -1,1 +1,7 @@
-{}
+{
+  "bgm-complex.ogg": {
+    "assetId": "102241260626227",
+    "sha256": "a2aa3f6b21ac3e37aeeeed37daf687d05a9b45bc6d0b39dc3e2a260608cd64c6",
+    "type": "Audio"
+  }
+}

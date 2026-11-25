@@ -1,15 +1,17 @@
 # Agent instructions
 
-**The guide is [CLAUDE.md](CLAUDE.md). Read it before changing anything in `src/`.**
+**The guide is [CLAUDE.md](CLAUDE.md). Read it before changing anything in `src/` or `assets/`.**
 
-It is one file rather than two on purpose. This repo used to carry `AGENTS.md` and `CLAUDE.md`
-as near-identical copies, and they had already drifted apart by the time anybody noticed — so
-the content lives in one place and every tool is pointed at it:
+It is one file rather than multiple copies on purpose. This repo used to carry `AGENTS.md` and
+`CLAUDE.md` as near-identical copies, and they had already drifted apart by the time anybody
+noticed — so the content lives in one place and every tool is pointed at it:
 
 - **Claude Code** reads `CLAUDE.md` directly.
+- **Gemini** (Gemini CLI, Antigravity, Gemini Code Assist) reads [GEMINI.md](GEMINI.md) and/or
+  this file, both pointing to `CLAUDE.md`.
 - **opencode** reads this file, and `opencode.json` additionally lists `CLAUDE.md` under
   `instructions`, so it is loaded either way.
-- Anything else: read `CLAUDE.md`.
+- **Codex, Cursor, Copilot, and anything else**: read this file and follow `CLAUDE.md`.
 
 A symlink would have been tidier and is deliberately not used — git checks symlinks out as
 plain text files containing the target's path on Windows without `core.symlinks`, which would
@@ -17,11 +19,17 @@ hand a Windows contributor's agent the string "CLAUDE.md" as its entire instruct
 
 ## The short version
 
+- **Work only on the `develop` branch.** Never commit to, push to, or modify `main` (or any other
+  branch) unless the user explicitly asks to switch.
 - **Check `plans/gdd/` first.** It is the design document, and it is what features are built
   from. If it does not describe what you have been asked to build, ask rather than guess — the
   `design-doc` skill interviews the user and writes it.
 - Structure is realm first, then feature: `src/<realm>/features/<feature>/`. Bootstraps are
   wiring only; a feature never requires another feature by path.
+- **Create new 3D models as `.rbxmx` under `assets/`, never at runtime.** Mount them via
+  `default.project.json` and `:Clone()` them in code; generate them with Lune (`@lune/roblox`) or
+  pull Studio edits with `make syncback` (never hand-edit XML), with explicit `PrimaryPart` and
+  pivot. Only use `.fbx` for highly complex objects when the developer explicitly asks for `.fbx`.
 - Every client→server remote needs a line in `shared/core/Net/Contract.luau` or the server
   refuses to connect it.
 - Tunables live in `src/shared/core/Config/`, never inline in logic.

@@ -21,12 +21,13 @@ writes a player profile it writes to the *live* profile, because the DataStore b
 universe, not the place. Places are for teleport destinations — a lobby, an arena — not for
 environments.
 
-Two universes is the community's answer to a platform gap, not an accident of this template.
+Two universes is the community's answer to a platform gap, not an accident of this repo.
 
 ## The promotion path
 
 | Branch | Publishes to | Meaning |
 |---|---|---|
+| `develop` | nothing (active work branch) | day-to-day development |
 | feature branches | nothing | CI builds and tests only |
 | `staging` | the develop universe | what is being tested |
 | `main` | the production universe | what players are in |
@@ -65,8 +66,8 @@ experience's Creator Hub page, or print `game.GameId` from a published server.
   — somebody with the place open already has everything.
 - **An unregistered universe is treated as production**, and `Environment.selfTest` fails if
   that default is changed. The two directions are not symmetric. Guessing "development" hands
-  admin and every dev-only guard to a universe nobody registered — which, for a freshly cloned
-  template with an empty table, is the real production universe. Guessing "production" costs a
+  admin and every dev-only guard to a universe nobody registered — which, for a freshly set up
+  repo with an empty table, is the real production universe. Guessing "production" costs a
   wrong monetization id, which fails loudly and harms nobody. It is still a misconfiguration, so
   `LogSink` records one `environment/unregistered-universe` fault where `make logs` will find it.
 

@@ -1,25 +1,23 @@
 # Working in this repo
 
-This is a **template**: the smallest thing that is still a real Roblox game, with the tools,
-the structure and the conventions already wired up. This file is how to build in it — the rules
-that are easy to get wrong and expensive to rediscover.
+This is **The Complex** — a cooperative semi-roguelite hack & slash for Roblox (see
+[`plans/gdd/`](plans/gdd/)). This file is the developer and agent guide for building in it: the
+structure, the invariants, and the rules that are easy to get wrong and expensive to rediscover.
 
-**Before anything else: is there a design document?** [`plans/gdd/`](plans/gdd/) is the first
-thing a team using this template writes, and it is what features are built from. If
-`plans/gdd/overview.md` is still placeholders, say so and offer to write it — the `design-doc`
-skill interviews the user and fills it in. Building a feature that no GDD section describes
-means guessing at the design, and a plausible guess is worse than a question.
+**Before anything else: check the design document.** [`plans/gdd/`](plans/gdd/) defines what the
+game is, and features are built from it. If a feature you have been asked to build is not described
+there, say so and ask rather than guessing — the `design-doc` skill interviews the user and
+updates it. A plausible guess is worse than a question.
 
 | | |
 |---|---|
 | [plans/gdd/](plans/gdd/) | **What the game is.** The design. Written first, changed with the design. |
 | [docs/](docs/) | **How it is built.** One file per involved subsystem. |
-| [README.md](README.md) | Orientation and quickstart |
+| [README.md](README.md) | Orientation, current state, and quickstart |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow: setup, branches, places, Windows |
 
-The game is **The Complex** (see `plans/gdd/`). The template's `example` feature has been
-removed; the combat slice — `features/combat/` and `features/enemies/` in each realm, described
-in [docs/combat.md](docs/combat.md) — is now the worked reference for every convention below.
+The combat slice — `features/combat/` and `features/enemies/` across all three realms, described
+in [docs/combat.md](docs/combat.md) — is the worked reference for every convention below.
 
 Tunables live in `src/shared/core/Config/`. Check there before writing a number into logic.
 
@@ -278,6 +276,13 @@ Two things that only bite once spawns are hand-authored rather than sampled at r
 it on server start, a wall you moved in Studio is gone the moment you press Play. Change the
 builder, not the model. `syncback.project.json` deliberately omits anything in that category.
 
+**New 3D models are `.rbxmx` assets, not runtime geometry.** Author new models (enemies, props,
+rooms, effects, weapons) as `.rbxmx` files under `assets/` mounted by `default.project.json`, and
+have game code `:Clone()` them instead of constructing parts with `Instance.new` at runtime.
+Generate `.rbxmx` files with Lune (`@lune/roblox`, `roblox.serializeModel`) or pull Studio edits
+with `make syncback` — never hand-edit raw XML — and always stamp an explicit `PrimaryPart` and
+pivot. Only use `.fbx` for highly complex objects when the developer explicitly requests `.fbx`.
+
 ---
 
 ## Two experiences, and knowing which build is in front of you
@@ -441,6 +446,10 @@ than reimplementing it in PowerShell. One implementation, and CI calls it direct
   what went wrong last time and what would break if the line changed — not what the line does. A
   comment restating the code is noise; a comment naming the failure it prevents is the most
   valuable thing in the file. Keep it short and link the argument.
+- **Create new 3D models as `.rbxmx` under `assets/`, never at runtime.** Mount them via
+  `default.project.json` and `:Clone()` them in code; generate them with Lune (`@lune/roblox`)
+  rather than hand-editing XML, and set an explicit `PrimaryPart` and pivot. Only use `.fbx` for
+  highly complex objects when the developer explicitly asks for it.
 - **Do not add a remote without its contract entry.** The Dispatcher will refuse it, and the
   refusal will look like a bug in something else.
 - **Do not write a universe-scoped id into a module.** Passes, products and badges differ per

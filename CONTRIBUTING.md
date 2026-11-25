@@ -16,14 +16,12 @@ Two consequences worth having in muscle memory:
 
 ## Before the first line of code
 
-Write the design document. [`plans/gdd/`](plans/gdd/) is the first thing a team using this
-template does, and [`plans/gdd/README.md`](plans/gdd/README.md) is how to write one that drives
-development rather than one nobody re-reads. The short version: decisions rather than
-aspirations, every number naming its `Config` key, every system naming its feature folder, and
-open questions marked rather than guessed.
+Check the design document in [`plans/gdd/`](plans/gdd/) first. [`plans/gdd/README.md`](plans/gdd/README.md)
+explains the format: decisions rather than aspirations, every number naming its `Config` key,
+every system naming its feature folder, and open questions marked rather than guessed.
 
-It is a good thing to draft with an agent and a bad thing to let one invent — the `design-doc`
-skill interviews you and writes down your answers, flagging anything it filled in itself.
+If a feature is not yet specified in the GDD, update the design first — the `design-doc` skill
+interviews you and writes down your decisions, flagging anything left open.
 
 ## First-time setup
 
@@ -77,8 +75,9 @@ Studio verification steps that catch the rest.
 
 | Branch | Publishes to | Meaning |
 |---|---|---|
+| `develop` | nothing (active work branch) | day-to-day development; where agents and contributors work |
 | feature branches | nothing | CI builds and tests only |
-| `staging` | the develop place | what is being tested |
+| `staging` | the develop place | what is being tested in Roblox |
 | `main` | the production place | what players are in |
 
 Two experiences, because a universe is the only thing Roblox isolates DataStores, passes and
@@ -97,10 +96,11 @@ Publishing by hand (`make upload`) exists for emergencies and prompts before it 
 
 ## Working on the world, not just code
 
-Anything in the Workspace is one of two things, and they have opposite rules:
-
-**A tracked model** under `assets/`, mounted by `default.project.json`. Edit it in Studio, save
-the place, then pull it back:
+New 3D models (enemies, props, rooms, effects, weapons) are authored as **tracked `.rbxmx` models**
+under `assets/`, mounted by `default.project.json`, and cloned in code (`:Clone()`) — never built
+part-by-part at runtime. Generate them with Lune (`@lune/roblox`) or edit them in Studio and pull
+them back (never hand-edit raw XML). Only use `.fbx` for highly complex objects when explicitly
+requested.
 
 ```bash
 # in Studio: stop Play, make your change, then File → Save (writes local.rbxlx)
@@ -111,9 +111,10 @@ make syncback         # write it, then review: git diff assets/
 `syncback.project.json` lists only what Studio is allowed to write back, and deliberately omits
 `src/` — a syncback run can never rewrite a script.
 
-**Built from code**, like `features/world/WorldBuilder`. Do not edit these in Studio: the
-builder destroys and rebuilds on every server start, so a wall you moved is gone the moment you
-press Play. Change the builder.
+**Legacy code-built geometry**, such as the combat slice's placeholder room in
+`features/world/WorldBuilder`: do not edit it in Studio while code rebuilds it on every server
+start, because any Studio move is wiped on Play. Replace it with a tracked `.rbxmx` model or
+change the builder.
 
 ### Media
 
@@ -201,18 +202,20 @@ not count.
 
 ## Agents
 
-Both Claude Code and opencode are configured in the repo:
+Claude Code, Gemini (Gemini CLI / Antigravity), opencode, and `AGENTS.md`-compatible tools are
+configured in the repo:
 
-- `CLAUDE.md` is the guide, loaded by Claude Code automatically. `AGENTS.md` points opencode at
-  the same file, and `opencode.json` lists it under `instructions` so it is loaded either way.
-  **One file, so the two cannot drift.**
+- `CLAUDE.md` is the single source of truth, loaded by Claude Code automatically. `GEMINI.md`
+  points Gemini agents at `CLAUDE.md` (and imports it for Gemini CLI), `AGENTS.md` points
+  opencode, Codex, Cursor, and other agents at the same file, and `opencode.json` also lists it
+  under `instructions`. **One file, so agent instructions cannot drift.**
 - `.mcp.json` and `opencode.json` both start the Studio MCP server through
   `scripts/studio-mcp.mjs`, which finds Studio on Windows and on Linux/Vinegar.
 - `.claude/settings.json` and `opencode.json` carry a permission split: read-only Studio and
   build commands are pre-allowed, anything that publishes, uploads, writes back, or presses
   Play asks first.
 - Skills live in `.claude/skills/`, which `opencode.json` also lists under `skills.paths` — one
-  copy, both tools. Two ship with the template:
+  copy, shared across tools. Two are included in the repo:
 
   | | |
   |---|---|

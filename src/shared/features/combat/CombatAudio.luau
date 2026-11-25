@@ -98,6 +98,8 @@ function CombatAudio.selfTest()
 		"enemyRangedFire",
 		"enemyExploderFuse",
 		"enemyExploderBlast",
+		"dropHeal",
+		"dropBuff",
 	}
 	for _, cue in ipairs(requiredCues) do
 		local spec = Config.SFX[cue]

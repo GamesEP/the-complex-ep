@@ -113,6 +113,15 @@ servidor de run.
 - Una vez elegido un enemigo al usar un ataque básico o una habilidad por primera vez, continuar el
   combo mantiene el objetivo pegado a ese mismo enemigo mientras siga vivo, en alcance y el jugador
   siga dirigiéndose hacia él.
+- En el corte de prueba, el personaje lleva equipada una espada (`Config.TEST_SWORD_MODEL`).
+- Al morir por daño del jugador, cada enemigo tiene un 30% de probabilidad (`Config.DROP_CHANCE`)
+  de soltar un objeto recogible en el suelo:
+  - **Curación (`heal`):** restaura vida (`Config.DROP_HEAL_AMOUNT`); si el jugador tiene la vida
+    llena, no lo consume para que pueda usarlo más tarde o un compañero.
+  - **Buff de ataque (`damage`):** aumenta el daño de ataques básicos y habilidades durante unos
+    segundos (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`).
+  - **Buff de velocidad (`speed`):** aumenta la velocidad de movimiento durante unos segundos
+    (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`).
 
 **Números:**
 
@@ -129,6 +138,10 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Recarga del dash | 0,7 s (`Config.DASH_COOLDOWN`) |
 | Invulnerabilidad del dash | 0,25 s: se puede atravesar un ataque con el dash (`Config.DASH_IFRAMES`) |
 | Ataque giratorio | 25 de daño, radio 12, recarga 4 s (`Config.SPIN_DAMAGE`, `Config.SPIN_RADIUS`, `Config.SPIN_COOLDOWN`) |
+| Probabilidad de drop al matar enemigo | 30% (`Config.DROP_CHANCE`), reparto 40/30/30 entre curación, daño y velocidad (`Config.DROP_WEIGHTS`) |
+| Curación de drop | +25 vida (`Config.DROP_HEAL_AMOUNT`) |
+| Buff de ataque | ×1,5 daño durante 10 s (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`) |
+| Buff de velocidad | ×1,35 velocidad durante 10 s (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`) |
 | Habilidades por jugador | <n> (`Config.ABILITY_SLOTS`) |
 | Habilidades ofrecidas al empezar la run | 3 (`Config.START_ABILITY_CHOICES`) |
 

@@ -112,6 +112,24 @@ Config.SFX = {
 		pitchSpread = 0.06,
 		maxDistance = 120,
 	},
+	-- Pickup chime for a heal drop.
+	dropHeal = {
+		file = "drop-heal.ogg",
+		fallbackId = 7381723941,
+		volume = 0.65,
+		pitch = 1.15,
+		pitchSpread = 0.05,
+		maxDistance = 65,
+	},
+	-- Pickup surge for a damage or movement-speed buff drop.
+	dropBuff = {
+		file = "drop-buff.ogg",
+		fallbackId = 100288208393628,
+		volume = 0.7,
+		pitch = 1.05,
+		pitchSpread = 0.05,
+		maxDistance = 70,
+	},
 } :: { [string]: SfxSpec }
 
 -- Fallback lifetime for a temporary 3D sound anchor when `Sound.Ended` never fires (e.g. a muted

@@ -1,0 +1,141 @@
+<roblox version="4">
+  <Item class="Model" referent="0">
+    <Properties>
+      <string name="Name">DropDamage</string>
+      <Ref name="PrimaryPart">1</Ref>
+      <CoordinateFrame name="WorldPivot">
+        <X>0</X>
+        <Y>0</Y>
+        <Z>0</Z>
+        <R00>1</R00>
+        <R01>0</R01>
+        <R02>0</R02>
+        <R10>0</R10>
+        <R11>1</R11>
+        <R12>0</R12>
+        <R20>0</R20>
+        <R21>0</R21>
+        <R22>1</R22>
+      </CoordinateFrame>
+    </Properties>
+    <Item class="Part" referent="1">
+      <Properties>
+        <string name="Name">Core</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>0.70710754</R00>
+          <R01>-0.70710754</R01>
+          <R02>0</R02>
+          <R10>0.5</R10>
+          <R11>0.5</R11>
+          <R12>-0.70710754</R12>
+          <R20>0.5</R20>
+          <R21>0.5</R21>
+          <R22>0.70710754</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">16736055</Color3uint8>
+        <bool name="Massless">false</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>1.25</X>
+          <Y>1.25</Y>
+          <Z>1.25</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+      <Item class="PointLight" referent="2">
+        <Properties>
+          <string name="Name">PointLight</string>
+          <float name="Brightness">1.6</float>
+          <Color3 name="Color">
+            <R>1</R>
+            <G>0.37254903</G>
+            <B>0.21568628</B>
+          </Color3>
+          <float name="Range">12</float>
+          <bool name="Shadows">false</bool>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Part" referent="3">
+      <Properties>
+        <string name="Name">Spike</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">16760395</Color3uint8>
+        <bool name="Massless">false</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>0.55000305</X>
+          <Y>2.399994</Y>
+          <Z>0.55000305</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="4">
+      <Properties>
+        <string name="Name">Aura</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">16736055</Color3uint8>
+        <bool name="Massless">false</bool>
+        <token name="Material">288</token>
+        <token name="shape">0</token>
+        <Vector3 name="size">
+          <X>2.699997</X>
+          <Y>2.699997</Y>
+          <Z>2.699997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0.75</float>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>

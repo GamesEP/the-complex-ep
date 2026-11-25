@@ -25,6 +25,7 @@ local POLL_SECONDS = 0.2
 local SPAWN_INSET = 10
 
 local world: Instance = nil :: any
+local onReset: (() -> ())? = nil
 
 -- Bumped by every reset. A loop holding an older generation stops at its next check, so a
 -- reset can never leave the old loop spawning into the new room.
@@ -88,6 +89,9 @@ end
 function WaveDirector.reset()
 	generation += 1
 	EnemyService.clear()
+	if onReset then
+		onReset()
+	end
 	world:SetAttribute("Wave", 1)
 	task.spawn(run, generation)
 end
@@ -108,8 +112,9 @@ local function watch(player: Player)
 	end
 end
 
-function WaveDirector.start(dependencies: { world: Instance })
+function WaveDirector.start(dependencies: { world: Instance, onReset: (() -> ())? })
 	world = dependencies.world
+	onReset = dependencies.onReset
 	world:SetAttribute("WaveCount", #Config.WAVES)
 	Players.PlayerAdded:Connect(watch)
 	for _, player in ipairs(Players:GetPlayers()) do

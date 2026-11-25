@@ -49,6 +49,7 @@ local FLASH_SECONDS = 0.08
 local HIT_COLOR = Color3.new(1, 1, 1)
 
 local hurt: (Player, number) -> boolean = nil :: any
+local onKill: ((Vector3) -> ())? = nil
 local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
@@ -137,8 +138,12 @@ local function kill(enemy: Enemy)
 		return
 	end
 	enemy.dead = true
-	burst(enemy.body.Position, enemy.radius, enemy.spec.color)
+	local position = enemy.body.Position
+	burst(position, enemy.radius, enemy.spec.color)
 	enemy.model:Destroy()
+	if onKill then
+		onKill(position)
+	end
 end
 
 local function fire(enemy: Enemy, target: BasePart)
@@ -293,8 +298,9 @@ local function step(dt: number)
 	stepProjectiles(list, dt, t)
 end
 
-function EnemyService.start(dependencies: { hurt: (Player, number) -> boolean, world: Instance })
+function EnemyService.start(dependencies: { hurt: (Player, number) -> boolean, world: Instance, onKill: ((Vector3) -> ())? })
 	hurt = dependencies.hurt
+	onKill = dependencies.onKill
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world

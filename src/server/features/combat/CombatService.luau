@@ -16,6 +16,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
+local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 
 local CombatService = {}
@@ -71,6 +72,51 @@ local function rootOf(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
+-- Equips the tracked `.rbxmx` test sword onto the character's right hand so every client sees
+-- it follow the procedural combat animations. Falls back to finding `Grip` by name because
+-- Rojo 7 live-sync can drop `Model.PrimaryPart` on `.rbxmx` imports. Also called on
+-- `CharacterAppearanceLoaded` because Roblox replaces R15 body parts after `CharacterAdded`.
+local function equipTestSword(character: Model)
+	local models = ReplicatedStorage:FindFirstChild("Models")
+	local template = models and models:FindFirstChild(Config.TEST_SWORD_MODEL)
+	if not template or not template:IsA("Model") then
+		return
+	end
+	local hand = character:WaitForChild("RightHand", 5) or character:FindFirstChild("Right Arm")
+	if not hand or not hand:IsA("BasePart") or not hand:IsDescendantOf(character) then
+		return
+	end
+	local existing = character:FindFirstChild(Config.TEST_SWORD_MODEL)
+	if existing then
+		existing:Destroy()
+	end
+
+	local sword = template:Clone()
+	local grip = sword.PrimaryPart or sword:FindFirstChild("Grip")
+	if not grip or not grip:IsA("BasePart") then
+		sword:Destroy()
+		return
+	end
+	sword.PrimaryPart = grip
+	sword.WorldPivot = grip.CFrame
+
+	local gripAttachment = hand:FindFirstChild("RightGripAttachment")
+	if gripAttachment and gripAttachment:IsA("Attachment") then
+		-- RightGripAttachment points -Z forward and slightly down in idle; lift 25 deg so the
+		-- blade sits level and reads clearly from the isometric camera.
+		sword:PivotTo(gripAttachment.WorldCFrame * CFrame.Angles(math.rad(25), 0, 0))
+	else
+		sword:PivotTo(hand.CFrame * CFrame.new(0, -1, 0))
+	end
+	sword.Parent = character
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "SwordGripWeld"
+	weld.Part0 = hand
+	weld.Part1 = grip
+	weld.Parent = grip
+end
+
 local function onCharacter(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.MaxHealth = Config.PLAYER_MAX_HEALTH
@@ -91,6 +137,9 @@ local function onCharacter(player: Player, character: Model)
 	swings[player] = nil
 	player:SetAttribute("DashReadyAt", 0)
 	player:SetAttribute("SpinReadyAt", 0)
+	player:SetAttribute("DamageBuffUntil", 0)
+	player:SetAttribute("SpeedBuffUntil", 0)
+	task.spawn(equipTestSword, character)
 end
 
 local function onPlayer(player: Player)
@@ -98,6 +147,11 @@ local function onPlayer(player: Player)
 	player.DevEnableMouseLock = false
 	player.CharacterAdded:Connect(function(character)
 		onCharacter(player, character)
+	end)
+	-- Roblox replaces R15 limbs when avatar appearance finishes loading, which breaks a weld
+	-- attached during CharacterAdded; re-equip once the final RightHand is in place.
+	player.CharacterAppearanceLoaded:Connect(function(character)
+		task.spawn(equipTestSword, character)
 	end)
 	if player.Character then
 		task.spawn(onCharacter, player, player.Character)
@@ -135,6 +189,47 @@ function CombatService.hurt(player: Player, amount: number): boolean
 	return true
 end
 
+-- Applies a combat drop collected from DropService. Returns whether the drop was consumed so a
+-- full-health player leaves heal pickups on the floor for later or for teammates.
+function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local t = now()
+	if kind == "heal" then
+		local newHealth, healed = Drops.heal(humanoid.Health, humanoid.MaxHealth, Config.DROP_HEAL_AMOUNT)
+		if not healed then
+			return false
+		end
+		humanoid.Health = newHealth
+		return true
+	elseif kind == "damage" then
+		player:SetAttribute("DamageBuffUntil", t + Config.BUFF_DAMAGE_DURATION)
+		return true
+	elseif kind == "speed" then
+		local untilAt = t + Config.BUFF_SPEED_DURATION
+		player:SetAttribute("SpeedBuffUntil", untilAt)
+		humanoid.WalkSpeed = Drops.moveSpeed(Config.MOVE_SPEED, untilAt, t, Config.BUFF_SPEED_MULTIPLIER)
+		-- Re-check the attribute when the timer fires so picking up a second speed buff refreshes
+		-- the timer instead of being reset early by the first timer.
+		task.delay(Config.BUFF_SPEED_DURATION + 0.05, function()
+			if humanoid.Parent and humanoid.Health > 0 then
+				humanoid.WalkSpeed = Drops.moveSpeed(
+					Config.MOVE_SPEED,
+					player:GetAttribute("SpeedBuffUntil"),
+					now(),
+					Config.BUFF_SPEED_MULTIPLIER
+				)
+			end
+		end)
+		return true
+	end
+	return false
+end
+
 -- Remote "Attack". `aim` is shape-checked by the contract; what it *means* is decided here. The
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
@@ -156,7 +251,9 @@ function CombatService.attack(player: Player, aim: Vector3)
 	if not facing then
 		return
 	end
-	local damage = Config.COMBO_DAMAGE[step] or Config.COMBO_DAMAGE[1]
+	local baseDamage = Config.COMBO_DAMAGE[step] or Config.COMBO_DAMAGE[1]
+	local damage = baseDamage
+		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), now(), Config.BUFF_DAMAGE_MULTIPLIER)
 	broadcastOthers(player, CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
 	broadcastAnimOthers(player, "attack", step)
 	local hitAt: Vector3? = nil
@@ -204,11 +301,13 @@ function CombatService.spin(player: Player)
 	player:SetAttribute("SpinReadyAt", t + Config.SPIN_COOLDOWN)
 	broadcastOthers(player, "playerSpin", root.Position)
 	broadcastAnimOthers(player, "spin")
+	local spinDamage = Config.SPIN_DAMAGE
+		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			enemies.damage(enemy, Config.SPIN_DAMAGE)
+			enemies.damage(enemy, spinDamage)
 		end
 	end
 	if hitAt then

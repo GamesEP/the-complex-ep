@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Drops = require(Shared.features.drops.Drops)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -29,6 +30,8 @@ local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState" }
 local HEALTH_COLOR = Color3.fromRGB(90, 210, 120)
 local DASH_COLOR = Color3.fromRGB(120, 190, 255)
 local SPIN_COLOR = Color3.fromRGB(255, 200, 90)
+local DAMAGE_BUFF_COLOR = Color3.fromRGB(255, 105, 60)
+local SPEED_BUFF_COLOR = Color3.fromRGB(70, 225, 255)
 
 local function Bar(props)
 	return React.createElement("Frame", {
@@ -38,6 +41,7 @@ local function Bar(props)
 		BackgroundTransparency = 0.2,
 		BorderSizePixel = 0,
 		LayoutOrder = props.order,
+		Visible = if props.visible ~= nil then props.visible else true,
 	}, {
 		Corner = React.createElement(ui.Round, { radius = 4 }),
 		Fill = React.createElement("Frame", {
@@ -89,15 +93,25 @@ local function CombatHud(props)
 	-- Per frame, so bindings: React writes the bars' sizes without re-rendering the screen.
 	local dashCharge, setDashCharge = React.useBinding(1)
 	local spinCharge, setSpinCharge = React.useBinding(1)
+	local damageBuff, setDamageBuff = React.useBinding(0)
+	local speedBuff, setSpeedBuff = React.useBinding(0)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
 		setDashCharge(charge(player:GetAttribute("DashReadyAt"), Config.DASH_COOLDOWN, now))
 		setSpinCharge(charge(player:GetAttribute("SpinReadyAt"), Config.SPIN_COOLDOWN, now))
+		setDamageBuff(Drops.buffRemaining(player:GetAttribute("DamageBuffUntil"), Config.BUFF_DAMAGE_DURATION, now))
+		setSpeedBuff(Drops.buffRemaining(player:GetAttribute("SpeedBuffUntil"), Config.BUFF_SPEED_DURATION, now))
 	end)
 
 	local function fillOf(binding)
 		return binding:map(function(value: number)
 			return UDim2.fromScale(value, 1)
+		end)
+	end
+
+	local function activeOf(binding)
+		return binding:map(function(value: number)
+			return value > 0
 		end)
 	end
 
@@ -137,6 +151,22 @@ local function CombatHud(props)
 				color = SPIN_COLOR,
 				fill = fillOf(spinCharge),
 				text = "Giro",
+			}),
+			DamageBuff = React.createElement(Bar, {
+				name = "DamageBuff",
+				order = 4,
+				color = DAMAGE_BUFF_COLOR,
+				fill = fillOf(damageBuff),
+				visible = activeOf(damageBuff),
+				text = `Daño +{math.round((Config.BUFF_DAMAGE_MULTIPLIER - 1) * 100)}%`,
+			}),
+			SpeedBuff = React.createElement(Bar, {
+				name = "SpeedBuff",
+				order = 5,
+				color = SPEED_BUFF_COLOR,
+				fill = fillOf(speedBuff),
+				visible = activeOf(speedBuff),
+				text = `Velocidad +{math.round((Config.BUFF_SPEED_MULTIPLIER - 1) * 100)}%`,
 			}),
 		}),
 		Room = React.createElement("TextLabel", {

@@ -23,6 +23,7 @@ local Config = require(Shared.core.Config)
 local Environment = require(Shared.core.Environment)
 local CombatAnim = require(Shared.features.combat.CombatAnim)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
+local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
 local Waves = require(Shared.features.enemies.Waves)
@@ -32,6 +33,7 @@ local Server = script.Parent
 local Dispatcher = require(Server.core.Net.Dispatcher)
 
 local CombatService = require(Server.features.combat.CombatService)
+local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
 local FlagService = require(Server.features.flags.FlagService)
 local LogSink = require(Server.features.telemetry.LogSink)
@@ -49,6 +51,7 @@ LogSink.start()
 if RunService:IsStudio() then
 	CombatAnim.selfTest()
 	CombatAudio.selfTest()
+	Drops.selfTest()
 	Melee.selfTest()
 	Brain.selfTest()
 	Waves.selfTest()
@@ -67,9 +70,10 @@ local world = WorldBuilder.build()
 -- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
 -- Before anybody can join, so a first character is already set up.
 CombatService.start({ enemies = EnemyService })
-EnemyService.start({ hurt = CombatService.hurt, world = world })
--- After EnemyService, whose folder it spawns into.
-WaveDirector.start({ world = world })
+DropService.start({ world = world, onPickup = CombatService.applyDrop })
+EnemyService.start({ hurt = CombatService.hurt, world = world, onKill = DropService.maybeSpawn })
+-- After EnemyService and DropService, whose folders it populates and resets.
+WaveDirector.start({ world = world, onReset = DropService.clear })
 
 -- Staff, in one place, so the flags and the admin-only remotes cannot disagree about who counts.
 --

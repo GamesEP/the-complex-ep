@@ -17,6 +17,7 @@ local PARTS = {
 	"Audio",
 	"Combat",
 	"Diagnostics",
+	"Drops",
 	"Enemies",
 	"Environments",
 	"Flags",

@@ -106,11 +106,16 @@ servidor de run.
   el resto se consigue durante la run.
 - Cada control (ataque, dash, cada habilidad) tiene que poder usarse con teclado y ratón, con
   táctil y con mando (ver [technical.md](technical.md)).
+- En los tres controles por igual (teclado/ratón, mando y táctil), el ataque básico toma como
+  referencia la dirección en la que se mueve o mira el personaje (no el cursor), engancha al
+  enemigo más alineado con esa dirección dentro de un cono frontal y da un impulso corto para
+  pegarse a él durante el combo.
+- Una vez elegido un enemigo al usar un ataque básico o una habilidad por primera vez, continuar el
+  combo mantiene el objetivo pegado a ese mismo enemigo mientras siga vivo, en alcance y el jugador
+  siga dirigiéndose hacia él.
 
 **Números:**
 
-| | |
-|---|---|
 Valores de prueba del corte de combate, para ajustar jugando:
 
 | | |
@@ -118,6 +123,7 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
 | Tiempo para encadenar el combo | 0,6 s (`Config.COMBO_WINDOW`) |
+| Enganche frontal del ataque básico | Cono de 140° hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
 | Velocidad al correr | 26 studs/s; la de Roblox por defecto es 16 (`Config.MOVE_SPEED`) |
 | Distancia del dash | 18 studs en 0,18 s (`Config.DASH_DISTANCE`, `Config.DASH_DURATION`) |
 | Recarga del dash | 0,7 s (`Config.DASH_COOLDOWN`) |
@@ -128,9 +134,6 @@ Valores de prueba del corte de combate, para ajustar jugando:
 
 **Habla con el cliente mediante:** los remotos `Attack`, `Dash` y `Spin` (eventos del jugador) y
 atributos en el jugador para la vida y las recargas. Ver [docs/combat.md](../../docs/combat.md).
-
-**Open:** al atacar con ratón, el golpe va hacia el cursor; con mando o táctil gira solo hacia el
-enemigo más cercano. Esa ayuda de apuntado la propuso Claude; confirmar que es lo que se quiere.
 
 - Las habilidades siguientes llegan como mejoras de run (1 de 3 al limpiar una sala). Ver Mejoras
   de run.

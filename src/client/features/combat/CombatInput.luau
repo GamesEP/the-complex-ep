@@ -14,7 +14,6 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
@@ -33,6 +32,26 @@ local comboStep = 0
 local lastSwingAt = -math.huge
 local dashReadyAt = 0
 local spinReadyAt = 0
+
+-- Active attack lunge state; gated on `lungeToken` so a dash or respawn cancels any in-flight
+-- step-in cleanly without firing a stale swing.
+local lungeToken = 0
+local activeLunge: { velocity: LinearVelocity, attachment: Attachment }? = nil
+local dashEndsAt = 0
+
+-- Sticky target picked by the first basic attack or ability in a combo. Tracked with its own
+-- `lastEngageAt` clock (separate from `lastSwingAt`) so an ability can seed or refresh the lock
+-- without altering the server-synced combo step window.
+local lockedTarget: BasePart? = nil
+local lastEngageAt = -math.huge
+
+local function clearLunge()
+	if activeLunge then
+		activeLunge.velocity:Destroy()
+		activeLunge.attachment:Destroy()
+		activeLunge = nil
+	end
+end
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -54,46 +73,49 @@ local function ready(predicted: number, attribute: string): boolean
 	return t >= predicted and (type(confirmed) ~= "number" or t >= confirmed)
 end
 
--- Where the mouse points, on the horizontal plane through the player.
-local function mouseAim(root: BasePart): Vector3?
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return nil
-	end
-	local mouse = UserInputService:GetMouseLocation()
-	local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
-	if math.abs(ray.Direction.Y) < 1e-4 then
-		return nil
-	end
-	local t = (root.Position.Y - ray.Origin.Y) / ray.Direction.Y
-	if t <= 0 then
-		return nil
-	end
-	return Melee.flat(ray.Origin + ray.Direction * t - root.Position)
-end
-
--- Without a mouse there is nothing to point with, so the swing turns to the nearest enemy in
--- reach — the aim assist a thumb on a phone needs to fight a crowd at this speed.
-local function assistAim(root: BasePart): Vector3?
+-- Snapshots every living enemy body in `World.Enemies` as flat targets for `Melee.pickTarget`.
+local function enemyTargets(): ({ Melee.Target }, { BasePart })
+	local targets: { Melee.Target } = {}
+	local bodies: { BasePart } = {}
 	local world = workspace:FindFirstChild("World")
 	local enemies = world and world:FindFirstChild("Enemies")
 	if not enemies then
-		return nil
+		return targets, bodies
 	end
-	local best, bestDistance = nil, Config.AIM_ASSIST_RANGE
 	for _, model in ipairs(enemies:GetChildren()) do
 		local enemyBody = model:FindFirstChild("Body")
 		if enemyBody and enemyBody:IsA("BasePart") then
-			local distance = Melee.distance(root.Position, enemyBody.Position)
-			if distance < bestDistance then
-				best, bestDistance = enemyBody, distance
-			end
+			local radius = math.max(enemyBody.Size.X, enemyBody.Size.Z) / 2
+			table.insert(targets, { position = enemyBody.Position, radius = radius })
+			table.insert(bodies, enemyBody)
 		end
 	end
-	return best and Melee.flat(best.Position - root.Position)
+	return targets, bodies
 end
 
-local function attack(input: InputObject)
+-- Resolves the attack/ability target: keeps `lockedTarget` while continuing a combo and still
+-- heading toward it, otherwise picks the best enemy in the forward cone.
+local function selectTarget(root: BasePart, facing: Vector3, clock: number): (Melee.TargetPick?, BasePart?)
+	local targets, bodies = enemyTargets()
+	local preferredIndex: number? = nil
+	if lockedTarget and clock - lastEngageAt <= Config.COMBO_WINDOW and lockedTarget:IsDescendantOf(workspace) then
+		preferredIndex = table.find(bodies, lockedTarget)
+	end
+	local pick = Melee.pickTarget(
+		root.Position,
+		facing,
+		targets,
+		Config.AIM_ASSIST_RANGE,
+		Config.AIM_ASSIST_CONE,
+		Config.AIM_ASSIST_ANGLE_WEIGHT,
+		preferredIndex,
+		Config.TARGET_LOCK_CONE
+	)
+	local targetBody: BasePart? = if pick then bodies[pick.index] else nil
+	return pick, targetBody
+end
+
+local function attack()
 	local root, humanoid = body()
 	if not root or not humanoid then
 		return
@@ -103,17 +125,82 @@ local function attack(input: InputObject)
 		return
 	end
 
-	local aim = if input.UserInputType == Enum.UserInputType.MouseButton1 then mouseAim(root) else assistAim(root)
-	aim = aim or Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not aim then
+	-- Every input device (mouse, gamepad, touch) swings along where the character is moving or
+	-- looking, snapping onto the enemy best aligned inside the forward cone.
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
 		return
 	end
 
+	local pick, targetBody = selectTarget(root, facing, clock)
+	local aim = if pick then pick.direction else facing
+
+	local lungeDist = 0
+	if pick and clock >= dashEndsAt then
+		lungeDist = Melee.lungeDistance(
+			pick.distance,
+			pick.radius,
+			Config.ATTACK_LUNGE_STOP_DISTANCE,
+			Config.ATTACK_LUNGE_MAX_DISTANCE
+		)
+	end
+	local lungeDuration = if lungeDist > 0 and Config.ATTACK_LUNGE_SPEED > 0
+		then lungeDist / Config.ATTACK_LUNGE_SPEED
+		else 0
+
 	comboStep = Melee.nextStep(comboStep, lastSwingAt, clock, Config.COMBO_HITS, Config.COMBO_WINDOW)
-	lastSwingAt = clock
+	local step = comboStep
+	-- Anchor the swing clock to when the remote fires (after any lunge), so the server's interval
+	-- gate never drops the next combo hit and another press cannot start mid-lunge.
+	lastSwingAt = clock + lungeDuration
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock + lungeDuration else -math.huge
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
-	Effects.slash(root, aim, comboStep)
-	Remotes.Attack:FireServer(aim)
+
+	if lungeDuration > 0 then
+		lungeToken += 1
+		local myToken = lungeToken
+		clearLunge()
+
+		-- Horizontal-only velocity, same as dash: respects room walls and leaves gravity alone.
+		local attachment = Instance.new("Attachment")
+		attachment.Parent = root
+		local velocity = Instance.new("LinearVelocity")
+		velocity.Attachment0 = attachment
+		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+		velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+		velocity.LineDirection = aim
+		velocity.LineVelocity = Config.ATTACK_LUNGE_SPEED
+		velocity.MaxForce = math.huge
+		velocity.Parent = root
+		activeLunge = { velocity = velocity, attachment = attachment }
+
+		-- Play the attack windup immediately during the step-in, then draw the slash and notify
+		-- the server once the lunge has closed the gap.
+		Effects.attackWindup(step)
+		task.delay(lungeDuration, function()
+			if lungeToken ~= myToken then
+				return
+			end
+			clearLunge()
+			local currentRoot = body()
+			if currentRoot ~= root then
+				return
+			end
+			local finalAim = aim
+			-- IsDescendantOf(workspace) rather than .Parent: server Destroy() leaves client child
+			-- pointers intact (see docs/roblox-gotchas.md).
+			if targetBody and targetBody:IsDescendantOf(workspace) then
+				finalAim = Melee.flat(targetBody.Position - root.Position) or aim
+			end
+			root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
+			Effects.slash(root, finalAim, step, true)
+			Remotes.Attack:FireServer(finalAim)
+		end)
+	else
+		Effects.slash(root, aim, step)
+		Remotes.Attack:FireServer(aim)
+	end
 end
 
 local function dash()
@@ -125,7 +212,10 @@ local function dash()
 	if not direction then
 		return
 	end
+	lungeToken += 1
+	clearLunge()
 	dashReadyAt = now() + Config.DASH_COOLDOWN
+	dashEndsAt = os.clock() + Config.DASH_DURATION
 
 	-- The character is the client's to move, so the dash is a velocity held along one line for
 	-- its duration: horizontal only, gravity left alone, and gone before the next frame's input.
@@ -150,9 +240,18 @@ local function dash()
 end
 
 local function spin()
-	local root = body()
-	if not root or not ready(spinReadyAt, "SpinReadyAt") then
+	local root, humanoid = body()
+	if not root or not humanoid or not ready(spinReadyAt, "SpinReadyAt") then
 		return
+	end
+	-- Seed or refresh the sticky target on ability use so basic attacks right after stay locked
+	-- onto the same enemy while the player keeps heading toward it.
+	local clock = os.clock()
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if facing then
+		local _, targetBody = selectTarget(root, facing, clock)
+		lockedTarget = targetBody
+		lastEngageAt = if targetBody then clock else -math.huge
 	end
 	spinReadyAt = now() + Config.SPIN_COOLDOWN
 	Effects.spin(root)
@@ -179,11 +278,11 @@ local ACTIONS = {
 
 function CombatInput.start()
 	for name, action in pairs(ACTIONS) do
-		ContextActionService:BindActionAtPriority(name, function(_, state: Enum.UserInputState, input: InputObject)
+		ContextActionService:BindActionAtPriority(name, function(_, state: Enum.UserInputState)
 			if state ~= Enum.UserInputState.Begin then
 				return Enum.ContextActionResult.Pass
 			end
-			action.run(input)
+			action.run()
 			return Enum.ContextActionResult.Sink
 		end, true, Enum.ContextActionPriority.High.Value, table.unpack(action.inputs))
 		ContextActionService:SetTitle(name, action.title)
@@ -191,6 +290,11 @@ function CombatInput.start()
 
 	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
 	player.CharacterAdded:Connect(function()
+		lungeToken += 1
+		clearLunge()
+		dashEndsAt = 0
+		lockedTarget = nil
+		lastEngageAt = -math.huge
 		comboStep = 0
 		lastSwingAt = -math.huge
 		dashReadyAt = 0

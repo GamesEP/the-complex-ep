@@ -13,6 +13,18 @@
 
 local Melee = {}
 
+export type Target = {
+	position: Vector3,
+	radius: number?,
+}
+
+export type TargetPick = {
+	index: number,
+	direction: Vector3,
+	distance: number,
+	radius: number,
+}
+
 -- Which hit of the combo this press is. A press inside `window` of the last one continues the
 -- chain and wraps after the last hit; anything later, or a first press, starts it at 1.
 function Melee.nextStep(step: number, lastAt: number, now: number, hits: number, window: number): number
@@ -61,6 +73,114 @@ function Melee.inRadius(origin: Vector3, target: Vector3, radius: number): boole
 	return Melee.distance(origin, target) <= radius
 end
 
+-- Picks the best enemy in front of `facing` (within `cone` degrees and `range` studs + enemy
+-- radius) to snap a basic attack onto. Prioritises enemies aligned with where the player is
+-- looking, breaking ties by proximity so a nearby aligned enemy beats a far dead-ahead one.
+-- When `preferredIndex` is given (continuing a combo or following an ability), that target stays
+-- locked as long as it remains within range and inside `lockCone` (defaulting to `cone`).
+function Melee.pickTarget(
+	origin: Vector3,
+	facing: Vector3,
+	targets: { Target },
+	range: number,
+	cone: number,
+	angleWeight: number?,
+	preferredIndex: number?,
+	lockCone: number?
+): TargetPick?
+	local forward = Melee.flat(facing)
+	if not forward or range <= 0 or cone <= 0 then
+		return nil
+	end
+
+	if preferredIndex ~= nil then
+		local preferred = targets[preferredIndex]
+		if preferred then
+			local radius = preferred.radius or 0
+			local offset = Vector3.new(preferred.position.X - origin.X, 0, preferred.position.Z - origin.Z)
+			local distance = offset.Magnitude
+			if distance <= range + radius then
+				local dir = if distance < 1e-3 then forward else offset / distance
+				local dot = if distance < 1e-3 then 1 else dir:Dot(forward)
+				local keepCone = if lockCone ~= nil then lockCone else cone
+				local keepMinDot = math.cos(math.rad(math.clamp(keepCone, 0, 360) / 2)) - 1e-6
+				if keepCone > 0 and dot >= keepMinDot then
+					return {
+						index = preferredIndex,
+						direction = dir,
+						distance = distance,
+						radius = radius,
+					}
+				end
+			end
+		end
+	end
+
+	local halfRad = math.rad(math.clamp(cone, 0, 360) / 2)
+	local minDot = math.cos(halfRad) - 1e-6
+	local weight = math.clamp(if angleWeight ~= nil then angleWeight else 0.65, 0, 1)
+
+	local bestIndex: number? = nil
+	local bestDirection: Vector3 = forward
+	local bestDistance = 0
+	local bestRadius = 0
+	local bestScore = math.huge
+
+	for index, target in ipairs(targets) do
+		local radius = target.radius or 0
+		local offset = Vector3.new(target.position.X - origin.X, 0, target.position.Z - origin.Z)
+		local distance = offset.Magnitude
+		if distance <= range + radius then
+			local dir: Vector3
+			local dot: number
+			if distance < 1e-3 then
+				dir = forward
+				dot = 1
+			else
+				dir = offset / distance
+				dot = dir:Dot(forward)
+			end
+
+			if dot >= minDot then
+				local angleNorm = if halfRad > 1e-6 then math.acos(math.clamp(dot, -1, 1)) / halfRad else 0
+				local distNorm = math.clamp(distance / range, 0, 1)
+				local score = angleNorm * weight + distNorm * (1 - weight)
+				if score < bestScore then
+					bestScore = score
+					bestIndex = index
+					bestDirection = dir
+					bestDistance = distance
+					bestRadius = radius
+				end
+			end
+		end
+	end
+
+	if not bestIndex then
+		return nil
+	end
+
+	return {
+		index = bestIndex,
+		direction = bestDirection,
+		distance = bestDistance,
+		radius = bestRadius,
+	}
+end
+
+-- How far the attacker should lunge toward a picked target so they stop `stopDistance` studs
+-- outside `targetRadius` without overshooting past it. Returns 0 when already in sticking range.
+function Melee.lungeDistance(distance: number, targetRadius: number, stopDistance: number, maxDistance: number): number
+	if maxDistance <= 0 then
+		return 0
+	end
+	local gap = distance - (targetRadius + stopDistance)
+	if gap <= 0 then
+		return 0
+	end
+	return math.min(gap, maxDistance)
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -93,6 +213,69 @@ function Melee.selfTest()
 	assert(not Melee.inRadius(origin, Vector3.new(13, 0, 0), 12), "outside the spin is not hit")
 
 	assert(Melee.flat(Vector3.new(0, -3, 0)) == nil, "a vertical direction has no flat part")
+
+	-- Forward target picking: aligned ahead beats closer off-angle, never snaps behind or sideways.
+	local offAngle = Vector3.new(math.sin(math.rad(55)), 0, -math.cos(math.rad(55))) * 6
+	local pickAligned = Melee.pickTarget(origin, north, {
+		{ position = offAngle, radius = 2 },
+		{ position = Vector3.new(0, 0, -10), radius = 2 },
+	}, 15, 140, 0.65)
+	assert(pickAligned ~= nil and pickAligned.index == 2, "aligned enemy ahead beats closer off-angle enemy")
+
+	local pickCloser = Melee.pickTarget(origin, north, {
+		{ position = Vector3.new(0, 0, -13), radius = 2 },
+		{ position = Vector3.new(0, 0, -5), radius = 2 },
+	}, 15, 140, 0.65)
+	assert(pickCloser ~= nil and pickCloser.index == 2, "closer enemy on the same line wins")
+
+	local pickNone = Melee.pickTarget(origin, north, {
+		{ position = Vector3.new(0, 0, 3), radius = 2 }, -- directly behind
+		{ position = Vector3.new(4, 0, 0), radius = 2 }, -- 90 degrees to the side
+		{ position = Vector3.new(0, 0, -20), radius = 2 }, -- beyond range + radius
+	}, 15, 140, 0.65)
+	assert(pickNone == nil, "enemies behind, sideways or out of range are ignored")
+
+	local pickPointBlank = Melee.pickTarget(origin, north, {
+		{ position = Vector3.new(0, 4, 0), radius = 2 },
+	}, 15, 140, 0.65)
+	assert(
+		pickPointBlank ~= nil and pickPointBlank.index == 1 and pickPointBlank.direction:Dot(north) > 0.999,
+		"point-blank enemy keeps forward facing regardless of height"
+	)
+
+	assert(
+		Melee.pickTarget(origin, Vector3.new(0, -1, 0), { { position = Vector3.new(0, 0, -5), radius = 2 } }, 15, 140)
+			== nil,
+		"vertical facing picks nothing"
+	)
+
+	-- Sticky combo targeting: keeps preferred enemy while still heading toward it, even if a
+	-- closer/more-centered enemy appears; releases when steering away or out of range.
+	local stickyTargets = {
+		{ position = Vector3.new(0, 0, -5), radius = 2 }, -- dead ahead and closer
+		{ position = Vector3.new(math.sin(math.rad(35)), 0, -math.cos(math.rad(35))) * 10, radius = 2 }, -- locked, 35 deg off
+	}
+	local kept = Melee.pickTarget(origin, north, stickyTargets, 15, 140, 0.65, 2, 110)
+	assert(kept ~= nil and kept.index == 2, "keeps locked target while still within lock cone")
+
+	-- Turning 75 degrees left puts target 2 at 110 degrees off facing (> 55 deg half-cone).
+	local westish = Vector3.new(-math.sin(math.rad(75)), 0, -math.cos(math.rad(75)))
+	local switched = Melee.pickTarget(origin, westish, {
+		{ position = westish * 6, radius = 2 },
+		stickyTargets[2],
+	}, 15, 140, 0.65, 2, 110)
+	assert(switched ~= nil and switched.index == 1, "drops lock and switches when player steers away")
+
+	local droppedRange = Melee.pickTarget(origin, north, {
+		{ position = Vector3.new(0, 0, -6), radius = 2 },
+		{ position = Vector3.new(0, 0, -25), radius = 2 },
+	}, 15, 140, 0.65, 2, 110)
+	assert(droppedRange ~= nil and droppedRange.index == 1, "drops lock when locked target leaves range")
+
+	-- Lunge distance: zero when already stuck to target, exact gap in mid-range, clamped at max.
+	assert(Melee.lungeDistance(4, 2, 2.5, 8) == 0, "no lunge when already within stop distance")
+	assert(math.abs(Melee.lungeDistance(8, 2, 2.5, 8) - 3.5) < 1e-4, "mid-range lunges exact remaining gap")
+	assert(Melee.lungeDistance(15, 2, 2.5, 8) == 8, "far target clamps lunge to max distance")
 end
 
 return Melee

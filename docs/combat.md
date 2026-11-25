@@ -8,7 +8,7 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 |---|---|
 | `shared/features/combat/CombatAnim` | Pure: procedural player poses (combo, jump/land, dash, spin) and interrupt priorities. |
 | `shared/features/combat/CombatAudio` | Pure: combo cue selection, uploaded-vs-fallback id resolution, pitch variation. |
-| `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius. Both realms call it. |
+| `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius, forward target selection and attack lunge math. Both realms call it. |
 | `shared/features/enemies/Brain` | Pure: what an enemy does each frame, as a state machine. |
 | `shared/features/enemies/Waves` | Pure: what a wave contains, where it spawns, keeping things inside the room. |
 | `server/features/combat/CombatService` | The player's stats, the three remotes, and `hurt`. |
@@ -34,7 +34,7 @@ Each action is predicted on the client and confirmed by the server:
 
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
-| Attack | Turns the character, draws the slash, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
+| Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, draws the slash, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
 | Spin | Draws the ring, fires `Spin()` | Checks the cooldown, sets `SpinReadyAt`, damages everything in the radius |
 
@@ -109,9 +109,22 @@ the camera — so WASD, the thumbstick and the gamepad stick all mean "up the sc
 | Dash | Left Shift, Q | B, L2 | "Dash" button |
 | Spin | E | Y, R1 | "Giro" button |
 
-With a mouse the swing goes where the cursor points (a ray onto the horizontal plane through the
-player). Without one there is nothing to point with, so the swing turns to the nearest enemy
-within `AIM_ASSIST_RANGE`, then falls back to the movement direction, then the facing.
+Every input device — mouse, gamepad and touch — uses the same forward-cone target sticking
+(`Melee.pickTarget` + `Melee.lungeDistance`), ignoring the mouse cursor. Pressing Attack reads
+the character's movement direction (or current facing when standing still), searches enemies
+within `AIM_ASSIST_RANGE` inside a forward `AIM_ASSIST_CONE` weighted toward angular alignment
+(`AIM_ASSIST_ANGLE_WEIGHT`), and turns toward the winner. Once a basic attack or ability (such as
+Spin) locks onto an enemy, continuing the combo within `COMBO_WINDOW` always keeps that same
+target while it stays alive, in range, and within `TARGET_LOCK_CONE` of where the player is
+heading (`lastEngageAt` is tracked separately from `lastSwingAt` so abilities can seed or refresh
+the lock without altering the server-synced combo step). Steering away drops the lock immediately
+and selects the new forward target. If the chosen enemy is farther than
+`radius + ATTACK_LUNGE_STOP_DISTANCE`, the client applies a short horizontal `LinearVelocity`
+step-in (up to `ATTACK_LUNGE_MAX_DISTANCE` at `ATTACK_LUNGE_SPEED`, respecting walls and gravity),
+starts the attack windup immediately, and fires `Remotes.Attack` as the lunge closes the gap so
+the server sees the updated position. `lastSwingAt` is anchored to lunge completion so the server's
+interval gate never drops the following combo hit, and starting a dash or respawning cancels any
+in-flight lunge cleanly via `lungeToken`.
 
 Shift lock is turned off per player (`DevEnableMouseLock = false`): it toggles on Left Shift,
 which is the dash.

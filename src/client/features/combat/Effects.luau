@@ -44,7 +44,13 @@ local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.P
 	return part
 end
 
-function Effects.slash(root: BasePart, direction: Vector3, step: number)
+-- Plays only the local attack pose (used when a lunge starts so the windup plays during the
+-- step-in and the slash visual spawns at the landing position).
+function Effects.attackWindup(step: number)
+	PlayerAnimator.playLocal("attack", step)
+end
+
+function Effects.slash(root: BasePart, direction: Vector3, step: number, animStarted: boolean?)
 	local reach = Config.ATTACK_RANGE
 	local position = root.Position + direction * (reach / 2)
 	local cframe = CFrame.lookAt(position, position + direction)
@@ -54,7 +60,9 @@ function Effects.slash(root: BasePart, direction: Vector3, step: number)
 	-- Local player's own kit plays non-spatially (nil position) so it is always crisp regardless
 	-- of camera distance or respawn timing; teammates receive a 3D broadcast from CombatService.
 	SoundPlayer.play(CombatAudio.attackCue(step, Config.COMBO_HITS), nil, step)
-	PlayerAnimator.playLocal("attack", step)
+	if not animStarted then
+		PlayerAnimator.playLocal("attack", step)
+	end
 end
 
 function Effects.spin(root: BasePart)

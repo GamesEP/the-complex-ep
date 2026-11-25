@@ -24,9 +24,22 @@ Config.ATTACK_TOLERANCE = 0.75
 -- server checks against a position ~100 ms old, and a hit that looked clean must land.
 Config.ATTACK_RANGE = 8
 Config.ATTACK_ARC = 120
--- How far the client turns the player to the nearest enemy when attacking without a mouse
--- (touch, gamepad). Past this there is nothing worth turning for.
-Config.AIM_ASSIST_RANGE = 16
+-- Forward target-sticking for basic attacks on every input device (mouse, touch, gamepad):
+-- searches a cone ahead of the player's facing/movement direction, prioritising enemies most
+-- aligned with where the player is looking, and closes short gaps so combos stick to them.
+Config.AIM_ASSIST_RANGE = 15
+Config.AIM_ASSIST_CONE = 140
+-- Narrower cone used to keep the previously picked enemy locked across a combo (or after an
+-- ability): wide enough for 8-way WASD movement toward a strafing enemy, narrow enough to drop
+-- the lock the moment the player steers toward a different one.
+Config.TARGET_LOCK_CONE = 110
+-- Weight of angular alignment vs distance (0..1) when ranking candidates inside the forward cone.
+Config.AIM_ASSIST_ANGLE_WEIGHT = 0.65
+-- Attack lunge: closes up to MAX_DISTANCE at SPEED, stopping STOP_DISTANCE studs outside the
+-- target's radius so the character sticks right in front of the enemy without overshooting.
+Config.ATTACK_LUNGE_MAX_DISTANCE = 8
+Config.ATTACK_LUNGE_STOP_DISTANCE = 2.5
+Config.ATTACK_LUNGE_SPEED = 90
 
 -- The dash is a basic move, always available (plans/gdd/systems.md, Combate). Distance over
 -- duration is its speed; IFRAMES is how long it ignores damage, slightly longer than the dash

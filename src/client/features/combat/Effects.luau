@@ -13,6 +13,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
 
+local PlayerAnimator = require(script.Parent.PlayerAnimator)
 local SoundPlayer = require(script.Parent.SoundPlayer)
 
 local Effects = {}
@@ -50,7 +51,10 @@ function Effects.slash(root: BasePart, direction: Vector3, step: number)
 	local part = ghost(Vector3.new(reach * 1.1, 0.3, reach * 0.55), cframe, SLASH_COLORS[step] or SLASH_COLORS[1])
 	TweenService:Create(part, TweenInfo.new(0.12), { Transparency = 1 }):Play()
 	Debris:AddItem(part, 0.15)
-	SoundPlayer.play(CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
+	-- Local player's own kit plays non-spatially (nil position) so it is always crisp regardless
+	-- of camera distance or respawn timing; teammates receive a 3D broadcast from CombatService.
+	SoundPlayer.play(CombatAudio.attackCue(step, Config.COMBO_HITS), nil, step)
+	PlayerAnimator.playLocal("attack", step)
 end
 
 function Effects.spin(root: BasePart)
@@ -60,13 +64,16 @@ function Effects.spin(root: BasePart)
 	local part = ghost(Vector3.new(0.4, 4, 4), cframe, Color3.fromRGB(255, 200, 90), Enum.PartType.Cylinder)
 	TweenService:Create(part, TweenInfo.new(0.2), { Size = Vector3.new(0.4, diameter, diameter), Transparency = 1 }):Play()
 	Debris:AddItem(part, 0.25)
-	SoundPlayer.play("playerSpin", root.Position)
+	SoundPlayer.play("playerSpin")
+	PlayerAnimator.playLocal("spin")
 end
 
 function Effects.dash(root: BasePart)
 	local part = ghost(Vector3.new(2, 5, 1), root.CFrame, Color3.fromRGB(140, 200, 255))
 	TweenService:Create(part, TweenInfo.new(0.2), { Transparency = 1 }):Play()
 	Debris:AddItem(part, 0.25)
+	SoundPlayer.play("playerDash")
+	PlayerAnimator.playLocal("dash")
 end
 
 return Effects

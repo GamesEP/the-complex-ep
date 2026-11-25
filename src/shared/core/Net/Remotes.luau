@@ -36,6 +36,11 @@ return {
 	-- broadcasts (docs/net-contract.md).
 	CombatSfx = remote("CombatSfx"),
 
+	-- Server -> client combat animation cues for co-op teammates (attack, dash, spin). The local
+	-- player animates immediately on input; jump is driven from each character's replicated
+	-- HumanoidStateType and needs no remote. No Contract entry for the same reason as CombatSfx.
+	CombatAnim = remote("CombatAnim"),
+
 	-- Faults a client saw and the server could not. Client -> server, and the one remote whose
 	-- payload outlives the session, so it is validated twice — once by the contract and once
 	-- field by field in LogSink.

@@ -8,6 +8,7 @@
 ]]
 
 local ContentProvider = game:GetService("ContentProvider")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
@@ -107,7 +108,31 @@ function SoundPlayer.play(cue: string, position: Vector3?, step: number?)
 	task.delay(Config.SFX_MAX_CLEANUP_SECONDS, cleanup)
 end
 
+-- Isometric camera sits ~70 studs away from the character (`Config.CAMERA_DISTANCE`). Measuring
+-- 3D distance from the character root while keeping the camera's stereo orientation keeps nearby
+-- enemies and hits loud and clear instead of fading out under the camera's height.
+local function bindListener()
+	local player = Players.LocalPlayer
+	if not player then
+		return
+	end
+	local function attach(character: Model)
+		local root = character:WaitForChild("HumanoidRootPart", 5)
+		if root and root:IsA("BasePart") then
+			SoundService:SetListener(Enum.ListenerType.ObjectPosition, root)
+		end
+	end
+	player.CharacterAdded:Connect(attach)
+	player.CharacterRemoving:Connect(function()
+		SoundService:SetListener(Enum.ListenerType.Camera)
+	end)
+	if player.Character then
+		task.spawn(attach, player.Character)
+	end
+end
+
 function SoundPlayer.start()
+	bindListener()
 	task.spawn(preloadAll)
 	Remotes.CombatSfx.OnClientEvent:Connect(function(cue: string, position: Vector3?, step: number?)
 		SoundPlayer.play(cue, position, step)

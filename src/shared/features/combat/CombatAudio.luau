@@ -90,6 +90,7 @@ function CombatAudio.selfTest()
 	local requiredCues = {
 		"playerAttack",
 		"playerAttackHeavy",
+		"playerDash",
 		"playerSpin",
 		"playerHit",
 		"enemyMeleeWindup",

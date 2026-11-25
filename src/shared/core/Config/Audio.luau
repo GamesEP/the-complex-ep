@@ -38,15 +38,23 @@ Config.SFX = {
 		pitchSpread = 0.05,
 		maxDistance = 75,
 	},
+	-- Fast evasive dash burst.
+	playerDash = {
+		file = "player-dash.ogg",
+		fallbackId = 130555831799989,
+		volume = 0.7,
+		pitch = 1.25,
+		pitchSpread = 0.06,
+		maxDistance = 65,
+	},
 	-- 360-degree spin ability.
 	playerSpin = {
 		file = "player-spin.ogg",
-		fallbackId = 9120734010,
-		volume = 0.75,
-		pitch = 1.45,
+		fallbackId = 74127269441035,
+		volume = 0.8,
+		pitch = 1.15,
 		pitchSpread = 0.05,
-		maxDistance = 80,
-		maxDuration = 0.65,
+		maxDistance = 85,
 	},
 	-- Confirmation impact when a player swing or spin connects with at least one enemy.
 	playerHit = {

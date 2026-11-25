@@ -40,12 +40,21 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
--- The triggering client already played its own predicted swing/spin locally with zero latency;
--- only teammates need the server broadcast so co-op attacks are audible without double-playing.
+-- The triggering client already played its own predicted swing/spin/dash locally with zero
+-- latency; only teammates need the server broadcast so co-op actions are audible and visible
+-- without double-playing.
 local function broadcastOthers(source: Player, cue: string, position: Vector3, step: number?)
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other ~= source then
 			Remotes.CombatSfx:FireClient(other, cue, position, step)
+		end
+	end
+end
+
+local function broadcastAnimOthers(source: Player, action: string, step: number?)
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= source then
+			Remotes.CombatAnim:FireClient(other, source, action, step)
 		end
 	end
 end
@@ -149,6 +158,7 @@ function CombatService.attack(player: Player, aim: Vector3)
 	end
 	local damage = Config.COMBO_DAMAGE[step] or Config.COMBO_DAMAGE[1]
 	broadcastOthers(player, CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
+	broadcastAnimOthers(player, "attack", step)
 	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
@@ -165,7 +175,8 @@ end
 -- starts the cooldown, both of which have to be the server's or a client could keep them forever.
 function CombatService.dash(player: Player)
 	local character = player.Character
-	if not character or not rootOf(player) then
+	local root = rootOf(player)
+	if not character or not root then
 		return
 	end
 	local t = now()
@@ -175,6 +186,8 @@ function CombatService.dash(player: Player)
 	end
 	player:SetAttribute("DashReadyAt", t + Config.DASH_COOLDOWN)
 	character:SetAttribute("InvulnerableUntil", t + Config.DASH_IFRAMES)
+	broadcastOthers(player, "playerDash", root.Position)
+	broadcastAnimOthers(player, "dash")
 end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
@@ -190,6 +203,7 @@ function CombatService.spin(player: Player)
 	end
 	player:SetAttribute("SpinReadyAt", t + Config.SPIN_COOLDOWN)
 	broadcastOthers(player, "playerSpin", root.Position)
+	broadcastAnimOthers(player, "spin")
 	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then

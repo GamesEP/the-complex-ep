@@ -18,6 +18,7 @@ local BuildStamp = require(Client.features.environment.ui.BuildStamp)
 local CombatHud = require(Client.features.combat.ui.CombatHud)
 local CombatInput = require(Client.features.combat.CombatInput)
 local IsoCamera = require(Client.features.camera.IsoCamera)
+local PlayerAnimator = require(Client.features.combat.PlayerAnimator)
 local SoundPlayer = require(Client.features.combat.SoundPlayer)
 
 -- Before anything builds a ScreenGui: every panel asks Layout how much room it has and mounts
@@ -25,6 +26,7 @@ local SoundPlayer = require(Client.features.combat.SoundPlayer)
 Layout.start()
 
 IsoCamera.start()
+PlayerAnimator.start()
 SoundPlayer.start()
 CombatInput.start()
 

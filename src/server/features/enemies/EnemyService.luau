@@ -20,6 +20,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local Brain = require(Shared.features.enemies.Brain)
+local Hitbox = require(Shared.features.enemies.Hitbox)
+local SpatialGrid = require(Shared.features.enemies.SpatialGrid)
 local Waves = require(Shared.features.enemies.Waves)
 
 local EnemyService = {}
@@ -60,6 +62,9 @@ local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
 local projectiles: { Projectile } = {}
+local grid = SpatialGrid.new(Config.ENEMY_GRID_CELL_SIZE)
+local separationScratch: { Enemy } = {}
+local maxEnemyRadius = 0
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -87,7 +92,8 @@ end
 local function nearest(position: Vector3, list: { { player: Player, root: BasePart } })
 	local best, bestDistance = nil, math.huge
 	for _, target in ipairs(list) do
-		local distance = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z).Magnitude
+		local distance =
+			Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z).Magnitude
 		if distance < bestDistance then
 			best, bestDistance = target, distance
 		end
@@ -120,10 +126,19 @@ local function healthBar(body: BasePart, height: number): Frame
 	return fill
 end
 
--- A short-lived visual the server owns, so every player sees it.
-local function burst(position: Vector3, radius: number, color: Color3)
+-- A short-lived visual the server owns, so every player sees it. Passing a distinct
+-- `verticalRadius` renders a non-uniform oval via SpecialMesh (PartType.Ball clamps to a sphere).
+local function burst(position: Vector3, radius: number, color: Color3, verticalRadius: number?)
 	local part = Instance.new("Part")
-	part.Shape = Enum.PartType.Ball
+	local heightRadius = verticalRadius or radius
+	if math.abs(heightRadius - radius) > 1e-3 then
+		part.Shape = Enum.PartType.Block
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+	else
+		part.Shape = Enum.PartType.Ball
+	end
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
@@ -133,7 +148,8 @@ local function burst(position: Vector3, radius: number, color: Color3)
 	part.Size = Vector3.one * 2
 	part.Position = position
 	part.Parent = folder
-	TweenService:Create(part, TweenInfo.new(0.3), { Size = Vector3.one * radius * 2, Transparency = 1 }):Play()
+	local targetSize = Vector3.new(radius * 2, heightRadius * 2, radius * 2)
+	TweenService:Create(part, TweenInfo.new(0.3), { Size = targetSize, Transparency = 1 }):Play()
 	task.delay(0.35, function()
 		part:Destroy()
 	end)
@@ -177,6 +193,7 @@ local function kill(enemy: Enemy)
 		return
 	end
 	enemy.dead = true
+	grid:remove(enemy)
 	releaseGrab(enemy, now(), true)
 	local position = enemy.body.Position
 	burst(position, enemy.radius, enemy.spec.color)
@@ -202,8 +219,8 @@ local function fire(enemy: Enemy, target: BasePart)
 	part.Material = Enum.Material.Neon
 	part.Color = enemy.spec.color
 	part.Size = Vector3.one * 1.5
-	-- At chest height of a standing character, so it reads as "aimed at me" from the camera.
-	part.Position = Vector3.new(origin.X, 3, origin.Z)
+	-- Low enough (Config.PROJECTILE_HEIGHT = 2) that jumping clears the shot cleanly.
+	part.Position = Vector3.new(origin.X, Config.PROJECTILE_HEIGHT, origin.Z)
 	part.Parent = folder
 	table.insert(projectiles, {
 		part = part,
@@ -217,29 +234,42 @@ end
 local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } })
 	local origin = enemy.body.Position
 	local blastRadius = enemy.spec.blastRadius
-	-- Mark dead before applying AoE so the exploder never damages itself.
+	local blastHeight = enemy.spec.blastHeight or blastRadius
+
+	-- Mark and remove before applying splash damage so the exploder never hits itself.
 	enemy.dead = true
+	grid:remove(enemy)
+	enemy.model:Destroy()
+
 	for _, target in ipairs(list) do
-		if Brain.inBlast(origin, target.root.Position, blastRadius, 0) then
+		if Hitbox.inEllipsoid(origin, target.root.Position, blastRadius, blastHeight) then
 			hurt(target.player, enemy.spec.damage)
 		end
 	end
+
 	local enemyDamage = enemy.spec.enemyDamage or enemy.spec.damage
 	if enemyDamage and enemyDamage > 0 then
-		-- Snapshot living targets in blast range so kills do not affect iteration.
-		local caught: { Enemy } = {}
-		for _, other in ipairs(enemies) do
-			if other ~= enemy and not other.dead and Brain.inBlast(origin, other.body.Position, blastRadius, other.radius) then
-				table.insert(caught, other)
+		-- Query only the spatial grid cells overlapping the blast instead of scanning all enemies.
+		local candidates = grid:queryRadius(origin.X, origin.Z, blastRadius + maxEnemyRadius)
+		for _, other in ipairs(candidates) do
+			if not other.dead then
+				local halfHeight = other.spec.size.Y / 2
+				if
+					Hitbox.inEllipsoid(
+						origin,
+						other.body.Position,
+						blastRadius + other.radius,
+						blastHeight + halfHeight
+					)
+				then
+					EnemyService.damage(other, enemyDamage)
+				end
 			end
 		end
-		for _, other in ipairs(caught) do
-			EnemyService.damage(other, enemyDamage)
-		end
 	end
-	burst(origin, blastRadius, enemy.spec.color)
+
+	burst(origin, blastRadius, enemy.spec.color, blastHeight)
 	Remotes.CombatSfx:FireAllClients("enemyExploderBlast", origin)
-	enemy.model:Destroy()
 end
 
 local function stepHeldGrab(enemy: Enemy, t: number)
@@ -319,9 +349,11 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 
 	if intent.action == "strike" then
 		Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
-		-- The reach is checked again at the moment of the strike, with a little slack: the windup
-		-- is the warning, and a player who dashed out during it has earned the miss.
-		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 then
+		-- Checked in 3D at the moment of the strike: dashing out or jumping over during the windup
+		-- both earn the miss.
+		local strikeRadius = (enemy.spec.reach + enemy.radius) * 1.2
+		local strikeHeight = enemy.spec.strikeHeight or enemy.spec.size.Y
+		if Hitbox.inEllipsoid(position, target.root.Position, strikeRadius, strikeHeight) then
 			hurt(target.player, enemy.spec.damage)
 		end
 	elseif intent.action == "grab" then
@@ -353,9 +385,10 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 		end
 	end
 
-	-- Separation, so a wave spreads into a crowd instead of stacking into one block.
+	-- Separation via the spatial grid, so a wave spreads into a crowd in O(local) rather than O(N^2).
 	local push = Vector3.zero
-	for _, other in ipairs(enemies) do
+	local neighbors = grid:queryRadius(position.X, position.Z, Config.ENEMY_SPACING, separationScratch)
+	for _, other in ipairs(neighbors) do
 		if other ~= enemy and not other.dead then
 			local apart = Vector3.new(position.X - other.body.Position.X, 0, position.Z - other.body.Position.Z)
 			local gap = apart.Magnitude
@@ -371,6 +404,7 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
 	-- PivotTo moves multi-part `.rbxmx` enemies (like EnemyGrabber) together with Body.
 	enemy.model:PivotTo(nextCFrame)
+	grid:move(enemy, moved.X, moved.Z)
 end
 
 local function stepProjectiles(list, dt: number, t: number)
@@ -384,9 +418,16 @@ local function stepProjectiles(list, dt: number, t: number)
 		end
 		if not done then
 			for _, target in ipairs(list) do
-				local offset = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
-				-- A dashing player is not hit, and the shot carries on through them.
-				if offset.Magnitude <= Config.PROJECTILE_HIT_RADIUS and hurt(target.player, shot.damage) then
+				-- Checked in 3D (X/Z + Y): a dashing or jumping player is not hit, and the shot
+				-- carries on past them.
+				if
+					Hitbox.inEllipsoid(
+						position,
+						target.root.Position,
+						Config.PROJECTILE_HIT_RADIUS,
+						Config.PROJECTILE_HIT_HEIGHT
+					) and hurt(target.player, shot.damage)
+				then
 					done = true
 					break
 				end
@@ -522,6 +563,10 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 	}
 	model.Parent = folder
 	table.insert(enemies, enemy)
+	grid:insert(enemy, body.Position.X, body.Position.Z)
+	if enemy.radius > maxEnemyRadius then
+		maxEnemyRadius = enemy.radius
+	end
 	return enemy
 end
 
@@ -579,6 +624,8 @@ function EnemyService.clear()
 		enemy.model:Destroy()
 	end
 	table.clear(enemies)
+	grid:clear()
+	maxEnemyRadius = 0
 	for _, shot in ipairs(projectiles) do
 		shot.part:Destroy()
 	end

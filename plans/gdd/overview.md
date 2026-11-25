@@ -1,10 +1,6 @@
 # The Complex
 
-Status: drafted
-
-> Replace everything in angle brackets. Delete the quoted guidance blocks as you fill each one
-> in — they are here to be deleted. [README.md](README.md) is how to write this well, and is
-> the one file in this folder that stays.
+Status: agreed
 
 ## Qué es
 
@@ -13,17 +9,17 @@ con cámara isométrica, que se juega en PC, móvil y consola. Es semi-roguelite
 desde cero y las mejoras conseguidas dentro de ella se pierden al terminar, pero la run da una
 moneda que compra mejoras permanentes.
 
-**Open:** qué lo diferencia de la comparación obvia (Hades, Diablo, otros hack&slash de Roblox).
-Pospuesto a propósito; bloquea los pilares.
+Lo que lo diferencia de otros hack&slash (Hades, Diablo u otros de Roblox) es la combinación de:
+- **Ritmo sin pausas:** ni pelear contra hordas ni elegir mejoras detiene la acción.
+- **Todos empiezan iguales:** el mismo kit base para todo el grupo; cada build se arma desde cero
+  durante la run.
+- **Acción cooperativa contra un mismo obstáculo:** de 1 a 4 jugadores peleando juntos para superar
+  a los jefes, con controles pensados desde el inicio para PC, móvil y consola.
 
 ## La idea, en una línea
 
 Hasta cuatro jugadores se abren paso a toda velocidad por The Complex, destrozando hordas en cada
 planta y volviendo más fuertes después de cada run.
-
-**Open:** esta frase la propuso Claude, no el equipo. Hasta que alguien la confirme o la
-reescriba, no es una decisión. (Que The Complex es un edificio que se recorre por plantas sí
-está decidido.)
 
 ## Secciones
 
@@ -42,24 +38,30 @@ está decidido.)
 
 | Sección | Estado | Nota |
 |---|---|---|
-| pillars | drafted | sin escribir |
-| loop | drafted | run de 5 plantas × 5 salas (valor de prueba), victoria y derrota decididas; falta duración |
-| systems | drafted | Hub, Grupos, Combate, Mejoras de run y Muerte y revivir; faltan números y enemigos |
-| progression | drafted | fuentes de moneda, árbol de estadísticas, habilidades, ventajas y productos de Robux decididos; faltan cantidades |
-| content | drafted | jefe OhMyGon y seis tipos de enemigo; falta en qué planta va cada parte del jefe |
-| ui | drafted | sin escribir |
-| technical | drafted | grupo, plataformas, cámara y entrada decididos |
-| scope | drafted | corte jugable: solo combate en una sala; v1 e hitos escritos |
+| pillars | agreed | 3 pilares con descartes y fantasía definidos |
+| loop | agreed | run de 5 plantas × 5 salas (15–20 min), momento, run y motivos de sesión cerrados; solo queda abierto escalado por abandono (hito Grupos) |
+| systems | drafted | Combate y Mejoras de run cerrados para el corto plazo; quedan abiertas decisiones de Hub, Grupos y Muerte/revivir (hitos posteriores) |
+| progression | drafted | fuentes de moneda, árbol, habilidades, ventajas y Robux decididos; faltan cantidades y detalle de nodos (hito v1) |
+| content | drafted | estructura de salas, plantas de Oh/My/Gon/OhMyGon y explosivo cerrados; faltan ataques de jefes (Oh bloquea cierre de Hito 2) y reglas del Agarrador |
+| ui | agreed | CombatHud, UpgradeChoice (banner superior 1-de-3 sin pausa) y RunResult cerrados para Corte jugable y Hito 2; pantallas de Hub/Árbol pendientes de sus hitos |
+| technical | agreed | 25 enemigos simultáneos, 30 FPS móvil / 60 FPS PC, Streaming OFF, entrada unificada y descartes técnicos cerrados; solo falta `Config.HUB_MAX_PLAYERS` (hito Grupos) |
+| scope | agreed | Corte jugable, Hito 2 (Una planta con Oh alineado con content.md), v1 e hitos cerrados |
 
 ## Preguntas abiertas
 
-- **Decidido:** hub donde cada jugador está solo y ve a los demás solo en una lista; grupos
-  abiertos o privados; la run se juega en un servidor privado por grupo. Ver Hub y Grupos en
-  [systems.md](systems.md).
-- **Open:** cuántos jugadores por servidor de hub. Bloquea la pantalla de la lista.
-- **Open:** qué lo diferencia de la comparación obvia. Bloquea los pilares.
-- **Decidido:** la alta velocidad está en el movimiento y los ataques básicos (correr, saltar,
-  dash, combo). El corte jugable usa enemigos cuerpo a cuerpo, a distancia y explosivo.
-- **Decidido:** la habilidad del corte jugable es el ataque giratorio.
-- **Open:** los números del movimiento y del combate (velocidad, dash, combo, vida, daño). No
-  bloquean el código: se empieza con valores de prueba y se ajustan jugando.
+### Corto plazo (Corte jugable → Hito 2)
+- **Open:** ataques concretos del jefe **Oh** en [content.md](content.md). Bloquea el cierre del
+  Hito 2 (no bloquea pulir el Corte jugable ni construir salas y mejoras 1-de-3).
+- **Open:** los números de ajuste del combate (velocidad, dash, combo, vida, daño). No bloquean el
+  código: se ajustan jugando en Studio.
+
+### Hitos posteriores (Run completa, Grupos y v1)
+- **Open:** ataques de My, Gon y fases 1/2 de OhMyGon ([content.md](content.md)). Bloquea Run en
+  solitario.
+- **Open:** reglas del enemigo Agarrador ([content.md](content.md)). Bloquea Run en solitario /
+  Grupos.
+- **Open:** `Config.HUB_MAX_PLAYERS`, solicitudes de grupo privado, expulsión/traspaso de líder,
+  reconexión, escalado por abandono y detalles de revivir ([systems.md](systems.md),
+  [loop.md](loop.md), [technical.md](technical.md)). Bloquea el hito de Grupos.
+- **Open:** nombre y cantidades de moneda permanente, ramas del árbol y tipo de duplicador/buffos
+  de Robux ([progression.md](progression.md)). Bloquea el hito de v1.

@@ -1,9 +1,6 @@
 # Alcance
 
-Status: drafted
-
-> The most useful section in this folder and the one most often skipped. Its job is to be
-> pointed at when somebody proposes a fifth system in week two.
+Status: agreed
 
 ## El corte jugable más pequeño
 
@@ -54,7 +51,7 @@ Lo que se publica:
 | | |
 |---|---|
 | Corte jugable | Un jugador limpia una sala contra 2-3 tipos de enemigo en PC, móvil y mando. |
-| Una planta | 5 salas seguidas con elección de 1 de 3 y el jefe Oh en la última. |
+| Una planta | 5 salas seguidas en orden fijo con elección de 1 de 3 y el jefe Oh en la sala 5 (en la run completa de 5 plantas, la Planta 1 es sin jefe y Oh va en la Planta 2; aquí se incluye a Oh para validar salas + jefe juntos). |
 | Run en solitario | 5 plantas, las tres partes del jefe y OhMyGon. Se gana y se pierde. |
 | Grupos | Hub, lista, grupos y la run en servidor privado para 1 a 4 jugadores, con revivir. |
 | v1 | Progresión permanente, guardado y productos de Robux. |

@@ -65,6 +65,10 @@ end
 -- silently wrong for a whole Studio session. The server's Lighting replicates, so a line here
 -- is self-healing where the project file alone is not.
 Lighting.GlobalShadows = true
+Lighting.Ambient = Config.LIGHTING_AMBIENT
+Lighting.OutdoorAmbient = Config.LIGHTING_OUTDOOR_AMBIENT
+Lighting.Brightness = Config.LIGHTING_BRIGHTNESS
+Lighting.ClockTime = Config.LIGHTING_CLOCK_TIME
 
 local world = WorldBuilder.build()
 

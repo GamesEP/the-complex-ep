@@ -4,12 +4,12 @@
     "$className": "DataModel",
     "Lighting": {
       "$properties": {
-        "Ambient": [0.35, 0.35, 0.4],
-        "Brightness": 2.0,
-        "ClockTime": 14.0,
+        "Ambient": [0.275, 0.306, 0.361],
+        "Brightness": 1.8,
+        "ClockTime": 14.5,
         "EnvironmentDiffuseScale": 1.0,
         "GeographicLatitude": 20.0,
-        "OutdoorAmbient": [0.45, 0.45, 0.5],
+        "OutdoorAmbient": [0.333, 0.373, 0.451],
         "Technology": "ShadowMap"
       }
     },

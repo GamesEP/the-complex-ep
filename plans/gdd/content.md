@@ -11,7 +11,7 @@ Status: drafted
 | Nombre | Tamaño | Notas |
 |---|---|---|
 | Hub | <...> | Donde aparece el jugador y arma su grupo. Cada jugador lo ve vacío. |
-| The Complex | 5 plantas × 5 salas | El edificio de la run. Ver [loop.md](loop.md). |
+| The Complex (Sala de combate) | 140 × 140 studs (`Config.ROOM_SIZE`), 5 plantas × 5 salas en v1 | Complejo industrial sci-fi (`assets/models/ComplexArena.rbxmx`): hormigón oscuro, acero, franjas de peligro amarillas, puerta blindada de sector en el muro norte, ventanal de observación en el muro oeste, tuberías elevadas, plataforma de elevador central y bordes frontales recortados para visibilidad isométrica. Ver [loop.md](loop.md). |
 
 > Maps live as tracked models under `assets/`. Spawns on one are offsets from the model's
 > pivot, never world positions — see [CLAUDE.md](../../CLAUDE.md#two-kinds-of-world-and-which-rule-applies).

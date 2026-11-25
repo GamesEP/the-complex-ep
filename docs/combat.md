@@ -37,7 +37,7 @@ Each action is predicted on the client and confirmed by the server:
 
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
-| Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, draws the slash, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
+| Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, plays swing anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
 | Spin | Draws the ring, fires `Spin()` | Checks the cooldown, sets `SpinReadyAt`, damages everything in the radius |
 
@@ -79,6 +79,12 @@ dash a skill rather than luck.
 
 **The telegraph is the material.** During a windup or a fuse the body turns Neon. A strike checks
 reach again at the moment it lands, so dashing out during the windup always works.
+
+**Exploders hurt nearby enemies too.** When an exploder detonates, `EnemyService` applies
+`Config.ENEMY_KINDS.exploder.enemyDamage` to every other living enemy inside `Brain.inBlast`
+(`blastRadius + other.radius`), turning kiting an exploder into a crowd into a tactical advantage.
+Enemies killed by the blast still go through `EnemyService.damage` -> `kill` and roll drops; the
+self-destructing exploder itself does not.
 
 **Separation** pushes enemies apart inside `ENEMY_SPACING`, so a wave reads as a crowd.
 

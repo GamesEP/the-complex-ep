@@ -120,6 +120,14 @@ function Brain.step(kindName: string, kind: Kind, state: State, distance: number
 	return behaviour(kind, state, distance, now)
 end
 
+-- Flat (X/Z) blast reach check shared between player hits and enemy friendly-fire hits.
+function Brain.inBlast(origin: Vector3, target: Vector3, blastRadius: number, targetRadius: number): boolean
+	local dx = target.X - origin.X
+	local dz = target.Z - origin.Z
+	local reach = blastRadius + math.max(targetRadius, 0)
+	return dx * dx + dz * dz <= reach * reach
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -181,6 +189,12 @@ function Brain.selfTest()
 
 	local _, unknown = Brain.step("nonsense", {}, Brain.initial(0), 1, 1)
 	assert(is(unknown.move, "hold") and is(unknown.action, nil), "an unknown kind stands still")
+
+	-- Blast radius check (flat X/Z, includes target body radius).
+	local blastOrigin = Vector3.new(0, 2, 0)
+	assert(Brain.inBlast(blastOrigin, Vector3.new(9, 2, 0), 10, 0), "target inside blast radius is hit")
+	assert(Brain.inBlast(blastOrigin, Vector3.new(11.5, 8, 0), 10, 2), "body radius extends edge hit and ignores Y")
+	assert(not Brain.inBlast(blastOrigin, Vector3.new(13, 2, 0), 10, 2), "target outside blast + radius is safe")
 end
 
 return Brain

@@ -176,15 +176,29 @@ end
 
 local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } })
 	local origin = enemy.body.Position
+	local blastRadius = enemy.spec.blastRadius
+	-- Mark dead before applying AoE so the exploder never damages itself.
+	enemy.dead = true
 	for _, target in ipairs(list) do
-		local offset = Vector3.new(target.root.Position.X - origin.X, 0, target.root.Position.Z - origin.Z)
-		if offset.Magnitude <= enemy.spec.blastRadius then
+		if Brain.inBlast(origin, target.root.Position, blastRadius, 0) then
 			hurt(target.player, enemy.spec.damage)
 		end
 	end
-	burst(origin, enemy.spec.blastRadius, enemy.spec.color)
+	local enemyDamage = enemy.spec.enemyDamage or enemy.spec.damage
+	if enemyDamage and enemyDamage > 0 then
+		-- Snapshot living targets in blast range so kills do not affect iteration.
+		local caught: { Enemy } = {}
+		for _, other in ipairs(enemies) do
+			if other ~= enemy and not other.dead and Brain.inBlast(origin, other.body.Position, blastRadius, other.radius) then
+				table.insert(caught, other)
+			end
+		end
+		for _, other in ipairs(caught) do
+			EnemyService.damage(other, enemyDamage)
+		end
+	end
+	burst(origin, blastRadius, enemy.spec.color)
 	Remotes.CombatSfx:FireAllClients("enemyExploderBlast", origin)
-	enemy.dead = true
 	enemy.model:Destroy()
 end
 

@@ -18,13 +18,6 @@ local SoundPlayer = require(script.Parent.SoundPlayer)
 
 local Effects = {}
 
--- One colour per hit of the combo, brightest on the heavy last hit.
-local SLASH_COLORS = {
-	Color3.fromRGB(210, 230, 255),
-	Color3.fromRGB(170, 210, 255),
-	Color3.fromRGB(255, 220, 120),
-}
-
 local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.PartType?): Part
 	local part = Instance.new("Part")
 	part.Anchored = true
@@ -45,18 +38,14 @@ local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.P
 end
 
 -- Plays only the local attack pose (used when a lunge starts so the windup plays during the
--- step-in and the slash visual spawns at the landing position).
+-- step-in and the attack audio fires at impact).
 function Effects.attackWindup(step: number)
 	PlayerAnimator.playLocal("attack", step)
 end
 
-function Effects.slash(root: BasePart, direction: Vector3, step: number, animStarted: boolean?)
-	local reach = Config.ATTACK_RANGE
-	local position = root.Position + direction * (reach / 2)
-	local cframe = CFrame.lookAt(position, position + direction)
-	local part = ghost(Vector3.new(reach * 1.1, 0.3, reach * 0.55), cframe, SLASH_COLORS[step] or SLASH_COLORS[1])
-	TweenService:Create(part, TweenInfo.new(0.12), { Transparency = 1 }):Play()
-	Debris:AddItem(part, 0.15)
+-- No placeholder block hitbox visual: the equipped sword and PlayerAnimator combo pose carry
+-- the swing visually.
+function Effects.slash(_root: BasePart, _direction: Vector3, step: number, animStarted: boolean?)
 	-- Local player's own kit plays non-spatially (nil position) so it is always crisp regardless
 	-- of camera distance or respawn timing; teammates receive a 3D broadcast from CombatService.
 	SoundPlayer.play(CombatAudio.attackCue(step, Config.COMBO_HITS), nil, step)

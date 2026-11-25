@@ -53,7 +53,7 @@ Cada tipo obliga al grupo a hacer algo distinto; una sala se diseña mezclándol
 | A distancia | Dispara desde lejos. | Ir a por él o cubrirse. |
 | En área | Ataca una zona marcada en el suelo. | Salir de la zona a tiempo. |
 | Por contacto | Hace daño al tocarlo. | No chocar con él; atacarlo sin pegarse. |
-| Explosivo | Se acerca y explota. Es el más peligroso. | Matarlo de lejos o alejarse antes de que explote. |
+| Explosivo | Se acerca y explota. Su explosión daña tanto a jugadores cercanos como a otros enemigos dentro del radio (`Config.ENEMY_KINDS.exploder.enemyDamage`). | Matarlo de lejos, alejarse antes de que explote o atraerlo hacia un grupo de enemigos para usar su explosión a favor. |
 | Agarrador | Agarra a un jugador y lo inmoviliza. | Pulsar una tecla repetidamente para liberarse; los compañeros pueden liberarlo atacando al agarrador. |
 
 Los números de cada tipo (vida, velocidad, daño, alcance, tiempos) están en
@@ -72,5 +72,4 @@ suman a la vez, y la que llegue antes libera.) Bloquea el agarrador.
 **Open:** cuántas pulsaciones hacen falta para liberarse (`Config.GRAB_ESCAPE_PRESSES`), y qué
 pasa si nadie lo libera (¿daño continuo?). Bloquea el agarrador.
 
-**Open:** el explosivo, ¿daña también a otros enemigos? ¿Y daña a todo el grupo o solo al que
-tiene cerca? Bloquea el explosivo.
+- **Fuego amigo del explosivo:** al detonar, daña a cualquier jugador dentro de `blastRadius` y también a los demás enemigos dentro de `blastRadius + enemy.radius` (`Config.ENEMY_KINDS.exploder.enemyDamage`), permitiendo al jugador usar su explosión como ventaja táctica. Los enemigos eliminados por la explosión pueden soltar drops normalmente.

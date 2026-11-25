@@ -22,6 +22,7 @@ export type EnemyKind = {
 	trigger: number?,
 	fuse: number?,
 	blastRadius: number?,
+	enemyDamage: number?,
 }
 
 Config.ENEMY_KINDS = {
@@ -48,7 +49,8 @@ Config.ENEMY_KINDS = {
 		projectileLife = 2.5,
 		damage = 8,
 	},
-	-- The dangerous one: fast, fragile, and lethal if ignored.
+	-- The dangerous one: fast, fragile, and lethal if ignored — but its blast also damages
+	-- nearby enemies (`enemyDamage`), letting players kite it into a pack as a tactical tool.
 	exploder = {
 		health = 15,
 		speed = 20,
@@ -58,6 +60,7 @@ Config.ENEMY_KINDS = {
 		fuse = 0.8,
 		blastRadius = 10,
 		damage = 30,
+		enemyDamage = 30,
 	},
 } :: { [string]: EnemyKind }
 

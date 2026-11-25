@@ -31,6 +31,11 @@ return {
 	Dash = remote("Dash"),
 	Spin = remote("Spin"),
 
+	-- Server -> client combat sound cues (enemy attacks, explosions, hit confirms, co-op swings).
+	-- No Contract entry: the contract governs what a client is allowed to send, not server
+	-- broadcasts (docs/net-contract.md).
+	CombatSfx = remote("CombatSfx"),
+
 	-- Faults a client saw and the server could not. Client -> server, and the one remote whose
 	-- payload outlives the session, so it is validated twice — once by the contract and once
 	-- field by field in LogSink.

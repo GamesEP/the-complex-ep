@@ -6,6 +6,7 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 
 | | |
 |---|---|
+| `shared/features/combat/CombatAudio` | Pure: combo cue selection, uploaded-vs-fallback id resolution, pitch variation. |
 | `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius. Both realms call it. |
 | `shared/features/enemies/Brain` | Pure: what an enemy does each frame, as a state machine. |
 | `shared/features/enemies/Waves` | Pure: what a wave contains, where it spawns, keeping things inside the room. |
@@ -14,10 +15,11 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 | `server/features/enemies/WaveDirector` | Runs the waves; resets the room when everybody is dead. |
 | `client/features/camera/IsoCamera` | The isometric camera. |
 | `client/features/combat/CombatInput` | Attack, dash and spin on every input device. |
-| `client/features/combat/Effects` | The local player's own swing, dash and spin visuals. |
+| `client/features/combat/Effects` | The local player's own swing, dash and spin visuals and local attack SFX. |
+| `client/features/combat/SoundPlayer` | 3D spatial combat audio player, preloading, and `CombatSfx` listener. |
 | `client/features/combat/ui/CombatHud` | Health, cooldowns, wave. |
 
-Every number is in `Config/Combat.luau` and `Config/Enemies.luau`.
+Every number is in `Config/Combat.luau`, `Config/Enemies.luau` and `Config/Audio.luau`.
 
 ## Who decides what
 
@@ -112,9 +114,32 @@ within `AIM_ASSIST_RANGE`, then falls back to the movement direction, then the f
 Shift lock is turned off per player (`DevEnableMouseLock = false`): it toggles on Left Shift,
 which is the dash.
 
+## Audio
+
+Combat sound effects live in `Config/Audio.luau` (`Config.SFX`) and are played by
+`client/features/combat/SoundPlayer`:
+
+- **Local player attack and spin** play immediately in `Effects.slash` / `Effects.spin` with zero
+  round-trip delay, while `CombatService` broadcasts them only to *other* players so co-op
+  teammates hear them without double-playing for the attacker. Hit confirmation (`playerHit`)
+  broadcasts once per swing that connected with at least one enemy.
+- **Enemy cues** (`enemyMeleeWindup`, `enemyMeleeStrike`, `enemyRangedFire`, `enemyExploderFuse`,
+  `enemyExploderBlast`) are broadcast from `EnemyService` over the server→client `CombatSfx`
+  remote (no `Contract.luau` entry: the contract governs client→server remotes only).
+- **3D spatial anchors live on `workspace.Terrain`**, not inside enemy models: an exploder
+  destroys its `Model` on the frame it detonates, which would cut off the blast tail if the
+  `Sound` were parented to its `Body`. Each temporary `Attachment` cleans up on `Sound.Ended`,
+  after `maxDuration` (with a short fade), or at `Config.SFX_MAX_CLEANUP_SECONDS`.
+- **Custom `.ogg` files vs Studio fallbacks:** every cue ships a custom Vorbis file under
+  `assets/` (`player-attack.ogg`, `player-attack-heavy.ogg`, `player-spin.ogg`, `player-hit.ogg`,
+  `enemy-melee-windup.ogg`, `enemy-melee-strike.ogg`, `enemy-ranged-fire.ogg`,
+  `enemy-exploder-fuse.ogg`, `enemy-exploder-blast.ogg`). `CombatAudio.resolveId` prefers
+  `Assets.id(spec.file)` once uploaded via `make sync-assets`, and falls back to a verified
+  public Creator Store `fallbackId` so unpublished local Studio sessions are audible immediately.
+
 ## What is not verified offline
 
-`make test` covers `Melee`, `Brain` and `Waves`. Everything that needs a DataModel — the camera,
-the dash's feel, the touch buttons' placement, enemies moving, the HUD — only shows up in Studio.
+`make test` covers `CombatAudio`, `Melee`, `Brain` and `Waves`. Everything that needs a DataModel — the camera,
+the dash's feel, the touch buttons' placement, enemies moving, 3D audio playback and volume balance, the HUD — only shows up in Studio.
 The touch buttons in particular sit where `ContextActionService` puts them by default; check them
 with phone emulation before relying on them.

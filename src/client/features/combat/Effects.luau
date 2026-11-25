@@ -9,7 +9,11 @@ local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared").core.Config)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.core.Config)
+local CombatAudio = require(Shared.features.combat.CombatAudio)
+
+local SoundPlayer = require(script.Parent.SoundPlayer)
 
 local Effects = {}
 
@@ -46,6 +50,7 @@ function Effects.slash(root: BasePart, direction: Vector3, step: number)
 	local part = ghost(Vector3.new(reach * 1.1, 0.3, reach * 0.55), cframe, SLASH_COLORS[step] or SLASH_COLORS[1])
 	TweenService:Create(part, TweenInfo.new(0.12), { Transparency = 1 }):Play()
 	Debris:AddItem(part, 0.15)
+	SoundPlayer.play(CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
 end
 
 function Effects.spin(root: BasePart)
@@ -55,6 +60,7 @@ function Effects.spin(root: BasePart)
 	local part = ghost(Vector3.new(0.4, 4, 4), cframe, Color3.fromRGB(255, 200, 90), Enum.PartType.Cylinder)
 	TweenService:Create(part, TweenInfo.new(0.2), { Size = Vector3.new(0.4, diameter, diameter), Transparency = 1 }):Play()
 	Debris:AddItem(part, 0.25)
+	SoundPlayer.play("playerSpin", root.Position)
 end
 
 function Effects.dash(root: BasePart)

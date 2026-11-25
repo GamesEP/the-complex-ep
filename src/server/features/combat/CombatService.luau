@@ -14,6 +14,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Remotes = require(Shared.core.Net.Remotes)
+local CombatAudio = require(Shared.features.combat.CombatAudio)
 local Melee = require(Shared.features.combat.Melee)
 
 local CombatService = {}
@@ -36,6 +38,16 @@ local swings: { [Player]: { step: number, lastAt: number } } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
+end
+
+-- The triggering client already played its own predicted swing/spin locally with zero latency;
+-- only teammates need the server broadcast so co-op attacks are audible without double-playing.
+local function broadcastOthers(source: Player, cue: string, position: Vector3, step: number?)
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= source then
+			Remotes.CombatSfx:FireClient(other, cue, position, step)
+		end
+	end
 end
 
 local function rootOf(player: Player): BasePart?
@@ -136,10 +148,16 @@ function CombatService.attack(player: Player, aim: Vector3)
 		return
 	end
 	local damage = Config.COMBO_DAMAGE[step] or Config.COMBO_DAMAGE[1]
+	broadcastOthers(player, CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
+	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
+			hitAt = hitAt or enemy.body.Position
 			enemies.damage(enemy, damage)
 		end
+	end
+	if hitAt then
+		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
 	end
 end
 
@@ -171,10 +189,16 @@ function CombatService.spin(player: Player)
 		return
 	end
 	player:SetAttribute("SpinReadyAt", t + Config.SPIN_COOLDOWN)
+	broadcastOthers(player, "playerSpin", root.Position)
+	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
+			hitAt = hitAt or enemy.body.Position
 			enemies.damage(enemy, Config.SPIN_DAMAGE)
 		end
+	end
+	if hitAt then
+		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
 	end
 end
 

@@ -18,6 +18,7 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Remotes = require(Shared.core.Net.Remotes)
 local Brain = require(Shared.features.enemies.Brain)
 local Waves = require(Shared.features.enemies.Waves)
 
@@ -165,6 +166,7 @@ local function fire(enemy: Enemy, target: BasePart)
 		expiresAt = now() + enemy.spec.projectileLife,
 		damage = enemy.spec.damage,
 	})
+	Remotes.CombatSfx:FireAllClients("enemyRangedFire", origin)
 end
 
 local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } })
@@ -176,6 +178,7 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 		end
 	end
 	burst(origin, enemy.spec.blastRadius, enemy.spec.color)
+	Remotes.CombatSfx:FireAllClients("enemyExploderBlast", origin)
 	enemy.dead = true
 	enemy.model:Destroy()
 end
@@ -193,9 +196,15 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	enemy.state = state
 	if state.phase ~= before then
 		setTelegraph(enemy, state.phase == "windup" or state.phase == "fuse")
+		if state.phase == "windup" then
+			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+		elseif state.phase == "fuse" then
+			Remotes.CombatSfx:FireAllClients("enemyExploderFuse", position)
+		end
 	end
 
 	if intent.action == "strike" then
+		Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
 		-- The reach is checked again at the moment of the strike, with a little slack: the windup
 		-- is the warning, and a player who dashed out during it has earned the miss.
 		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 then

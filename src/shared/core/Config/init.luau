@@ -13,6 +13,7 @@
 ]]
 
 local PARTS = {
+	"Audio",
 	"Combat",
 	"Diagnostics",
 	"Enemies",

@@ -21,6 +21,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Environment = require(Shared.core.Environment)
+local CombatAudio = require(Shared.features.combat.CombatAudio)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
 local Waves = require(Shared.features.enemies.Waves)
@@ -45,6 +46,7 @@ LogSink.start()
 -- moment somebody is about to find out they broke something. The same assertions run offline
 -- under `make test`, which is where they are cheap enough to run on every save.
 if RunService:IsStudio() then
+	CombatAudio.selfTest()
 	Melee.selfTest()
 	Brain.selfTest()
 	Waves.selfTest()

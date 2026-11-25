@@ -18,12 +18,14 @@ local BuildStamp = require(Client.features.environment.ui.BuildStamp)
 local CombatHud = require(Client.features.combat.ui.CombatHud)
 local CombatInput = require(Client.features.combat.CombatInput)
 local IsoCamera = require(Client.features.camera.IsoCamera)
+local SoundPlayer = require(Client.features.combat.SoundPlayer)
 
 -- Before anything builds a ScreenGui: every panel asks Layout how much room it has and mounts
 -- inside the UIScale it hands out, so it has to know the screen first.
 Layout.start()
 
 IsoCamera.start()
+SoundPlayer.start()
 CombatInput.start()
 
 -- Everywhere but production, so a screenshot always says which experience it came from. The

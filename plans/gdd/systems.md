@@ -94,9 +94,16 @@ servidor de run.
 
 **Reglas:**
 
-- Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash y el ataque básico
+- Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash, **bloqueo / parry** y el ataque básico
   que encadena un combo. Son los que definen la alta velocidad del juego, así que su rapidez y
   fluidez son lo primero que se ajusta.
+- **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
+  `"Bloquear"`) reduce el daño entrante en un 70% (`Config.BLOCK_DAMAGE_REDUCTION`) a cambio de
+  moverse más despacio (`Config.BLOCK_MOVE_MULTIPLIER`). Si se levanta la guardia justo antes de un
+  impacto (`Config.PARRY_WINDOW`), ejecuta un **Parry**: anula todo el daño, aturde a enemigos
+  cuerpo a cuerpo (`Config.PARRY_STUN_SECONDS`) y **devuelve los disparos de enemigos a distancia**
+  hacia los enemigos a mayor velocidad (`Config.PARRY_PROJECTILE_DAMAGE`). Soltar el bloqueo tiene
+  una breve recarga (`Config.BLOCK_COOLDOWN`) para evitar spam infinito de parry.
 - Las habilidades son de dos tipos:
   - **Movimientos básicos mejorados:** por ejemplo, dash doble o doble salto.
   - **Tipos de ataque distintos:** por ejemplo, ataque giratorio.
@@ -122,6 +129,10 @@ servidor de run.
     segundos (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`).
   - **Buff de velocidad (`speed`):** aumenta la velocidad de movimiento durante unos segundos
     (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`).
+- **Buff de defensa en el mapa (`defense`):** cada cierto tiempo durante el combate
+  (`Config.DEFENSE_SPAWN_INTERVAL`) aparece un escudo recogible en el suelo (máximo 1 activo a la
+  vez) que otorga un **50% de defensa** (`Config.BUFF_DEFENSE_REDUCTION`) durante
+  `Config.BUFF_DEFENSE_DURATION` segundos, acumulable con el bloqueo.
 
 **Números:**
 
@@ -142,6 +153,8 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Curación de drop | +25 vida (`Config.DROP_HEAL_AMOUNT`) |
 | Buff de ataque | ×1,5 daño durante 10 s (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`) |
 | Buff de velocidad | ×1,35 velocidad durante 10 s (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`) |
+| Buff de defensa (mapa) | 50% de reducción de daño durante 12 s; aparece cada 22 s (`Config.BUFF_DEFENSE_REDUCTION`, `Config.BUFF_DEFENSE_DURATION`, `Config.DEFENSE_SPAWN_INTERVAL`) |
+| Bloqueo y Parry | 70% de reducción al bloquear (`Config.BLOCK_DAMAGE_REDUCTION`), ventana de Parry de 0,25 s (`Config.PARRY_WINDOW`), disparo reflejado 25 de daño (`Config.PARRY_PROJECTILE_DAMAGE`), recarga al soltar 0,45 s (`Config.BLOCK_COOLDOWN`) |
 | Habilidades por jugador | <n> (`Config.ABILITY_SLOTS`) |
 | Habilidades ofrecidas al empezar la run | 3 (`Config.START_ABILITY_CHOICES`) |
 

@@ -298,6 +298,71 @@ local function buildDropSpeed(): any
 	return model
 end
 
+-- Royal blue & gold shield emblem: periodic 50% defense buff pickup.
+local function buildDropDefense(): any
+	local model = Instance.new("Model")
+	model.Name = "DropDefense"
+	local royal = Color3.fromRGB(75, 145, 255)
+	local gold = Color3.fromRGB(255, 215, 95)
+
+	local core = makePart({
+		name = "Core",
+		size = Vector3.new(1.65, 1.85, 0.45),
+		cframe = CFrame.new(0, 0.1, 0),
+		color = royal,
+		material = Enum.Material.Neon,
+		anchored = true,
+	})
+	core.Parent = model
+	addLight(core, royal)
+
+	local bottomTip = makePart({
+		name = "BottomTip",
+		size = Vector3.new(1.15, 1.15, 0.42),
+		cframe = CFrame.new(0, -0.75, 0) * CFrame.Angles(0, 0, math.rad(45)),
+		color = royal,
+		material = Enum.Material.Neon,
+		anchored = true,
+	})
+	bottomTip.Parent = model
+
+	local trim = makePart({
+		name = "Trim",
+		size = Vector3.new(0.42, 2.05, 0.56),
+		cframe = CFrame.new(0, -0.05, 0),
+		color = gold,
+		material = Enum.Material.Neon,
+		anchored = true,
+	})
+	trim.Parent = model
+
+	local crossTrim = makePart({
+		name = "CrossTrim",
+		size = Vector3.new(1.8, 0.38, 0.56),
+		cframe = CFrame.new(0, 0.2, 0),
+		color = gold,
+		material = Enum.Material.Neon,
+		anchored = true,
+	})
+	crossTrim.Parent = model
+
+	local aura = makePart({
+		name = "Aura",
+		size = Vector3.new(2.9, 2.9, 2.9),
+		cframe = CFrame.new(0, 0, 0),
+		color = royal,
+		material = Enum.Material.Neon,
+		transparency = 0.74,
+		shape = Enum.PartType.Ball,
+		anchored = true,
+	})
+	aura.Parent = model
+
+	model.PrimaryPart = core
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
 -- Tall violet grabber enemy with outstretched glowing claws facing -Z (CFrame.lookAt forward).
 local function buildEnemyGrabber(): any
 	local model = Instance.new("Model")
@@ -375,4 +440,5 @@ writeModel("TestSword.rbxmx", buildTestSword())
 writeModel("DropHeal.rbxmx", buildDropHeal())
 writeModel("DropDamage.rbxmx", buildDropDamage())
 writeModel("DropSpeed.rbxmx", buildDropSpeed())
+writeModel("DropDefense.rbxmx", buildDropDefense())
 writeModel("EnemyGrabber.rbxmx", buildEnemyGrabber())

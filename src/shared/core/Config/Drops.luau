@@ -18,6 +18,7 @@ Config.DROP_MODELS = {
 	heal = "DropHeal",
 	damage = "DropDamage",
 	speed = "DropSpeed",
+	defense = "DropDefense",
 }
 
 -- Pickup geometry and lifetime in the room.
@@ -31,6 +32,11 @@ Config.BUFF_DAMAGE_MULTIPLIER = 1.5
 Config.BUFF_DAMAGE_DURATION = 10
 Config.BUFF_SPEED_MULTIPLIER = 1.35
 Config.BUFF_SPEED_DURATION = 10
+-- Periodic map defense pickup: halves incoming damage (50% reduction) for its duration.
+Config.BUFF_DEFENSE_REDUCTION = 0.50
+Config.BUFF_DEFENSE_DURATION = 12
+Config.DEFENSE_SPAWN_INTERVAL = 22
+Config.DEFENSE_SPAWN_INSET = 12
 
 -- Test sword model name under ReplicatedStorage.Models, equipped on spawn during the combat slice.
 Config.TEST_SWORD_MODEL = "TestSword"

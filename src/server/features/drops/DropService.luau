@@ -28,9 +28,11 @@ type ActiveDrop = {
 
 local WALL_MARGIN = 4
 
+local worldRef: Instance = nil :: any
 local folder: Folder = nil :: any
 local onPickup: (Player, Drops.DropKind) -> boolean = nil :: any
 local active: { ActiveDrop } = {}
+local nextDefenseSpawnAt = 0
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -49,11 +51,43 @@ local function templateFor(kind: Drops.DropKind): Model?
 	return nil
 end
 
+local function hasActiveKind(kind: Drops.DropKind): boolean
+	for _, drop in ipairs(active) do
+		if drop.kind == kind then
+			return true
+		end
+	end
+	return false
+end
+
+local function randomRoomPosition(inset: number): Vector3
+	local halfX = math.max(Config.ROOM_SIZE.X / 2 - inset, 4)
+	local halfZ = math.max(Config.ROOM_SIZE.Y / 2 - inset, 4)
+	local x = (math.random() * 2 - 1) * halfX
+	local z = (math.random() * 2 - 1) * halfZ
+	return Vector3.new(x, Config.DROP_HEIGHT, z)
+end
+
 local function step()
+	local t = now()
+	-- Spawn the 50% defense buff periodically across the map while a fight is active (at most one
+	-- on the floor at a time so pickups never pile up).
+	if worldRef and worldRef:GetAttribute("RoomState") == "fighting" then
+		if nextDefenseSpawnAt == 0 then
+			nextDefenseSpawnAt = t + Config.DEFENSE_SPAWN_INTERVAL
+		elseif t >= nextDefenseSpawnAt then
+			nextDefenseSpawnAt = t + Config.DEFENSE_SPAWN_INTERVAL
+			if not hasActiveKind("defense") then
+				DropService.spawn("defense", randomRoomPosition(Config.DEFENSE_SPAWN_INSET))
+			end
+		end
+	else
+		nextDefenseSpawnAt = 0
+	end
+
 	if #active == 0 then
 		return
 	end
-	local t = now()
 	local players = Players:GetPlayers()
 
 	for i = #active, 1, -1 do
@@ -136,9 +170,11 @@ function DropService.clear()
 		end
 	end
 	table.clear(active)
+	nextDefenseSpawnAt = 0
 end
 
 function DropService.start(dependencies: { world: Instance, onPickup: (Player, Drops.DropKind) -> boolean })
+	worldRef = dependencies.world
 	onPickup = dependencies.onPickup
 	folder = Instance.new("Folder")
 	folder.Name = "Drops"

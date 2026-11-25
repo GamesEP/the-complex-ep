@@ -12,10 +12,11 @@ local Config = require(script.Parent.Parent.Parent.core.Config)
 
 local Drops = {}
 
-export type DropKind = "heal" | "damage" | "speed"
+export type DropKind = "heal" | "damage" | "speed" | "defense"
 
--- Deterministic order so weighted rolls do not depend on `pairs` iteration order.
+-- Deterministic order for enemy-kill drops (defense spawns periodically on the map instead).
 local KINDS: { DropKind } = { "heal", "damage", "speed" }
+local ALL_KINDS: { DropKind } = { "heal", "damage", "speed", "defense" }
 
 -- Rolls whether a defeated enemy drops an item and which kind. `chanceRoll` and `kindRoll` are
 -- uniform values in [0, 1). Returns nil when `chanceRoll >= dropChance`.
@@ -79,6 +80,14 @@ function Drops.moveSpeed(baseSpeed: number, buffUntil: any, now: number, multipl
 	return baseSpeed
 end
 
+-- Damage intake factor while `now < buffUntil` (e.g. 0.5 for 50% defense), otherwise 1.
+function Drops.defenseFactor(buffUntil: any, now: number, reduction: number): number
+	if type(buffUntil) == "number" and now < buffUntil then
+		return math.clamp(1 - reduction, 0, 1)
+	end
+	return 1
+end
+
 -- Remaining fraction in [0, 1] for HUD buff bars; 0 once expired.
 function Drops.buffRemaining(buffUntil: any, duration: number, now: number): number
 	if type(buffUntil) ~= "number" or duration <= 0 then
@@ -121,13 +130,15 @@ function Drops.selfTest()
 
 	assert(math.abs(Drops.moveSpeed(26, 20, 15, 1.35) - 26 * 1.35) < 1e-6, "active speed buff boosts WalkSpeed")
 	assert(Drops.moveSpeed(26, 20, 21, 1.35) == 26, "expired speed buff restores base WalkSpeed")
+	assert(math.abs(Drops.defenseFactor(20, 15, 0.50) - 0.5) < 1e-6, "active 50% defense buff halves damage")
+	assert(Drops.defenseFactor(20, 20, 0.50) == 1, "expired defense buff returns 1")
 
 	-- HUD remaining fraction.
 	assert(math.abs(Drops.buffRemaining(20, 10, 15) - 0.5) < 1e-6, "halfway through buff reports 0.5")
 	assert(Drops.buffRemaining(20, 10, 25) == 0, "expired buff reports 0")
 
 	-- Every kind has a configured model name.
-	for _, kind in ipairs(KINDS) do
+	for _, kind in ipairs(ALL_KINDS) do
 		assert(type(Config.DROP_MODELS[kind]) == "string" and #Config.DROP_MODELS[kind] > 0, `missing DROP_MODELS.{kind}`)
 	end
 end

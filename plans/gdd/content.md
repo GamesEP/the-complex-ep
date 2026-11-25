@@ -70,7 +70,8 @@ salvarte. En los tres controles (PC, mando y móvil) se escapa pulsando el mismo
   progreso de liberación (`Config.GRAB_ALLY_HIT_PROGRESS`); matarlo libera de inmediato.
 - **Escape y castigo:** hacen falta **10 pulsaciones** (`Config.GRAB_ESCAPE_PRESSES`) para soltarse,
   y mientras está sujeto pierde **8 HP/s** (`Config.ENEMY_KINDS.grabber.grabDamagePerSecond`). Mientras
-  el jugador está atrapado, **el resto de enemigos lo ignoran** (en solitario esperan y en cooperativo
-  cambian de objetivo a los compañeros libres) para evitar muertes instantáneas injustas. Tras
+  el jugador está atrapado, **el resto de enemigos lo ignoran sin quedarse quietos** (en cooperativo
+  siguen persiguiendo a los demás jugadores libres; en solitario merodean por la sala esquivando al
+  jugador atrapado) para evitar muertes instantáneas injustas sin congelar la escena. Tras
   liberarse hay 1 s de inmunidad (`Config.GRAB_IMMUNITY_SECONDS`) y el agarrador entra en `recover`.
 - **Fuego amigo del explosivo:** al detonar, daña a cualquier jugador dentro de `blastRadius` y también a los demás enemigos dentro de `blastRadius + enemy.radius` (`Config.ENEMY_KINDS.exploder.enemyDamage`), permitiendo al jugador usar su explosión como ventaja táctica. Los enemigos eliminados por la explosión pueden soltar drops normalmente.

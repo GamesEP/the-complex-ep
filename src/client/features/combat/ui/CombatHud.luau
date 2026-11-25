@@ -30,8 +30,10 @@ local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState" }
 local HEALTH_COLOR = Color3.fromRGB(90, 210, 120)
 local DASH_COLOR = Color3.fromRGB(120, 190, 255)
 local SPIN_COLOR = Color3.fromRGB(255, 200, 90)
+local BLOCK_COLOR = Color3.fromRGB(190, 210, 240)
 local DAMAGE_BUFF_COLOR = Color3.fromRGB(255, 105, 60)
 local SPEED_BUFF_COLOR = Color3.fromRGB(70, 225, 255)
+local DEFENSE_BUFF_COLOR = Color3.fromRGB(75, 145, 255)
 local GRAB_COLOR = Color3.fromRGB(235, 85, 225)
 local GRAB_WARN_COLOR = Color3.fromRGB(255, 195, 60)
 
@@ -90,6 +92,7 @@ local function CombatHud(props)
 
 	local health = hooks.useAttribute(player, "Health") or 0
 	local maxHealth = hooks.useAttribute(player, "MaxHealth") or Config.PLAYER_MAX_HEALTH
+	local blocking = hooks.useAttribute(player, "Blocking") == true
 	local grabbed = hooks.useAttribute(player, "Grabbed") == true
 	local grabProgress = hooks.useAttribute(player, "GrabProgress") or 0
 	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
@@ -98,15 +101,19 @@ local function CombatHud(props)
 	-- Per frame, so bindings: React writes the bars' sizes without re-rendering the screen.
 	local dashCharge, setDashCharge = React.useBinding(1)
 	local spinCharge, setSpinCharge = React.useBinding(1)
+	local blockCharge, setBlockCharge = React.useBinding(1)
 	local damageBuff, setDamageBuff = React.useBinding(0)
 	local speedBuff, setSpeedBuff = React.useBinding(0)
+	local defenseBuff, setDefenseBuff = React.useBinding(0)
 	local grabWarn, setGrabWarn = React.useBinding(false)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
 		setDashCharge(charge(player:GetAttribute("DashReadyAt"), Config.DASH_COOLDOWN, now))
 		setSpinCharge(charge(player:GetAttribute("SpinReadyAt"), Config.SPIN_COOLDOWN, now))
+		setBlockCharge(charge(player:GetAttribute("BlockReadyAt"), Config.BLOCK_COOLDOWN, now))
 		setDamageBuff(Drops.buffRemaining(player:GetAttribute("DamageBuffUntil"), Config.BUFF_DAMAGE_DURATION, now))
 		setSpeedBuff(Drops.buffRemaining(player:GetAttribute("SpeedBuffUntil"), Config.BUFF_SPEED_DURATION, now))
+		setDefenseBuff(Drops.buffRemaining(player:GetAttribute("DefenseBuffUntil"), Config.BUFF_DEFENSE_DURATION, now))
 		local warnUntil = player:GetAttribute("GrabWarningUntil")
 		setGrabWarn(type(warnUntil) == "number" and now < warnUntil and player:GetAttribute("Grabbed") ~= true)
 	end)
@@ -160,9 +167,16 @@ local function CombatHud(props)
 				fill = fillOf(spinCharge),
 				text = "Giro",
 			}),
+			Block = React.createElement(Bar, {
+				name = "Block",
+				order = 4,
+				color = if blocking then Color3.fromRGB(255, 225, 110) else BLOCK_COLOR,
+				fill = fillOf(blockCharge),
+				text = if blocking then "Bloqueando..." else "Bloquear / Parry",
+			}),
 			DamageBuff = React.createElement(Bar, {
 				name = "DamageBuff",
-				order = 4,
+				order = 5,
 				color = DAMAGE_BUFF_COLOR,
 				fill = fillOf(damageBuff),
 				visible = activeOf(damageBuff),
@@ -170,11 +184,19 @@ local function CombatHud(props)
 			}),
 			SpeedBuff = React.createElement(Bar, {
 				name = "SpeedBuff",
-				order = 5,
+				order = 6,
 				color = SPEED_BUFF_COLOR,
 				fill = fillOf(speedBuff),
 				visible = activeOf(speedBuff),
 				text = `Velocidad +{math.round((Config.BUFF_SPEED_MULTIPLIER - 1) * 100)}%`,
+			}),
+			DefenseBuff = React.createElement(Bar, {
+				name = "DefenseBuff",
+				order = 7,
+				color = DEFENSE_BUFF_COLOR,
+				fill = fillOf(defenseBuff),
+				visible = activeOf(defenseBuff),
+				text = `Defensa +{math.round(Config.BUFF_DEFENSE_REDUCTION * 100)}%`,
 			}),
 		}),
 		Room = React.createElement("TextLabel", {

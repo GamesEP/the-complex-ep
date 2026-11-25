@@ -191,7 +191,7 @@ end
 
 local function onStepped()
 	local now = os.clock()
-	for _, rig in pairs(rigs) do
+	for player, rig in pairs(rigs) do
 		if rig.humanoid.Health <= 0 then
 			rig.action = nil
 			rig.airborne = false
@@ -206,9 +206,14 @@ local function onStepped()
 			rig.airborne = false
 		end
 
-		-- Layer 1: airborne jump pose (upper-body attacks can layer cleanly on top of this).
+		-- Layer 1: airborne jump pose (upper-body attacks and guard layer cleanly on top of this).
 		if rig.airborne and rig.root then
 			applyPose(rig, CombatAnim.jumpPose(rig.root.AssemblyLinearVelocity.Y))
+		end
+
+		-- Layer 1.5: continuous sword guard while holding Block (replicated via player attribute).
+		if player:GetAttribute("Blocking") == true then
+			applyPose(rig, CombatAnim.blockPose())
 		end
 
 		-- Layer 2: one-shot combat or landing action.

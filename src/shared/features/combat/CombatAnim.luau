@@ -211,7 +211,20 @@ local function evaluateLand(u: number): { [string]: CFrame }
 	}
 end
 
--- Evaluates an active one-shot action (`attack`, `dash`, `spin`, `land`) at `elapsed` seconds.
+local function evaluateParry(u: number): { [string]: CFrame }
+	-- Crisp outward deflect sweep with the sword + firm stance.
+	local snap = easeOutCubic(math.min(u / 0.45, 1))
+	return {
+		Waist = CFrame.Angles(-0.14 * snap, 0.55 * snap, 0),
+		Neck = CFrame.Angles(0.1 * snap, -0.4 * snap, 0),
+		RightShoulder = CFrame.Angles(1.45 * snap, 0.65 * snap, 0.85 * snap),
+		RightElbow = CFrame.Angles(0.35 * snap, 0, 0),
+		LeftShoulder = CFrame.Angles(-0.35 * snap, 0, -0.75 * snap),
+		LeftElbow = CFrame.Angles(0.65 * snap, 0, 0),
+	}
+end
+
+-- Evaluates an active one-shot action (`attack`, `dash`, `spin`, `parry`, `land`) at `elapsed` seconds.
 function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Pose
 	local key = CombatAnim.specKey(action, step)
 	local spec = Config.ANIMATIONS[key]
@@ -228,6 +241,8 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 		joints = evaluateDash(u)
 	elseif action == "spin" then
 		joints = evaluateSpin(u)
+	elseif action == "parry" then
+		joints = evaluateParry(u)
 	elseif action == "land" then
 		joints = evaluateLand(u)
 	else
@@ -238,6 +253,23 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 		active = true,
 		weight = weight,
 		joints = joints,
+	}
+end
+
+-- Continuous defensive sword-guard pose while the player holds Block (upper body + slight brace,
+-- leaving legs free to strafe slowly).
+function CombatAnim.blockPose(): Pose
+	return {
+		active = true,
+		weight = Config.ANIM_BLOCK_WEIGHT,
+		joints = {
+			Waist = CFrame.Angles(-0.12, -0.35, 0),
+			Neck = CFrame.Angles(0.1, 0.3, 0),
+			RightShoulder = CFrame.Angles(1.25, -0.85, -0.45),
+			RightElbow = CFrame.Angles(1.15, 0, 0),
+			LeftShoulder = CFrame.Angles(0.85, 0.45, 0.25),
+			LeftElbow = CFrame.Angles(1.1, 0, 0),
+		},
 	}
 end
 
@@ -321,8 +353,14 @@ function CombatAnim.selfTest()
 	local land = CombatAnim.evaluate("land", nil, Config.ANIMATIONS.land.duration * 0.5)
 	assert(land.active and land.joints.Root.Position.Y < -0.1, "landing squashes root downward")
 
+	-- Block & Parry poses.
+	local blk = CombatAnim.blockPose()
+	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose raises sword guard")
+	local pry = CombatAnim.evaluate("parry", nil, Config.ANIMATIONS.parry.duration * 0.4)
+	assert(pry.active and pry.joints.RightShoulder ~= nil, "parry animates deflect sweep")
+
 	-- Every required action spec exists with valid positive duration.
-	for _, key in ipairs({ "attack", "attackHeavy", "dash", "spin", "land" }) do
+	for _, key in ipairs({ "attack", "attackHeavy", "dash", "spin", "parry", "land" }) do
 		local spec = Config.ANIMATIONS[key]
 		assert(spec ~= nil and spec.duration > 0, `Config.ANIMATIONS.{key} must exist with positive duration`)
 	end

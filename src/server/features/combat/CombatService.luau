@@ -16,6 +16,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
+local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 
@@ -117,6 +118,26 @@ local function equipTestSword(character: Model)
 	weld.Parent = grip
 end
 
+local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
+	local targetHumanoid = humanoid
+	if not targetHumanoid then
+		local character = player.Character
+		targetHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+	end
+	if not targetHumanoid or targetHumanoid.Health <= 0 then
+		return
+	end
+	targetHumanoid.WalkSpeed = Defense.walkSpeed(
+		Config.MOVE_SPEED,
+		player:GetAttribute("SpeedBuffUntil"),
+		player:GetAttribute("Blocking") == true,
+		player:GetAttribute("Grabbed") == true,
+		now(),
+		Config.BUFF_SPEED_MULTIPLIER,
+		Config.BLOCK_MOVE_MULTIPLIER
+	)
+end
+
 local function onCharacter(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.MaxHealth = Config.PLAYER_MAX_HEALTH
@@ -137,8 +158,12 @@ local function onCharacter(player: Player, character: Model)
 	swings[player] = nil
 	player:SetAttribute("DashReadyAt", 0)
 	player:SetAttribute("SpinReadyAt", 0)
+	player:SetAttribute("BlockReadyAt", 0)
+	player:SetAttribute("Blocking", false)
+	player:SetAttribute("ParryUntil", 0)
 	player:SetAttribute("DamageBuffUntil", 0)
 	player:SetAttribute("SpeedBuffUntil", 0)
+	player:SetAttribute("DefenseBuffUntil", 0)
 	player:SetAttribute("Grabbed", false)
 	player:SetAttribute("GrabProgress", 0)
 	player:SetAttribute("GrabGoal", Config.GRAB_ESCAPE_PRESSES)
@@ -178,20 +203,53 @@ function CombatService.forget(player: Player)
 	swings[player] = nil
 end
 
--- The one way anything hurts a player. Returns whether the hit landed, so a projectile can pass
--- through a dashing player instead of vanishing on them.
-function CombatService.hurt(player: Player, amount: number): boolean
+-- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
+-- through a dashing player ("invulnerable") and reflect back on a perfect "parry".
+function CombatService.hurt(
+	player: Player,
+	amount: number,
+	options: { canBlock: boolean?, canParry: boolean? }?
+): (boolean, Defense.HitOutcome)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not character or not humanoid or humanoid.Health <= 0 then
-		return false
+		return false, "invulnerable"
 	end
-	local invulnerableUntil = character:GetAttribute("InvulnerableUntil")
-	if type(invulnerableUntil) == "number" and now() < invulnerableUntil then
-		return false
+
+	local t = now()
+	local finalDamage, outcome = Defense.resolveHit(amount, {
+		now = t,
+		invulnerableUntil = character:GetAttribute("InvulnerableUntil"),
+		blocking = player:GetAttribute("Blocking") == true,
+		parryUntil = player:GetAttribute("ParryUntil"),
+		defenseBuffUntil = player:GetAttribute("DefenseBuffUntil"),
+		canBlock = if options then options.canBlock else true,
+		canParry = if options then options.canParry else true,
+		blockReduction = Config.BLOCK_DAMAGE_REDUCTION,
+		defenseReduction = Config.BUFF_DEFENSE_REDUCTION,
+	})
+
+	if outcome == "invulnerable" then
+		return false, "invulnerable"
 	end
-	humanoid:TakeDamage(amount)
-	return true
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local pos = if root and root:IsA("BasePart") then root.Position else nil
+	if outcome == "parry" then
+		if pos then
+			Remotes.CombatSfx:FireAllClients("playerParry", pos)
+		end
+		Remotes.CombatAnim:FireAllClients(player, "parry")
+		return false, "parry"
+	end
+
+	if outcome == "block" and pos then
+		Remotes.CombatSfx:FireAllClients("playerBlock", pos)
+	end
+	if finalDamage > 0 then
+		humanoid:TakeDamage(finalDamage)
+	end
+	return true, outcome
 end
 
 -- Returns whether a grabber may latch onto `player` right now. Respects Dash invulnerability
@@ -234,6 +292,8 @@ function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: nu
 	player:SetAttribute("GrabGoal", goal or Config.GRAB_ESCAPE_PRESSES)
 	if grabbed then
 		player:SetAttribute("GrabWarningUntil", 0)
+		player:SetAttribute("Blocking", false)
+		player:SetAttribute("ParryUntil", 0)
 	else
 		player:SetAttribute("GrabImmuneUntil", t + Config.GRAB_IMMUNITY_SECONDS)
 	end
@@ -247,8 +307,7 @@ function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: nu
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
 	else
-		humanoid.WalkSpeed =
-			Drops.moveSpeed(Config.MOVE_SPEED, player:GetAttribute("SpeedBuffUntil"), t, Config.BUFF_SPEED_MULTIPLIER)
+		refreshWalkSpeed(player, humanoid)
 		humanoid.JumpPower = Config.JUMP_POWER
 	end
 end
@@ -273,22 +332,18 @@ function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
 	elseif kind == "damage" then
 		player:SetAttribute("DamageBuffUntil", t + Config.BUFF_DAMAGE_DURATION)
 		return true
+	elseif kind == "defense" then
+		player:SetAttribute("DefenseBuffUntil", t + Config.BUFF_DEFENSE_DURATION)
+		return true
 	elseif kind == "speed" then
 		local untilAt = t + Config.BUFF_SPEED_DURATION
 		player:SetAttribute("SpeedBuffUntil", untilAt)
-		if player:GetAttribute("Grabbed") ~= true then
-			humanoid.WalkSpeed = Drops.moveSpeed(Config.MOVE_SPEED, untilAt, t, Config.BUFF_SPEED_MULTIPLIER)
-		end
+		refreshWalkSpeed(player, humanoid)
 		-- Re-check the attribute when the timer fires so picking up a second speed buff refreshes
 		-- the timer instead of being reset early by the first timer.
 		task.delay(Config.BUFF_SPEED_DURATION + 0.05, function()
-			if humanoid.Parent and humanoid.Health > 0 and player:GetAttribute("Grabbed") ~= true then
-				humanoid.WalkSpeed = Drops.moveSpeed(
-					Config.MOVE_SPEED,
-					player:GetAttribute("SpeedBuffUntil"),
-					now(),
-					Config.BUFF_SPEED_MULTIPLIER
-				)
+			if humanoid.Parent and humanoid.Health > 0 then
+				refreshWalkSpeed(player, humanoid)
 			end
 		end)
 		return true
@@ -296,11 +351,40 @@ function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
 	return false
 end
 
+-- Remote "Block": raises or lowers guard. Raising guard opens a short Parry window (`PARRY_WINDOW`);
+-- lowering it starts `BLOCK_COOLDOWN` so players cannot spam guard for permanent Parry.
+function CombatService.block(player: Player, active: boolean)
+	local t = now()
+	if not active then
+		if player:GetAttribute("Blocking") == true then
+			player:SetAttribute("Blocking", false)
+			player:SetAttribute("ParryUntil", 0)
+			player:SetAttribute("BlockReadyAt", t + Config.BLOCK_COOLDOWN)
+			refreshWalkSpeed(player)
+		end
+		return
+	end
+
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+		return
+	end
+	if not rootOf(player) then
+		return
+	end
+	local readyAt = player:GetAttribute("BlockReadyAt") or 0
+	if t < readyAt - COOLDOWN_SLACK then
+		return
+	end
+	player:SetAttribute("Blocking", true)
+	player:SetAttribute("ParryUntil", t + Config.PARRY_WINDOW)
+	refreshWalkSpeed(player)
+end
+
 -- Remote "Attack". `aim` is shape-checked by the contract; what it *means* is decided here. The
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
 function CombatService.attack(player: Player, aim: Vector3)
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
 		return
 	end
 	local root = rootOf(player)
@@ -353,6 +437,11 @@ function CombatService.dash(player: Player)
 	if t < readyAt - COOLDOWN_SLACK then
 		return
 	end
+	if player:GetAttribute("Blocking") == true then
+		player:SetAttribute("Blocking", false)
+		player:SetAttribute("ParryUntil", 0)
+		refreshWalkSpeed(player)
+	end
 	player:SetAttribute("DashReadyAt", t + Config.DASH_COOLDOWN)
 	character:SetAttribute("InvulnerableUntil", t + Config.DASH_IFRAMES)
 	broadcastOthers(player, "playerDash", root.Position)
@@ -361,7 +450,7 @@ end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
 function CombatService.spin(player: Player)
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
 		return
 	end
 	local root = rootOf(player)

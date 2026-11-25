@@ -109,4 +109,10 @@ Config.ROOM_RESTART_SECONDS = 5
 -- Enemies keep at least this far from each other, so a wave reads as a crowd and not one block.
 Config.ENEMY_SPACING = 5
 
+-- Roaming motion when every living player is currently grabbed (solo play or full-party grab):
+-- enemies keep prowling the room while steering clear of grabbed players instead of freezing.
+Config.ENEMY_WANDER_SPEED_FACTOR = 0.65
+Config.ENEMY_WANDER_INTERVAL = 2.0
+Config.ENEMY_GRAB_AVOID_RADIUS = 12
+
 return Config

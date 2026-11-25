@@ -93,6 +93,8 @@ function CombatAudio.selfTest()
 		"playerDash",
 		"playerSpin",
 		"playerHit",
+		"playerBlock",
+		"playerParry",
 		"enemyMeleeWindup",
 		"enemyMeleeStrike",
 		"enemyRangedFire",

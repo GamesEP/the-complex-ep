@@ -65,6 +65,24 @@ Config.SFX = {
 		pitchSpread = 0.08,
 		maxDistance = 70,
 	},
+	-- Metallic guard absorb when blocking an incoming hit or shot.
+	playerBlock = {
+		file = "player-block.ogg",
+		fallbackId = 9119072674,
+		volume = 0.7,
+		pitch = 1.0,
+		pitchSpread = 0.06,
+		maxDistance = 75,
+	},
+	-- Bright resonant clang when landing a Parry or reflecting a projectile.
+	playerParry = {
+		file = "player-parry.ogg",
+		fallbackId = 109675024264804,
+		volume = 0.85,
+		pitch = 1.1,
+		pitchSpread = 0.04,
+		maxDistance = 95,
+	},
 	-- Melee enemy windup telegraph (paired with Neon material so the player hears when to dash).
 	enemyMeleeWindup = {
 		file = "enemy-melee-windup.ogg",

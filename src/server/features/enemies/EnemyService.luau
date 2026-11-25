@@ -37,6 +37,8 @@ export type Enemy = {
 	grabTarget: Player?,
 	grabProgress: number,
 	nextGrabDamageAt: number,
+	wanderHeading: Vector3,
+	wanderUntil: number,
 }
 
 type Projectile = {
@@ -44,14 +46,17 @@ type Projectile = {
 	velocity: Vector3,
 	expiresAt: number,
 	damage: number,
+	reflected: boolean,
+	shooter: Enemy?,
 }
 
 -- How far inside the walls an enemy is kept.
 local WALL_MARGIN = 3
 local FLASH_SECONDS = 0.08
 local HIT_COLOR = Color3.new(1, 1, 1)
+local PARRIED_SHOT_COLOR = Color3.fromRGB(255, 225, 90)
 
-local hurt: (Player, number) -> boolean = nil :: any
+local hurt: (Player, number, { canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?) = nil :: any
 local onKill: ((Vector3) -> ())? = nil
 local canGrab: ((Player) -> boolean)? = nil
 local setGrabbed: ((Player, boolean, number?, number?) -> ())? = nil
@@ -65,23 +70,43 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
--- Every living, non-grabbed player's root, for other enemies to target. Grabbed players are
--- excluded so the rest of the horde ignores them (and redirects to free teammates in co-op)
--- instead of instakilling them while immobilised. See plans/gdd/content.md.
-local function targets(): { { player: Player, root: BasePart } }
+-- Returns `(freeTargets, grabbedPositions)`: non-grabbed living players for enemies to chase,
+-- and grabbed player positions so roaming enemies steer clear when no free target exists.
+local function targets(): ({ { player: Player, root: BasePart } }, { Vector3 })
 	local list = {}
+	local grabbed = {}
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player:GetAttribute("Grabbed") == true then
-			continue
-		end
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and root then
-			table.insert(list, { player = player, root = root :: BasePart })
+		if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+			if player:GetAttribute("Grabbed") == true then
+				table.insert(grabbed, root.Position)
+			else
+				table.insert(list, { player = player, root = root })
+			end
 		end
 	end
-	return list
+	return list, grabbed
+end
+
+local function randomHeading(): Vector3
+	local angle = math.random() * math.pi * 2
+	return Vector3.new(math.cos(angle), 0, math.sin(angle))
+end
+
+local function separationPush(enemy: Enemy, position: Vector3): Vector3
+	local push = Vector3.zero
+	for _, other in ipairs(enemies) do
+		if other ~= enemy and not other.dead then
+			local apart = Vector3.new(position.X - other.body.Position.X, 0, position.Z - other.body.Position.Z)
+			local gap = apart.Magnitude
+			if gap > 1e-3 and gap < Config.ENEMY_SPACING then
+				push += apart.Unit * (Config.ENEMY_SPACING - gap) / Config.ENEMY_SPACING
+			end
+		end
+	end
+	return push
 end
 
 local function nearest(position: Vector3, list: { { player: Player, root: BasePart } })
@@ -210,6 +235,8 @@ local function fire(enemy: Enemy, target: BasePart)
 		velocity = aim.Unit * enemy.spec.projectileSpeed,
 		expiresAt = now() + enemy.spec.projectileLife,
 		damage = enemy.spec.damage,
+		reflected = false,
+		shooter = enemy,
 	})
 	Remotes.CombatSfx:FireAllClients("enemyRangedFire", origin)
 end
@@ -221,7 +248,7 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 	enemy.dead = true
 	for _, target in ipairs(list) do
 		if Brain.inBlast(origin, target.root.Position, blastRadius, 0) then
-			hurt(target.player, enemy.spec.damage)
+			hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = false })
 		end
 	end
 	local enemyDamage = enemy.spec.enemyDamage or enemy.spec.damage
@@ -272,14 +299,14 @@ local function stepHeldGrab(enemy: Enemy, t: number)
 	if t >= enemy.nextGrabDamageAt then
 		enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
 		local dps = enemy.spec.grabDamagePerSecond or 8
-		hurt(victim, dps * Config.GRAB_DAMAGE_TICK_SECONDS)
+		hurt(victim, dps * Config.GRAB_DAMAGE_TICK_SECONDS, { canBlock = false, canParry = false })
 		if humanoid.Health <= 0 then
 			releaseGrab(enemy, t, false)
 		end
 	end
 end
 
-local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
+local function stepEnemy(enemy: Enemy, list, grabbedPositions: { Vector3 }, dt: number, t: number)
 	if enemy.grabTarget then
 		stepHeldGrab(enemy, t)
 		return
@@ -289,12 +316,37 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	local position = body.Position
 	local target, distance = nearest(position, list)
 	if not target then
-		-- Cancel any in-progress melee/grabber windup so an ignored enemy cannot fire an instant
-		-- buffered strike the frame the player breaks free.
-		if enemy.state.phase == "windup" then
+		-- Cancel any in-progress windup/fuse so an ignored enemy cannot fire an instant buffered
+		-- strike or blast the frame the player breaks free.
+		if enemy.state.phase == "windup" or enemy.state.phase == "fuse" then
 			enemy.state = Brain.initial(t)
 			setTelegraph(enemy, false)
 		end
+		-- Keep prowling around the room while steering clear of grabbed players instead of
+		-- freezing like statues when playing solo (or when every teammate is grabbed).
+		if t >= enemy.wanderUntil then
+			enemy.wanderHeading = randomHeading()
+			enemy.wanderUntil = t + Config.ENEMY_WANDER_INTERVAL * (0.7 + math.random() * 0.6)
+		end
+		local roamDir = Brain.wanderDirection(position, enemy.wanderHeading, grabbedPositions, Config.ENEMY_GRAB_AVOID_RADIUS)
+		local push = separationPush(enemy, position)
+		local roamSpeed = enemy.spec.speed * Config.ENEMY_WANDER_SPEED_FACTOR
+		local candidate = position + (roamDir * roamSpeed + push * enemy.spec.speed) * dt
+		local moved = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
+		if moved.X ~= candidate.X or moved.Z ~= candidate.Z then
+			-- Hit a room wall while roaming: steer smoothly back toward the room interior.
+			local inward = Vector3.new(-position.X, 0, -position.Z)
+			if inward.Magnitude > 1e-3 then
+				local tangent = Vector3.new(-inward.Z, 0, inward.X).Unit
+				enemy.wanderHeading = (inward.Unit + tangent * (math.random() * 2 - 1) * 0.6).Unit
+			else
+				enemy.wanderHeading = randomHeading()
+			end
+			enemy.wanderUntil = t + Config.ENEMY_WANDER_INTERVAL
+		end
+		local look = Vector3.new(moved.X + roamDir.X, moved.Y, moved.Z + roamDir.Z)
+		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
+		enemy.model:PivotTo(nextCFrame)
 		return
 	end
 
@@ -322,7 +374,11 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 		-- The reach is checked again at the moment of the strike, with a little slack: the windup
 		-- is the warning, and a player who dashed out during it has earned the miss.
 		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 then
-			hurt(target.player, enemy.spec.damage)
+			local _, outcome = hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = true })
+			if outcome == "parry" then
+				-- Parrying a melee strike staggers the attacker into an extended recover window.
+				enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
+			end
 		end
 	elseif intent.action == "grab" then
 		if distance <= (enemy.spec.reach + enemy.radius) * 1.2 and (not canGrab or canGrab(target.player)) then
@@ -354,16 +410,7 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	end
 
 	-- Separation, so a wave spreads into a crowd instead of stacking into one block.
-	local push = Vector3.zero
-	for _, other in ipairs(enemies) do
-		if other ~= enemy and not other.dead then
-			local apart = Vector3.new(position.X - other.body.Position.X, 0, position.Z - other.body.Position.Z)
-			local gap = apart.Magnitude
-			if gap > 1e-3 and gap < Config.ENEMY_SPACING then
-				push += apart.Unit * (Config.ENEMY_SPACING - gap) / Config.ENEMY_SPACING
-			end
-		end
-	end
+	local push = separationPush(enemy, position)
 
 	local moved = position + (direction * enemy.spec.speed + push * enemy.spec.speed) * dt
 	moved = Waves.clamp(moved, Config.ROOM_SIZE, WALL_MARGIN)
@@ -371,6 +418,31 @@ local function stepEnemy(enemy: Enemy, list, dt: number, t: number)
 	local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
 	-- PivotTo moves multi-part `.rbxmx` enemies (like EnemyGrabber) together with Body.
 	enemy.model:PivotTo(nextCFrame)
+end
+
+local function reflectDirection(origin: Vector3, currentVelocity: Vector3, shooter: Enemy?): Vector3
+	if shooter and not shooter.dead and shooter.body and shooter.body.Parent then
+		local toShooter = Vector3.new(shooter.body.Position.X - origin.X, 0, shooter.body.Position.Z - origin.Z)
+		if toShooter.Magnitude > 1e-3 then
+			return toShooter.Unit
+		end
+	end
+	local bestDir: Vector3? = nil
+	local bestDist = math.huge
+	for _, enemy in ipairs(enemies) do
+		if not enemy.dead and enemy.body and enemy.body.Parent then
+			local delta = Vector3.new(enemy.body.Position.X - origin.X, 0, enemy.body.Position.Z - origin.Z)
+			local dist = delta.Magnitude
+			if dist > 1e-3 and dist < bestDist then
+				bestDist = dist
+				bestDir = delta.Unit
+			end
+		end
+	end
+	if bestDir then
+		return bestDir
+	end
+	return if currentVelocity.Magnitude > 1e-3 then -currentVelocity.Unit else Vector3.new(0, 0, -1)
 end
 
 local function stepProjectiles(list, dt: number, t: number)
@@ -383,12 +455,42 @@ local function stepProjectiles(list, dt: number, t: number)
 			done = inside.X ~= position.X or inside.Z ~= position.Z
 		end
 		if not done then
-			for _, target in ipairs(list) do
-				local offset = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
-				-- A dashing player is not hit, and the shot carries on through them.
-				if offset.Magnitude <= Config.PROJECTILE_HIT_RADIUS and hurt(target.player, shot.damage) then
-					done = true
-					break
+			if shot.reflected then
+				for _, enemy in ipairs(enemies) do
+					if not enemy.dead and enemy.body and enemy.body.Parent then
+						local dx = enemy.body.Position.X - position.X
+						local dz = enemy.body.Position.Z - position.Z
+						local hitRange = Config.PROJECTILE_HIT_RADIUS + enemy.radius
+						if dx * dx + dz * dz <= hitRange * hitRange then
+							EnemyService.damage(enemy, shot.damage)
+							Remotes.CombatSfx:FireAllClients("playerHit", enemy.body.Position)
+							done = true
+							break
+						end
+					end
+				end
+			else
+				for _, target in ipairs(list) do
+					local offset = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+					if offset.Magnitude <= Config.PROJECTILE_HIT_RADIUS then
+						local landed, outcome = hurt(target.player, shot.damage, { canBlock = true, canParry = true })
+						if outcome == "parry" then
+							-- Deflect the shot back toward the shooter (or nearest enemy) at boosted speed.
+							local dir = reflectDirection(position, shot.velocity, shot.shooter)
+							local speed = shot.velocity.Magnitude * Config.PARRY_PROJECTILE_SPEED_MULTIPLIER
+							shot.reflected = true
+							shot.velocity = dir * speed
+							shot.damage = Config.PARRY_PROJECTILE_DAMAGE
+							shot.expiresAt = t + Config.PARRY_PROJECTILE_LIFE
+							shot.part.Color = PARRIED_SHOT_COLOR
+							shot.part.Size = Vector3.one * 2.1
+							position = position + dir * 2
+							break
+						elseif landed then
+							done = true
+							break
+						end
+					end
 				end
 			end
 		end
@@ -403,10 +505,10 @@ end
 
 local function step(dt: number)
 	local t = now()
-	local list = targets()
+	local list, grabbedPositions = targets()
 	for _, enemy in ipairs(enemies) do
 		if not enemy.dead then
-			stepEnemy(enemy, list, dt, t)
+			stepEnemy(enemy, list, grabbedPositions, dt, t)
 		end
 	end
 	for i = #enemies, 1, -1 do
@@ -418,7 +520,7 @@ local function step(dt: number)
 end
 
 function EnemyService.start(dependencies: {
-	hurt: (Player, number) -> boolean,
+	hurt: (Player, number, { canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?),
 	world: Instance,
 	onKill: ((Vector3) -> ())?,
 	canGrab: ((Player) -> boolean)?,
@@ -519,6 +621,8 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		grabTarget = nil,
 		grabProgress = 0,
 		nextGrabDamageAt = 0,
+		wanderHeading = randomHeading(),
+		wanderUntil = now() + Config.ENEMY_WANDER_INTERVAL * math.random(),
 	}
 	model.Parent = folder
 	table.insert(enemies, enemy)

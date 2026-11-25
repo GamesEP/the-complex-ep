@@ -40,6 +40,13 @@ Config.ANIMATIONS = {
 		blendIn = 0.12,
 		blendOut = 0.28,
 	},
+	-- Crisp outward sword deflect when a Parry lands.
+	parry = {
+		duration = 0.26,
+		priority = 4,
+		blendIn = 0.1,
+		blendOut = 0.35,
+	},
 	-- Short athletic landing squash when touching down from a jump.
 	land = {
 		duration = 0.16,
@@ -48,6 +55,9 @@ Config.ANIMATIONS = {
 		blendOut = 0.55,
 	},
 } :: { [string]: AnimSpec }
+
+-- Continuous defensive guard pose weight while holding Block.
+Config.ANIM_BLOCK_WEIGHT = 0.9
 
 -- Airborne jump pose blending (driven from HumanoidStateType + root vertical velocity).
 Config.ANIM_JUMP_WEIGHT = 0.85

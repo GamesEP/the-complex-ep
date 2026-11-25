@@ -173,6 +173,29 @@ function Brain.inBlast(origin: Vector3, target: Vector3, blastRadius: number, ta
 	return dx * dx + dz * dz <= reach * reach
 end
 
+-- Computes a flat unit roaming direction when no ungrabbed player is targetable, steering away
+-- from any grabbed players inside `avoidRadius` so the crowd stays in motion while ignoring them.
+function Brain.wanderDirection(position: Vector3, heading: Vector3, avoid: { Vector3 }, avoidRadius: number): Vector3
+	local dir = Vector3.new(heading.X, 0, heading.Z)
+	if dir.Magnitude > 1e-3 then
+		dir = dir.Unit
+	else
+		dir = Vector3.new(1, 0, 0)
+	end
+	if avoidRadius > 0 then
+		for _, spot in ipairs(avoid) do
+			local away = Vector3.new(position.X - spot.X, 0, position.Z - spot.Z)
+			local dist = away.Magnitude
+			if dist < avoidRadius then
+				local awayUnit = if dist > 1e-3 then away.Unit else dir
+				local weight = 2 * (1 - dist / avoidRadius) + 0.5
+				dir += awayUnit * weight
+			end
+		end
+	end
+	return if dir.Magnitude > 1e-3 then dir.Unit else Vector3.new(1, 0, 0)
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -263,6 +286,14 @@ function Brain.selfTest()
 	assert(Brain.inBlast(blastOrigin, Vector3.new(9, 2, 0), 10, 0), "target inside blast radius is hit")
 	assert(Brain.inBlast(blastOrigin, Vector3.new(11.5, 8, 0), 10, 2), "body radius extends edge hit and ignores Y")
 	assert(not Brain.inBlast(blastOrigin, Vector3.new(13, 2, 0), 10, 2), "target outside blast + radius is safe")
+
+	-- Roaming direction keeps enemies moving and steers away from grabbed players.
+	local freeRoam = Brain.wanderDirection(Vector3.new(0, 0, 0), Vector3.new(1, 0, 0), {}, 12)
+	assert(freeRoam.X > 0.99, "roaming keeps heading when nobody to avoid")
+	local steerAway = Brain.wanderDirection(Vector3.new(5, 0, 0), Vector3.new(-1, 0, 0), { Vector3.new(0, 0, 0) }, 12)
+	assert(steerAway.X > 0, "roaming steers away from a grabbed player inside avoidRadius")
+	local farIgnore = Brain.wanderDirection(Vector3.new(30, 0, 0), Vector3.new(-1, 0, 0), { Vector3.new(0, 0, 0) }, 12)
+	assert(farIgnore.X < -0.99, "roaming ignores grabbed players outside avoidRadius")
 end
 
 return Brain

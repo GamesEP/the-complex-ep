@@ -32,6 +32,8 @@ local comboStep = 0
 local lastSwingAt = -math.huge
 local dashReadyAt = 0
 local spinReadyAt = 0
+local blockReadyAt = 0
+local blocking = false
 
 -- Active attack lunge state; gated on `lungeToken` so a dash or respawn cancels any in-flight
 -- step-in cleanly without firing a stale swing.
@@ -127,6 +129,9 @@ local function attack()
 		clearLunge()
 		Effects.attackWindup(1)
 		Remotes.GrabEscape:FireServer()
+		return
+	end
+	if blocking or player:GetAttribute("Blocking") == true then
 		return
 	end
 	local clock = os.clock()
@@ -226,6 +231,7 @@ local function dash()
 	end
 	lungeToken += 1
 	clearLunge()
+	blocking = false
 	dashReadyAt = now() + Config.DASH_COOLDOWN
 	dashEndsAt = os.clock() + Config.DASH_DURATION
 
@@ -252,7 +258,7 @@ local function dash()
 end
 
 local function spin()
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
 		return
 	end
 	local root, humanoid = body()
@@ -273,6 +279,29 @@ local function spin()
 	Remotes.Spin:FireServer()
 end
 
+local function setBlock(active: boolean)
+	if active then
+		if blocking or player:GetAttribute("Grabbed") == true then
+			return
+		end
+		local root = body()
+		if not root or not ready(blockReadyAt, "BlockReadyAt") then
+			return
+		end
+		lungeToken += 1
+		clearLunge()
+		blocking = true
+		Remotes.Block:FireServer(true)
+	else
+		if not blocking and player:GetAttribute("Blocking") ~= true then
+			return
+		end
+		blocking = false
+		blockReadyAt = now() + Config.BLOCK_COOLDOWN
+		Remotes.Block:FireServer(false)
+	end
+end
+
 local ACTIONS = {
 	Attack = {
 		run = attack,
@@ -291,6 +320,8 @@ local ACTIONS = {
 	},
 }
 
+local BLOCK_INPUTS = { Enum.UserInputType.MouseButton2, Enum.KeyCode.F, Enum.KeyCode.ButtonL1 }
+
 function CombatInput.start()
 	for name, action in pairs(ACTIONS) do
 		ContextActionService:BindActionAtPriority(name, function(_, state: Enum.UserInputState)
@@ -303,6 +334,19 @@ function CombatInput.start()
 		ContextActionService:SetTitle(name, action.title)
 	end
 
+	-- Hold-to-block action: Begin raises guard (and opens the Parry window), End/Cancel lowers it.
+	ContextActionService:BindActionAtPriority("Block", function(_, state: Enum.UserInputState)
+		if state == Enum.UserInputState.Begin then
+			setBlock(true)
+			return Enum.ContextActionResult.Sink
+		elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+			setBlock(false)
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, true, Enum.ContextActionPriority.High.Value, table.unpack(BLOCK_INPUTS))
+	ContextActionService:SetTitle("Block", "Bloquear")
+
 	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
 	player.CharacterAdded:Connect(function()
 		lungeToken += 1
@@ -314,6 +358,8 @@ function CombatInput.start()
 		lastSwingAt = -math.huge
 		dashReadyAt = 0
 		spinReadyAt = 0
+		blockReadyAt = 0
+		blocking = false
 	end)
 end
 

@@ -30,6 +30,7 @@ return {
 	Attack = remote("Attack"),
 	Dash = remote("Dash"),
 	Spin = remote("Spin"),
+	Block = remote("Block"),
 	GrabEscape = remote("GrabEscape"),
 
 	-- Server -> client combat sound cues (enemy attacks, explosions, hit confirms, co-op swings).

@@ -54,6 +54,18 @@ Config.SPIN_DAMAGE = 25
 Config.SPIN_RADIUS = 12
 Config.SPIN_COOLDOWN = 4
 
+-- Guard & Parry: holding Block cuts incoming damage by BLOCK_DAMAGE_REDUCTION while slowing
+-- movement; raising Block right before impact (within PARRY_WINDOW) negates all damage,
+-- staggers melee attackers, and reflects ranged projectiles back at enemies.
+Config.BLOCK_DAMAGE_REDUCTION = 0.70
+Config.BLOCK_MOVE_MULTIPLIER = 0.55
+Config.BLOCK_COOLDOWN = 0.45
+Config.PARRY_WINDOW = 0.25
+Config.PARRY_STUN_SECONDS = 1.4
+Config.PARRY_PROJECTILE_SPEED_MULTIPLIER = 1.6
+Config.PARRY_PROJECTILE_DAMAGE = 25
+Config.PARRY_PROJECTILE_LIFE = 2.0
+
 -- Isometric camera: a fixed yaw and pitch, following the player at a fixed distance.
 Config.CAMERA_DISTANCE = 70
 Config.CAMERA_PITCH = 50

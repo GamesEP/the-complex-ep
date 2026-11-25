@@ -11,6 +11,7 @@ export type EnemyKind = {
 	color: Color3,
 	-- melee / grabber
 	reach: number?,
+	strikeHeight: number?,
 	windup: number?,
 	recover: number?,
 	damage: number?,
@@ -24,6 +25,7 @@ export type EnemyKind = {
 	trigger: number?,
 	fuse: number?,
 	blastRadius: number?,
+	blastHeight: number?,
 	enemyDamage: number?,
 }
 
@@ -35,6 +37,7 @@ Config.ENEMY_KINDS = {
 		size = Vector3.new(4, 5, 4),
 		color = Color3.fromRGB(200, 60, 60),
 		reach = 6,
+		strikeHeight = 4.5,
 		windup = 0.45,
 		recover = 0.8,
 		damage = 10,
@@ -51,8 +54,9 @@ Config.ENEMY_KINDS = {
 		projectileLife = 2.5,
 		damage = 8,
 	},
-	-- The dangerous one: fast, fragile, and lethal if ignored — but its blast also damages
-	-- nearby enemies (`enemyDamage`), letting players kite it into a pack as a tactical tool.
+	-- The dangerous one: fast, fragile, and lethal if ignored — its blast is a flattened oval
+	-- (blastHeight < blastRadius) so jumping near the outer rim clears the dome cleanly, and it
+	-- also damages nearby enemies (`enemyDamage`) so players can kite it into a pack tactically.
 	exploder = {
 		health = 15,
 		speed = 20,
@@ -61,6 +65,7 @@ Config.ENEMY_KINDS = {
 		trigger = 6,
 		fuse = 0.8,
 		blastRadius = 10,
+		blastHeight = 7,
 		damage = 30,
 		enemyDamage = 30,
 	},
@@ -90,8 +95,15 @@ Config.GRAB_IMMUNITY_SECONDS = 1.0
 -- Studs in front of the grabber where the trapped player is held.
 Config.GRAB_HOLD_DISTANCE = 3.2
 
--- What the ranged enemy's shot hits with, in studs from the player's root.
+-- Height above the floor (Y = 0) where ranged projectiles travel, and their 3D hit ellipsoid so
+-- standing players are hit reliably while a jump clears the shot cleanly.
+Config.PROJECTILE_HEIGHT = 2
 Config.PROJECTILE_HIT_RADIUS = 3
+Config.PROJECTILE_HIT_HEIGHT = 2.6
+
+-- Uniform 2D spatial grid cell size (studs) used by EnemyService for local neighborhood queries
+-- (exploder blast damage and crowd separation) without scanning every enemy in the room.
+Config.ENEMY_GRID_CELL_SIZE = 12
 
 -- One table per wave: kind -> count. Grabber enters starting on wave 4. When the last wave is
 -- cleared the room is clean, and after ROOM_RESTART_SECONDS it starts over from wave 1.

@@ -12,6 +12,8 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 | `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius, forward target selection and attack lunge math. Both realms call it. |
 | `shared/features/drops/Drops` | Pure: 30% drop roll, weighted kind selection, heal clamp, and damage/speed buff math. |
 | `shared/features/enemies/Brain` | Pure: what an enemy does each frame, as a state machine. |
+| `shared/features/enemies/Hitbox` | Pure: 3D ellipsoid hit checks for projectiles, melee strikes and oval explosions. |
+| `shared/features/enemies/SpatialGrid` | Pure: uniform 2D spatial hash grid for local enemy lookups without full-list scans. |
 | `shared/features/enemies/Waves` | Pure: what a wave contains, where it spawns, keeping things inside the room. |
 | `server/features/combat/CombatService` | The player's stats, test sword equipping, drop buff application, the three remotes, and `hurt`. |
 | `server/features/drops/DropService` | Spawns `.rbxmx` combat drops on enemy kills, handles pickup radius, expiration and room reset. |
@@ -81,11 +83,20 @@ dash a skill rather than luck.
 **The telegraph is the material.** During a windup or a fuse the body turns Neon. A strike checks
 reach again at the moment it lands, so dashing out during the windup always works.
 
-**Exploders hurt nearby enemies too.** When an exploder detonates, `EnemyService` applies
-`Config.ENEMY_KINDS.exploder.enemyDamage` to every other living enemy inside `Brain.inBlast`
-(`blastRadius + other.radius`), turning kiting an exploder into a crowd into a tactical advantage.
-Enemies killed by the blast still go through `EnemyService.damage` -> `kill` and roll drops; the
-self-destructing exploder itself does not.
+**Vertical hitboxes (`Hitbox.inEllipsoid`)** check height (`Y`) as well as horizontal distance so
+jumping has a defensive role: ranged shots travel at `Config.PROJECTILE_HEIGHT` (`Y = 2`) and pass
+under a jumping player; melee strikes check `strikeHeight`; and exploder detonations use a
+flattened oval (`blastHeight < blastRadius`, rendered with a `SpecialMesh` sphere to match) so
+jumping near the outer rim clears the dome more easily than at dead centre.
+
+**Spatial grid (`SpatialGrid`) and exploder splash damage.** Living enemies are indexed into
+`Config.ENEMY_GRID_CELL_SIZE` cells on `(X, Z)`. When an exploder detonates, `EnemyService` queries
+only the local cells overlapping its blast radius instead of scanning every enemy in the room,
+applying `Config.ENEMY_KINDS.exploder.enemyDamage` to any other living enemy inside the oval
+(`Hitbox.inEllipsoid`), turning kiting an exploder into a crowd into a tactical advantage. Enemies
+killed by the blast still go through `EnemyService.damage` -> `kill` and roll drops; the
+self-destructing exploder itself does not. Crowd separation (`ENEMY_SPACING`) uses the same spatial
+grid to push nearby enemies apart in `O(local)` rather than `O(N^2)`.
 
 **Grabbers telegraph, immobilise, and drain 8 HP/s.** Modeled as `assets/models/EnemyGrabber.rbxmx`
 (mounted at `ReplicatedStorage.Models.EnemyGrabber`, moved via `Model:PivotTo`), a grabber enters
@@ -102,8 +113,6 @@ when no free target exists (solo or full-party grab) they keep prowling the room
 `Brain.wanderDirection` while steering outside `Config.ENEMY_GRAB_AVOID_RADIUS` instead of
 freezing, and any active enemy windup resets cleanly. Grabbers enter `Config.WAVES` starting on
 wave 4 of 5.
-
-**Separation** pushes enemies apart inside `ENEMY_SPACING`, so a wave reads as a crowd.
 
 ## Waves
 
@@ -249,7 +258,7 @@ All combat 3D models (`ComplexArena`, `TestSword`, `DropHeal`, `DropDamage`, `Dr
 
 ## What is not verified offline
 
-`make test` covers `CombatAnim`, `CombatAudio`, `Defense`, `Drops`, `Melee`, `Brain` and `Waves`. Everything that needs a DataModel — the camera,
+`make test` covers `CombatAnim`, `CombatAudio`, `Defense`, `Drops`, `Melee`, `Brain`, `Hitbox`, `SpatialGrid` and `Waves`. Everything that needs a DataModel — the camera,
 the dash's feel, the touch buttons' placement, enemies moving, 3D audio playback and volume balance, animation silhouettes and feel, sword grip alignment, drop pickup feel, the HUD — only shows up in Studio.
 The touch buttons in particular sit where `ContextActionService` puts them by default; check them
 with phone emulation before relying on them.

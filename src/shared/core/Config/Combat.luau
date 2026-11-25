@@ -28,7 +28,7 @@ Config.ATTACK_ARC = 120
 -- searches a cone ahead of the player's facing/movement direction, prioritising enemies most
 -- aligned with where the player is looking, and closes short gaps so combos stick to them.
 Config.AIM_ASSIST_RANGE = 15
-Config.AIM_ASSIST_CONE = 140
+Config.AIM_ASSIST_CONE = 120
 -- Narrower cone used to keep the previously picked enemy locked across a combo (or after an
 -- ability): wide enough for 8-way WASD movement toward a strafing enemy, narrow enough to drop
 -- the lock the moment the player steers toward a different one.

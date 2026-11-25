@@ -2,14 +2,6 @@
 
 Status: drafted
 
-> One entry per system. Each heads with the feature folder that will own it, so the document is
-> navigable from the code and the code from the document. Keep each entry to the rules that
-> decide behaviour and the numbers that tune it — an entry that reads like an implementation
-> plan belongs in `docs/`, and an entry over a page is probably two systems.
->
-> Split a system into its own file when it outgrows a section. Link it from here and from
-> `overview.md`.
-
 ## Hub
 
 `server/features/hub/`
@@ -104,19 +96,26 @@ servidor de run.
   cuerpo a cuerpo (`Config.PARRY_STUN_SECONDS`) y **devuelve los disparos de enemigos a distancia**
   hacia los enemigos a mayor velocidad (`Config.PARRY_PROJECTILE_DAMAGE`). Soltar el bloqueo tiene
   una breve recarga (`Config.BLOCK_COOLDOWN`) para evitar spam infinito de parry.
+- **Saltar tiene rol defensivo:** además de servir para movilidad y obstáculos, saltar permite
+  esquivar proyectiles y ataques rasos del suelo (la detección de impacto comprueba la altura `Y`).
+- **Sin fuego amigo:** los ataques y habilidades de un jugador nunca dañan a sus compañeros.
 - Las habilidades son de dos tipos:
-  - **Movimientos básicos mejorados:** por ejemplo, dash doble o doble salto.
-  - **Tipos de ataque distintos:** por ejemplo, ataque giratorio.
+  - **Habilidades activas de ataque:** ocupan uno de los 3 huecos activos (`Config.ABILITY_SLOTS`)
+    y funcionan con tiempo de recarga (por ejemplo, el ataque giratorio).
+  - **Mejoras de movimiento (pasivas):** siempre están activas y no ocupan hueco de habilidad
+    activa. Cada una es una mejora separada que puede combinarse con las demás (por ejemplo, doble
+    salto y doble dash son dos pasivas distintas que combinan juntas).
 - Todos los jugadores empiezan la run con el mismo personaje y el mismo kit. No se elige clase
   ni arma antes de la run.
 - Al empezar la run, cada jugador elige 1 de 3 habilidades al azar. Esa es su primera habilidad;
-  el resto se consigue durante la run.
+  las siguientes llegan como mejoras de run (1 de 3 al limpiar una sala; ver Mejoras de run).
 - Cada control (ataque, dash, cada habilidad) tiene que poder usarse con teclado y ratón, con
   táctil y con mando (ver [technical.md](technical.md)).
 - En los tres controles por igual (teclado/ratón, mando y táctil), el ataque básico toma como
-  referencia la dirección en la que se mueve o mira el personaje (no el cursor), engancha al
-  enemigo más alineado con esa dirección dentro de un cono frontal y da un impulso corto para
-  pegarse a él durante el combo.
+  referencia la dirección en la que se mueve o mira el personaje (nunca el cursor del ratón),
+  engancha al enemigo más alineado con esa dirección dentro de un cono frontal de 120° (±60° a
+  izquierda y derecha de la dirección pulsada) y da un impulso corto para pegarse a él durante el
+  combo.
 - Una vez elegido un enemigo al usar un ataque básico o una habilidad por primera vez, continuar el
   combo mantiene el objetivo pegado a ese mismo enemigo mientras siga vivo, en alcance y el jugador
   siga dirigiéndose hacia él.
@@ -143,7 +142,7 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
 | Tiempo para encadenar el combo | 0,6 s (`Config.COMBO_WINDOW`) |
-| Enganche frontal del ataque básico | Cono de 140° hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
+| Enganche frontal del ataque básico | Cono de 120° (±60° desde la dirección pulsada) hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
 | Velocidad al correr | 26 studs/s; la de Roblox por defecto es 16 (`Config.MOVE_SPEED`) |
 | Distancia del dash | 18 studs en 0,18 s (`Config.DASH_DISTANCE`, `Config.DASH_DURATION`) |
 | Recarga del dash | 0,7 s (`Config.DASH_COOLDOWN`) |
@@ -155,22 +154,11 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Buff de velocidad | ×1,35 velocidad durante 10 s (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`) |
 | Buff de defensa (mapa) | 50% de reducción de daño durante 12 s; aparece cada 22 s (`Config.BUFF_DEFENSE_REDUCTION`, `Config.BUFF_DEFENSE_DURATION`, `Config.DEFENSE_SPAWN_INTERVAL`) |
 | Bloqueo y Parry | 70% de reducción al bloquear (`Config.BLOCK_DAMAGE_REDUCTION`), ventana de Parry de 0,25 s (`Config.PARRY_WINDOW`), disparo reflejado 25 de daño (`Config.PARRY_PROJECTILE_DAMAGE`), recarga al soltar 0,45 s (`Config.BLOCK_COOLDOWN`) |
-| Habilidades por jugador | <n> (`Config.ABILITY_SLOTS`) |
+| Huecos de habilidades activas por jugador | 3 (`Config.ABILITY_SLOTS`) |
 | Habilidades ofrecidas al empezar la run | 3 (`Config.START_ABILITY_CHOICES`) |
 
 **Habla con el cliente mediante:** los remotos `Attack`, `Dash` y `Spin` (eventos del jugador) y
 atributos en el jugador para la vida y las recargas. Ver [docs/combat.md](../../docs/combat.md).
-
-- Las habilidades siguientes llegan como mejoras de run (1 de 3 al limpiar una sala). Ver Mejoras
-  de run.
-
-**Open:** "el doble salto puede servir con el dash doble": ¿son una sola habilidad que da las
-dos cosas, o dos habilidades separadas que combinan bien juntas? Bloquea la lista de habilidades.
-
-**Open:** ¿las habilidades de ataque (como el giratorio) tienen tiempo de recarga, y las de
-movimiento mejorado son pasivas (siempre activas)? Bloquea la interfaz de habilidades.
-
-**Open:** ¿hay fuego amigo? (Propuesta: no.) Bloquea las reglas de daño.
 
 ---
 
@@ -182,19 +170,22 @@ movimiento mejorado son pasivas (siempre activas)? Bloquea la interfaz de habili
 
 **Reglas:**
 
-- Al limpiar una sala, se ofrecen 3 mejoras al azar y se elige 1.
+- Al limpiar una sala, cada jugador recibe sus propias 3 mejoras al azar y elige 1 por su cuenta,
+  en paralelo al resto del grupo para no frenar el ritmo.
 - Las mejoras de run se pierden al terminar la run, se gane o se pierda. Lo único que se conserva
   es la moneda permanente (ver [progression.md](progression.md)).
-- Entre las 3 opciones puede haber habilidades nuevas. Si el jugador ya tiene todos los huecos de
-  habilidad llenos (`Config.ABILITY_SLOTS`), una opción de habilidad nueva se convierte en una de
-  estas tres cosas:
-  - una mejora de una habilidad que ya tiene;
+- Entre las 3 opciones puede haber habilidades nuevas (activas o pasivas de movimiento) o mejoras
+  de estadísticas. Si el jugador ya tiene llenos los 3 huecos de habilidad activa
+  (`Config.ABILITY_SLOTS`), una opción de habilidad activa nueva se convierte al azar en una de
+  estas tres variantes (mezcladas dentro del pool de las 3 tarjetas):
+  - una mejora de una habilidad activa que ya tiene;
   - la habilidad nueva, reemplazando una que ya tiene (el jugador elige cuál);
   - una mejora de estadísticas (vida, daño, velocidad...).
 - El juego no se pausa mientras se elige. Los enemigos siguen activos; elegir rápido es parte del
   ritmo.
-- Las elecciones sin hacer se acumulan en una cola: si el jugador limpia dos o tres salas sin
-  elegir, tiene dos o tres elecciones pendientes y las hace en orden cuando quiera.
+- Las elecciones sin hacer se acumulan en una cola **sin tope dentro de la misma planta**: si el
+  jugador limpia varias salas sin elegir, tiene todas esas elecciones pendientes y las resuelve en
+  orden cuando quiera.
 - Al pasar de planta, todas las elecciones que sigan en la cola se resuelven al azar. Así nadie
   arrastra elecciones de una planta a otra, y quien no tuvo tiempo de elegir no se queda atrás.
 
@@ -204,16 +195,10 @@ movimiento mejorado son pasivas (siempre activas)? Bloquea la interfaz de habili
 |---|---|
 | Mejoras ofrecidas por elección | 3 (`Config.UPGRADE_CHOICES`) |
 
-**Habla con el cliente mediante:** <pendiente>.
-
-**Open:** cuando los huecos están llenos, ¿cuál de las tres conversiones se ofrece? ¿Se mezclan
-al azar, o el jugador ve las tres variantes? Bloquea el generador de opciones.
-
-**Open:** ¿hay un máximo de elecciones en cola? Bloquea la pantalla de elección.
-
-**Open:** en grupo, ¿cada jugador recibe sus propias 3 opciones y elige por su cuenta, o el grupo
-comparte la elección? (Propuesta: cada uno las suyas, a la vez, para no frenar el ritmo.)
-Bloquea la pantalla de elección.
+**Habla con el cliente mediante:** las ofertas activas y el contador de cola se replican por
+jugador (atributos o evento servidor→cliente al generarse una oferta); elegir una opción usa un
+remoto `PickUpgrade` declarado en el contrato (y `ReplaceAbility` o parámetro de hueco cuando
+corresponde reemplazar). Ver pantalla `UpgradeChoice` en [ui.md](ui.md).
 
 ---
 

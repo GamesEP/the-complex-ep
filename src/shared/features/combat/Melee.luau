@@ -219,32 +219,41 @@ function Melee.selfTest()
 	local pickAligned = Melee.pickTarget(origin, north, {
 		{ position = offAngle, radius = 2 },
 		{ position = Vector3.new(0, 0, -10), radius = 2 },
-	}, 15, 140, 0.65)
+	}, 15, 120, 0.65)
 	assert(pickAligned ~= nil and pickAligned.index == 2, "aligned enemy ahead beats closer off-angle enemy")
 
 	local pickCloser = Melee.pickTarget(origin, north, {
 		{ position = Vector3.new(0, 0, -13), radius = 2 },
 		{ position = Vector3.new(0, 0, -5), radius = 2 },
-	}, 15, 140, 0.65)
+	}, 15, 120, 0.65)
 	assert(pickCloser ~= nil and pickCloser.index == 2, "closer enemy on the same line wins")
+
+	-- 120-degree cone means +/-60 degrees: 59 deg is picked, 65 deg is ignored.
+	local insideCone = Vector3.new(math.sin(math.rad(59)), 0, -math.cos(math.rad(59))) * 6
+	local outsideCone = Vector3.new(math.sin(math.rad(65)), 0, -math.cos(math.rad(65))) * 6
+	local pickConeEdge = Melee.pickTarget(origin, north, {
+		{ position = insideCone, radius = 2 },
+	}, 15, 120, 0.65)
+	assert(pickConeEdge ~= nil and pickConeEdge.index == 1, "enemy inside +/-60 deg window is picked")
 
 	local pickNone = Melee.pickTarget(origin, north, {
 		{ position = Vector3.new(0, 0, 3), radius = 2 }, -- directly behind
+		{ position = outsideCone, radius = 2 }, -- 65 degrees off (> 60 deg half-cone)
 		{ position = Vector3.new(4, 0, 0), radius = 2 }, -- 90 degrees to the side
 		{ position = Vector3.new(0, 0, -20), radius = 2 }, -- beyond range + radius
-	}, 15, 140, 0.65)
-	assert(pickNone == nil, "enemies behind, sideways or out of range are ignored")
+	}, 15, 120, 0.65)
+	assert(pickNone == nil, "enemies behind, outside +/-60 deg cone, or out of range are ignored")
 
 	local pickPointBlank = Melee.pickTarget(origin, north, {
 		{ position = Vector3.new(0, 4, 0), radius = 2 },
-	}, 15, 140, 0.65)
+	}, 15, 120, 0.65)
 	assert(
 		pickPointBlank ~= nil and pickPointBlank.index == 1 and pickPointBlank.direction:Dot(north) > 0.999,
 		"point-blank enemy keeps forward facing regardless of height"
 	)
 
 	assert(
-		Melee.pickTarget(origin, Vector3.new(0, -1, 0), { { position = Vector3.new(0, 0, -5), radius = 2 } }, 15, 140)
+		Melee.pickTarget(origin, Vector3.new(0, -1, 0), { { position = Vector3.new(0, 0, -5), radius = 2 } }, 15, 120)
 			== nil,
 		"vertical facing picks nothing"
 	)
@@ -255,7 +264,7 @@ function Melee.selfTest()
 		{ position = Vector3.new(0, 0, -5), radius = 2 }, -- dead ahead and closer
 		{ position = Vector3.new(math.sin(math.rad(35)), 0, -math.cos(math.rad(35))) * 10, radius = 2 }, -- locked, 35 deg off
 	}
-	local kept = Melee.pickTarget(origin, north, stickyTargets, 15, 140, 0.65, 2, 110)
+	local kept = Melee.pickTarget(origin, north, stickyTargets, 15, 120, 0.65, 2, 110)
 	assert(kept ~= nil and kept.index == 2, "keeps locked target while still within lock cone")
 
 	-- Turning 75 degrees left puts target 2 at 110 degrees off facing (> 55 deg half-cone).
@@ -263,13 +272,13 @@ function Melee.selfTest()
 	local switched = Melee.pickTarget(origin, westish, {
 		{ position = westish * 6, radius = 2 },
 		stickyTargets[2],
-	}, 15, 140, 0.65, 2, 110)
+	}, 15, 120, 0.65, 2, 110)
 	assert(switched ~= nil and switched.index == 1, "drops lock and switches when player steers away")
 
 	local droppedRange = Melee.pickTarget(origin, north, {
 		{ position = Vector3.new(0, 0, -6), radius = 2 },
 		{ position = Vector3.new(0, 0, -25), radius = 2 },
-	}, 15, 140, 0.65, 2, 110)
+	}, 15, 120, 0.65, 2, 110)
 	assert(droppedRange ~= nil and droppedRange.index == 1, "drops lock when locked target leaves range")
 
 	-- Lunge distance: zero when already stuck to target, exact gap in mid-range, clamped at max.

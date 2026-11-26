@@ -181,16 +181,21 @@ The HUD reads the room from attributes on `workspace.World`: `Wave`, `WaveCount`
 
 ## Input
 
-`ContextActionService` binds each action once for every device, and `createTouchButton` draws the
-on-screen button on a phone. Moving and jumping stay Roblox's own controls, which move relative to
-the camera — so WASD, the thumbstick and the gamepad stick all mean "up the screen" with no code.
+`ContextActionService` binds each action once for keyboard/mouse and gamepad (`createTouchButton =
+false`), while touch devices drive the exact same `CombatInput` entry points (`beginAttack`,
+`endAttack`, `dash`, `spin`, `stinger`, `overDrive`, `beginBlock`, `endBlock`) from the machined
+circular actuators in `CombatHud`'s lower-right radial arc (see
+[ui-design-system.md](ui-design-system.md)). Moving and jumping stay Roblox's own controls, which
+move relative to the camera — so WASD, the thumbstick and the gamepad stick all mean "up the
+screen" with no code, and the touch arc wraps cleanly around Roblox's built-in bottom-right jump
+button.
 
 | Action | Keyboard / mouse | Gamepad | Touch |
 |---|---|---|---|
-| Attack (tap) / Heavy Attack (hold 2 s) | Left click | X, R2 | "Atacar" button |
-| Dash | Left Shift, Q | B, L2 | "Dash" button |
-| Spin | E | Y, R1 | "Giro" button |
-| Block / Parry (hold) | Right click, F | L1 | "Bloquear" button |
+| Attack (tap) / Heavy Attack (hold 2 s) | Left click | X, R2 | Radial `ATK` actuator |
+| Dash | Left Shift, Q | B, L2 | Radial `DSH` actuator |
+| Active Ability (the class's slots `1` / `2` / `3`, see [classes.md](classes.md)) | `1`/`2`/`3` select, `E` cast | D-Pad select, Y / R1 cast | Direct radial ability actuators |
+| Block / Parry (hold) | Right click, F | L1 | Radial `BLK` actuator |
 
 Every input device — mouse, gamepad and touch — uses the same forward-cone target sticking
 (`Melee.pickTarget` + `Melee.lungeDistance`), ignoring the mouse cursor. Pressing Attack reads

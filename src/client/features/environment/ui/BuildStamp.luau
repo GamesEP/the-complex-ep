@@ -42,6 +42,8 @@ local function BuildStamp()
 			width = math.min(WIDTH, metrics.room.X - 2 * ui.MARGIN),
 			padding = 8,
 			transparency = ROLLED_UP,
+			accentColor = ui.HAZARD,
+			accent = "left",
 			-- Bottom left, the one corner a HUD rarely wants. No inset(): IgnoreGuiInset is on
 			-- and Roblox's own bar is at the top, so the bottom edge is the bottom edge.
 			anchorPoint = Vector2.new(0, 1),
@@ -53,14 +55,15 @@ local function BuildStamp()
 			}),
 			Environment = React.createElement(ui.Title, {
 				text = Environment.name():upper(),
-				textSize = 14,
-				color = ui.HIGHLIGHT,
+				font = ui.DISPLAY_FONT,
+				textSize = 13,
+				color = ui.HAZARD,
 				order = 1,
 			}),
 			Commit = React.createElement(ui.Title, {
 				text = label,
-				font = ui.BODY_FONT,
-				textSize = 12,
+				font = ui.MONO_FONT,
+				textSize = 11,
 				color = ui.MUTED,
 				order = 2,
 			}),

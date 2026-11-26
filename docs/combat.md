@@ -45,12 +45,12 @@ Each action is predicted on the client and confirmed by the server:
 
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
-| Attack | Picks the best enemy in the forward cone (extended to `STAFF_AIM_ASSIST_RANGE` with no lunge for ranged Support), turns and lunges in for melee, plays anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo; damages in melee arc for Tank/Damage or launches a traveling `staffBolt` (with finisher splash on step 3) for Support |
-| Heavy Attack (hold Attack 2 s) | Tap still attacks immediately; holding past `HEAVY_CHARGE_DELAY` starts role-tinted charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (2 s) triggers role-specific heavy VFX/SFX and fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), then executes Tank seismic slam (+stun), Damage twin X-slash, or Support explosive arcane orb (+AoE stun) |
-| Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
-| Spin (`1` + `E`) | Draws the ring, fires `Spin()` | Checks `SpinReadyAt`, damages everything in `SPIN_RADIUS` |
-| Stinger (`2` + `E`) | Applies high-speed forward thrust `LinearVelocity`, draws lance streak & anim, fires `Stinger(aim)` | Checks `StingerReadyAt`, pierces every enemy along `Melee.inCorridor` (`STINGER_DISTANCE` × `STINGER_WIDTH`) |
-| Over Drive (`3` + `E`, Ult) | Faces target, fires `OverDrive(aim)` | Checks `OverDriveReadyAt` (`14 s`), enters `OverDriveCharging` (`0.75 s`), then fires 3 sequential piercing ranged waves (`Melee.inCorridor`, `56` studs) synced via `CombatVfx`/`CombatAnim`/`CombatSfx` |
+| Attack | Resolves lock/forward target (extended to `STAFF_AIM_ASSIST_RANGE` with no lunge for ranged Support); for melee, tracks a zero-overshoot lunge stopping at sweet-spot range (`radius + ATTACK_LUNGE_STOP_DISTANCE`), plays 3-phase swing+recovery anim/SFX (cancelable from `cancelAt`), fires `Attack(aim)` | Checks light/finisher swing interval (`Melee.attackInterval`), advances the combo; damages & applies hitstun/daze (`light` / `medium`) to every enemy in the melee arc for Tank/Damage, or launches a traveling `staffBolt` (with finisher splash on step 3) for Support |
+| Heavy Attack (hold Attack 2 s) | Tap still attacks immediately; holding past `HEAVY_CHARGE_DELAY` starts role-tinted charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (2 s) triggers role-specific heavy VFX/SFX and fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), then executes Tank seismic slam (+stun), Damage twin X-slash, or Support explosive arcane orb (+AoE stun); enemies hit take heavy hitstun |
+| Dash | Immediately cancels active/recovery combat animations & lunges, applies dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
+| Spin (`1` + `E`) | Lunges up to `SPIN_LUNGE_MAX_DISTANCE` stopping at sweet-spot range, draws the ring, plays 3-phase spin+recovery anim (cancelable at `cancelAt`), fires `Spin()` | Checks `SpinReadyAt`, damages & medium-hitstuns everything in `SPIN_RADIUS` |
+| Stinger (`2` + `E`) | Applies high-speed forward thrust `LinearVelocity` stopping right at sweet-spot range (`radius + STINGER_STOP_DISTANCE`) before a locked target (or full `STINGER_DISTANCE` with no target), draws lance streak & recovery anim, fires `Stinger(aim)` | Checks `StingerReadyAt`, pierces & heavy-hitstuns every enemy along `Melee.inCorridor` (`STINGER_DISTANCE` × `STINGER_WIDTH`) |
+| Over Drive (`3` + `E`, Ult) | Faces target, fires `OverDrive(aim)` | Checks `OverDriveReadyAt` (`14 s`), enters `OverDriveCharging` (`0.75 s`), then fires 3 sequential piercing ranged waves (`Melee.inCorridor`, `56` studs, `OVERDRIVE_WAVE_INTERVAL = 0.34 s`) with heavy hitstun, synced via `CombatVfx`/`CombatAnim`/`CombatSfx` |
 
 **The attack sends its aim.** The server could read the character's facing instead, but that
 facing arrives by physics replication, which is not ordered with remotes — the remote announcing
@@ -66,8 +66,28 @@ The server accepts a press up to 0.1 s early, so a dash pressed the instant the 
 never silently refused.
 
 **The combo is judged on the server's own clock** (`os.clock`), which a client cannot move.
-`ATTACK_TOLERANCE` lets two presses arrive a little closer than `ATTACK_INTERVAL`, because network
-jitter can bunch them up.
+`Melee.attackInterval` selects `ATTACK_INTERVAL` (0.36 s) for light combo steps and
+`ATTACK_FINISHER_INTERVAL` (0.50 s) after the heavy 3rd hit, while `ATTACK_TOLERANCE` lets
+recovery-cancels arrive a little closer than the exact interval so network jitter never drops a
+chain.
+
+**Enemy hitstun and progressive suppression (`Brain.applyHitstun` + `Brain.dazeSpeedFactor`).**
+Every player attack and skill goes through `CombatService`'s `hitEnemy` (so the class multiplier and
+the Damage passive always apply) and passes a hit tier (`light`, `medium`, `heavy`) and attacker
+origin into `EnemyService.damage`; class abilities default to `light`, staff bolts are `light` /
+`medium` (finisher) / `heavy` (charged orb). Hits interrupt normal enemy windups, ranged bursts, rail-beam charges,
+mace slam windups, and dual spins, putting the target into the `hitstun` phase (flinching via
+`EnemyAnim.hitstunPose` driven by `HitCount`), pushing back its next attack/evade cooldowns by
+`ENEMY_HIT_ACTION_DELAY`, applying a short damped recoil away from the attacker (clamped inside
+room walls with dampened crowd separation so nearby enemies do not shove the target out of combo
+range), and stacking a lingering daze slowdown (`ENEMY_DAZE_SPEED_FACTORS` for
+`ENEMY_DAZE_SECONDS`) so each consecutive hit leaves the enemy less able to act or move. Grabbers
+currently `holding` a player, spent exploders, active Paso Fantasma dashes, and anything mid-flight
+(a grabber `rush`, a boss `bossLeap`, an axe enemy in `axeRetrieve`) are excluded. Hitstun is
+skipped entirely while a hard stun (`EnemyService.stun`, `stunUntil`) holds the enemy — writing
+`hitstun` over the `stunned` Phase would stop the stun's exit from clearing its telegraph and
+resuming an axe retrieve — and bosses (`spec.isBoss`) have super armour against it, or any
+combo would chain-lock the only boss in the room.
 
 **All damage to a player goes through `CombatService.hurt`.** `EnemyService` receives it as a
 dependency and never touches a Humanoid. That is what makes the dash's invulnerability apply to
@@ -223,22 +243,31 @@ button.
 | Active Ability (the class's slots `1` / `2` / `3`, see [classes.md](classes.md)) | `1`/`2`/`3` select, `E` cast | D-Pad select, Y / R1 cast | Direct radial ability actuators |
 | Block / Parry (hold) | Right click, F | L1 | Radial `BLK` actuator |
 
-Every input device — mouse, gamepad and touch — uses the same forward-cone target sticking
-(`Melee.pickTarget` + `Melee.lungeDistance`), ignoring the mouse cursor. Pressing Attack reads
-the character's movement direction (or current facing when standing still), searches enemies
-within `AIM_ASSIST_RANGE` inside a forward `AIM_ASSIST_CONE` weighted toward angular alignment
-(`AIM_ASSIST_ANGLE_WEIGHT`), and turns toward the winner. Once a basic attack or ability (such as
-Spin) locks onto an enemy, continuing the combo within `COMBO_WINDOW` always keeps that same
-target while it stays alive, in range, and within `TARGET_LOCK_CONE` of where the player is
-heading (`lastEngageAt` is tracked separately from `lastSwingAt` so abilities can seed or refresh
-the lock without altering the server-synced combo step). Steering away drops the lock immediately
-and selects the new forward target. If the chosen enemy is farther than
-`radius + ATTACK_LUNGE_STOP_DISTANCE`, the client applies a short horizontal `LinearVelocity`
-step-in (up to `ATTACK_LUNGE_MAX_DISTANCE` at `ATTACK_LUNGE_SPEED`, respecting walls and gravity),
-starts the attack windup immediately, and fires `Remotes.Attack` as the lunge closes the gap so
-the server sees the updated position. `lastSwingAt` is anchored to lunge completion so the server's
-interval gate never drops the following combo hit, and starting a dash or respawning cancels any
-in-flight lunge cleanly via `lungeToken`.
+Every input device — mouse, gamepad and touch — uses the same DMC-style soft target lock,
+tracked sweet-spot lunge, and recovery-cancel system (`Melee.pickTarget`, `Melee.shouldKeepLock`,
+`Melee.lungeDistance`, and `CombatAnim.canInterrupt`), ignoring the mouse cursor. Pressing any
+basic attack or melee skill (Spin, Stinger, Heavy Attack) locks onto the best enemy within
+`AIM_ASSIST_RANGE` inside the forward `AIM_ASSIST_CONE` weighted toward angular alignment
+(`AIM_ASSIST_ANGLE_WEIGHT`), renders a ground lock ring via `Effects.updateLockIndicator`, and
+tracks a horizontal `LinearVelocity` impulse toward the live target on `RenderStepped`. The lunge
+brakes and zeros horizontal `AssemblyLinearVelocity` the instant the player reaches sweet-spot
+range (`radius + ATTACK_LUNGE_STOP_DISTANCE`, or `radius + STINGER_STOP_DISTANCE` for Stinger),
+eliminating physics overshoot so every swing lands cleanly in the middle of melee reach.
+
+Once locked onto an enemy, the lock persists (`TARGET_LOCK_DURATION`) as long as the target stays
+alive inside `TARGET_LOCK_BREAK_RANGE` and the player either presses **no movement direction** or
+steers in the **general direction of the target** (`TARGET_LOCK_CONE = 120°`, ±60°). While locked
+during active swings or recovery, a gentle wall-safe magnetic follow (`TARGET_LOCK_MAGNET_RANGE`)
+tracks the target's slight hitstun recoil to keep the player glued in range. The moment the player
+inputs **any other direction** outside `TARGET_LOCK_CONE`, the lock breaks immediately — letting
+them walk away freely or attack/skill directly onto a different target in the new direction.
+
+Every attack and ability carries a longer, deliberate animation (`Config.ANIMATIONS` durations
+scaled ~1.5x–2.4x) with an explicit `cancelAt` recovery threshold: if left alone, the full
+follow-through recovery plays out, while pressing **any other attack or ability** once
+`elapsed >= cancelAt` (or within `COMBO_INPUT_BUFFER = 0.18 s` beforehand, queued for frame 1 of
+recovery) cancels the recovery animation cleanly into the next move. `Dash` and `Block` cancel
+immediately at any point via `lungeToken` / `clearLunge` so defensive reactions stay instant.
 
 Shift lock is turned off per player (`DevEnableMouseLock = false`): it toggles on Left Shift,
 which is the dash.

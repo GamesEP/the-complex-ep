@@ -43,6 +43,8 @@ type Rig = {
 	currentPose: EnemyAnim.LimbPose,
 	strikeStartedAt: number,
 	fireStartedAt: number,
+	lastHitCount: number,
+	hitstunStartedAt: number,
 	spinRing: Part?,
 	beamGuide: Part?,
 	beamOrb: Part?,
@@ -264,6 +266,8 @@ local function attachEnemy(inst: Instance)
 			currentPose = EnemyAnim.neutral(),
 			strikeStartedAt = -math.huge,
 			fireStartedAt = -math.huge,
+			lastHitCount = 0,
+			hitstunStartedAt = -math.huge,
 			spinRing = nil,
 			beamGuide = nil,
 			beamOrb = nil,
@@ -663,6 +667,13 @@ local function onRenderStepped(dt: number)
 			then math.clamp((serverNow - startedAt) / duration, 0, 1)
 			else 1
 
+		local hitCountAttr = model:GetAttribute("HitCount")
+		local hitCount = if type(hitCountAttr) == "number" then hitCountAttr else 0
+		if hitCount ~= rig.lastHitCount then
+			rig.lastHitCount = hitCount
+			rig.hitstunStartedAt = clock
+		end
+
 		local targetPose: EnemyAnim.LimbPose
 		local strikeElapsed = clock - rig.strikeStartedAt
 		local fireElapsed = clock - rig.fireStartedAt
@@ -680,6 +691,10 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.bossNovaWindupPose(phaseProgress, clock)
 		elseif phase == "holding" then
 			targetPose = EnemyAnim.grabHoldPose(clock)
+		elseif phase == "hitstun" then
+			local stunDur = if type(duration) == "number" and duration > 0 then duration else Config.ENEMY_HITSTUN_LIGHT
+			local stunU = math.clamp((clock - rig.hitstunStartedAt) / math.max(stunDur, 0.1), 0, 1)
+			targetPose = EnemyAnim.hitstunPose(stunU, hitCount)
 		elseif phase == "spin" then
 			targetPose = EnemyAnim.spinPose(clock)
 		elseif phase == "phantomStep" then

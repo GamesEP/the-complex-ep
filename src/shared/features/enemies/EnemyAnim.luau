@@ -551,6 +551,24 @@ function EnemyAnim.stunPose(clock: number): LimbPose
 	}
 end
 
+-- Flinch / stagger pose while an enemy is in `hitstun`: snaps violently backward on impact with
+-- arms flung wide and head recoiling, alternating twist direction per hit (`hitSeed`), then
+-- trembles and slowly recovers upright.
+function EnemyAnim.hitstunPose(progress: number, hitSeed: number?): LimbPose
+	local u = clamp01(progress)
+	local snap = if u < 0.22 then easeOutCubic(u / 0.22) else 1 - easeInOutQuad((u - 0.22) / 0.78) * 0.72
+	local dir = if ((hitSeed or 1) % 2 == 1) then 1 else -1
+	local shiver = math.sin(u * math.pi * 6) * 0.06 * (1 - u)
+	return {
+		torso = CFrame.new(0, -0.14 * snap, 0.26 * snap) * CFrame.Angles(0.36 * snap, dir * 0.34 * snap + shiver, dir * 0.12 * snap),
+		head = CFrame.new(0, -0.10 * snap, 0.18 * snap) * CFrame.Angles(0.32 * snap, -dir * 0.28 * snap, -dir * 0.14 * snap),
+		leftLeg = CFrame.Angles(0.26 * snap, 0, -0.14 * snap),
+		rightLeg = CFrame.Angles(-0.32 * snap, 0, 0.14 * snap),
+		leftArm = CFrame.Angles(0.45 * snap, 0.55 * snap, -0.58 * snap),
+		rightArm = CFrame.Angles(0.45 * snap, -0.55 * snap, 0.58 * snap),
+	}
+end
+
 -- Death collapse pose (`progress` in [0, 1]): returns `(rootDelta, limbPose, fadeAlpha)`.
 -- Knocks the unit backward onto the floor with splayed limbs, then fades out cleanly.
 function EnemyAnim.deathPose(progress: number): (CFrame, LimbPose, number)
@@ -651,6 +669,10 @@ function EnemyAnim.selfTest()
 	assert(EnemyAnim.bossLeapWindupPose(1, 0).torso.Position.Y < -0.5, "boss leap windup crouches low")
 	assert(EnemyAnim.bossLeapAirPose(0.2).rightArm ~= EnemyAnim.bossLeapAirPose(0.95).rightArm, "boss leap air transitions to slam")
 	assert(EnemyAnim.bossNovaWindupPose(1, 0).leftArm ~= CFrame.identity, "boss nova spreads arms wide")
+
+	local hs1 = EnemyAnim.hitstunPose(0.2, 1)
+	local hs2 = EnemyAnim.hitstunPose(0.2, 2)
+	assert(hs1.torso.Position.Z > 0.1 and hs1.torso ~= hs2.torso, "hitstun reels enemy backward and alternates twist per hit")
 
 	for _, name in ipairs(GROUPS) do
 		assert((walkA :: any)[name] ~= nil, `walk pose must include {name}`)

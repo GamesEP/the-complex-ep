@@ -30,9 +30,11 @@ local CombatService = {}
 local COOLDOWN_SLACK = 0.1
 
 type Enemy = { body: BasePart, model: Model?, radius: number, health: number, dead: boolean?, spec: any, state: any }
+type HitTier = "light" | "medium" | "heavy"
+type HitInfo = { tier: HitTier?, sourcePos: Vector3? }
 type Enemies = {
 	list: () -> { Enemy },
-	damage: (Enemy, number) -> (),
+	damage: (Enemy, number, HitInfo?) -> (),
 	taunt: (Enemy, Player, number) -> (),
 	shove: (Enemy, Vector3, number, number, number, number) -> (),
 	stun: (Enemy, number) -> (),
@@ -373,15 +375,20 @@ local function classReduction(player: Player, t: number): number
 end
 
 -- Every hit a player lands goes through here: the class multiplier, and the Damage passive when
--- the enemy is stunned/recovering or hit from behind.
-local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3)
+-- the enemy is stunned/recovering or hit from behind. `tier` picks the enemy's hitstun and
+-- knockback (see docs/combat.md); a caller that bypasses this skips the class multiplier.
+local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3, tier: HitTier?)
 	local t = now()
 	local stunnedAttr = if enemy.model then enemy.model:GetAttribute("StunnedUntil") else nil
 	local isStunned = type(stunnedAttr) == "number" and t < stunnedAttr
 	local vulnerable = isStunned
 		or (enemy.state and enemy.state.phase == "recover")
 		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
-	enemies.damage(enemy, damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable))
+	enemies.damage(
+		enemy,
+		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable),
+		{ tier = tier or "light", sourcePos = from }
+	)
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -720,7 +727,7 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(impactPos, enemy.body.Position, Config.TANK_HEAVY_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position)
+				hitEnemy(player, enemy, damage, root.Position, "heavy")
 				local away = Melee.flat(enemy.body.Position - impactPos) or facing
 				enemies.shove(enemy, away, Config.TANK_HEAVY_PUSH_DISTANCE, 0.2, 1, t)
 				enemies.stun(enemy, Config.TANK_HEAVY_STUN_DURATION)
@@ -747,7 +754,7 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 					)
 				then
 					hitAt = hitAt or enemy.body.Position
-					hitEnemy(player, enemy, hitDamage, originPos)
+					hitEnemy(player, enemy, hitDamage, originPos, "heavy")
 				end
 			end
 			if hitAt then
@@ -795,7 +802,7 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 				)
 			then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position)
+				hitEnemy(player, enemy, damage, root.Position, "heavy")
 			end
 		end
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "default")
@@ -819,7 +826,13 @@ function CombatService.attack(player: Player, aim: Vector3)
 
 	local clock = os.clock()
 	local swing = swings[player] or { step = 0, lastAt = -math.huge }
-	if clock - swing.lastAt < Config.ATTACK_INTERVAL * Config.ATTACK_TOLERANCE then
+	local requiredInterval = Melee.attackInterval(
+		swing.step,
+		Config.COMBO_HITS,
+		Config.ATTACK_INTERVAL,
+		Config.ATTACK_FINISHER_INTERVAL
+	)
+	if clock - swing.lastAt < requiredInterval * Config.ATTACK_TOLERANCE then
 		return
 	end
 	local step = Melee.nextStep(swing.step, swing.lastAt, clock, Config.COMBO_HITS, Config.COMBO_WINDOW)
@@ -832,6 +845,7 @@ function CombatService.attack(player: Player, aim: Vector3)
 	local baseDamage = Config.COMBO_DAMAGE[step] or Config.COMBO_DAMAGE[1]
 	local damage = baseDamage
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), now(), Config.BUFF_DAMAGE_MULTIPLIER)
+	local hitTier: "light" | "medium" = if step >= Config.COMBO_HITS then "medium" else "light"
 	broadcastOthers(player, CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
 	broadcastAnimOthers(player, "attack", step)
 
@@ -858,7 +872,7 @@ function CombatService.attack(player: Player, aim: Vector3)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, damage, root.Position)
+			hitEnemy(player, enemy, damage, root.Position, hitTier)
 		end
 	end
 	if hitAt then
@@ -933,7 +947,7 @@ function CombatService.spin(player: Player)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, spinDamage, root.Position)
+			hitEnemy(player, enemy, spinDamage, root.Position, "medium")
 		end
 	end
 	if hitAt then
@@ -983,7 +997,7 @@ function CombatService.stinger(player: Player, aim: Vector3)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inCorridor(root.Position, facing, enemy.body.Position, Config.STINGER_DISTANCE, halfWidth + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, damage, root.Position)
+			hitEnemy(player, enemy, damage, root.Position, "heavy")
 		end
 	end
 	if hitAt then
@@ -1075,7 +1089,7 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 					)
 				then
 					hitAt = hitAt or enemy.body.Position
-					hitEnemy(player, enemy, waveDmg, waveRoot.Position)
+					hitEnemy(player, enemy, waveDmg, waveRoot.Position, "heavy")
 				end
 			end
 			if hitAt then
@@ -1264,6 +1278,17 @@ function CombatService.useAbility(player: Player, abilityId: string, aim: Vector
 	handler(player, root, facing, t)
 end
 
+-- A staff bolt flinches like a light swing; its combo finisher and the charged orb hit as hard as
+-- the melee finisher and heavy attack they stand in for.
+local function boltTier(kind: string): HitTier
+	if kind == "supportHeavy" then
+		return "heavy"
+	elseif kind == "staffFinisher" then
+		return "medium"
+	end
+	return "light"
+end
+
 -- Steps server-authoritative Support bolts/heavy orbs, Damage boomerang daggers, and persistent
 -- 10 s healing zones every Heartbeat.
 local function stepCombat(dt: number)
@@ -1301,7 +1326,7 @@ local function stepCombat(dt: number)
 				for _, enemy in ipairs(enemyList) do
 					if not enemy.dead and Melee.inRadius(impactPos, enemy.body.Position, bolt.splashRadius + enemy.radius) then
 						anyHit = true
-						hitEnemy(bolt.owner, enemy, bolt.damage, impactPos)
+						hitEnemy(bolt.owner, enemy, bolt.damage, impactPos, boltTier(bolt.kind))
 						if bolt.stunDuration > 0 then
 							enemies.stun(enemy, bolt.stunDuration)
 						end
@@ -1314,7 +1339,7 @@ local function stepCombat(dt: number)
 					Remotes.CombatSfx:FireAllClients("playerHit", impactPos)
 				end
 			elseif hitEnemyTarget then
-				hitEnemy(bolt.owner, hitEnemyTarget, bolt.damage, nextPos)
+				hitEnemy(bolt.owner, hitEnemyTarget, bolt.damage, nextPos, boltTier(bolt.kind))
 				Remotes.CombatSfx:FireAllClients("playerHit", impactPos)
 			end
 			Remotes.CombatVfx:FireAllClients("boltImpact", bolt.id, impactPos, bolt.kind, bolt.splashRadius)

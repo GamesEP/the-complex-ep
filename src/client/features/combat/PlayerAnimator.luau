@@ -79,14 +79,25 @@ local function disconnectRig(player: Player, expectedToken: number?)
 end
 
 local function trigger(rig: RigState, action: string, step: number?)
-	local currentKey = if rig.action then CombatAnim.specKey(rig.action, rig.step) else nil
+	local clock = os.clock()
+	local currentKey: string? = nil
+	local currentElapsed: number? = nil
+	if rig.action then
+		local key = CombatAnim.specKey(rig.action, rig.step)
+		local spec = Config.ANIMATIONS[key]
+		local elapsed = clock - rig.startedAt
+		if spec and elapsed < spec.duration then
+			currentKey = key
+			currentElapsed = elapsed
+		end
+	end
 	local nextKey = CombatAnim.specKey(action, step)
-	if not CombatAnim.canInterrupt(currentKey, nextKey) then
+	if not CombatAnim.canInterrupt(currentKey, nextKey, currentElapsed) then
 		return
 	end
 	rig.action = action
 	rig.step = step
-	rig.startedAt = os.clock()
+	rig.startedAt = clock
 end
 
 local function attachCharacter(player: Player, character: Model)

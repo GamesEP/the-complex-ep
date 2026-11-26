@@ -6,73 +6,85 @@ local Config = {}
 
 export type AnimSpec = {
 	duration: number,
+	-- Seconds elapsed when the active swing ends and the stylish follow-through recovery begins.
+	-- Any other attack or ability can cancel the animation once elapsed >= cancelAt (DMC feel).
+	cancelAt: number,
 	priority: number,
 	blendIn: number,
 	blendOut: number,
 }
 
 Config.ANIMATIONS = {
-	-- Light combo swings (steps 1 and 2): fast upper-body slash while legs keep running.
+	-- Light combo swings (steps 1 and 2): deliberate windup + crisp slash + follow-through recovery.
 	attack = {
-		duration = 0.24,
+		duration = 0.58,
+		cancelAt = 0.36,
 		priority = 2,
-		blendIn = 0.16,
-		blendOut = 0.34,
+		blendIn = 0.10,
+		blendOut = 0.36,
 	},
-	-- Heavy 3rd combo hit: longer windup and downward cleave follow-through.
+	-- Heavy 3rd combo hit: overhead windup, heavy downward cleave, and grounded follow-through.
 	attackHeavy = {
-		duration = 0.36,
+		duration = 0.82,
+		cancelAt = 0.50,
 		priority = 2,
-		blendIn = 0.18,
-		blendOut = 0.35,
-	},
-	-- Evasive dash: tuned slightly longer than Config.DASH_DURATION (0.18s) so the lean settles smoothly.
-	dash = {
-		duration = 0.23,
-		priority = 3,
-		blendIn = 0.15,
-		blendOut = 0.32,
-	},
-	-- Full 360-degree tornado spin slash.
-	spin = {
-		duration = 0.42,
-		priority = 4,
 		blendIn = 0.12,
-		blendOut = 0.28,
+		blendOut = 0.36,
 	},
-	-- DMC-style Stinger: explosive forward lance thrust with sword extended straight ahead.
-	stinger = {
-		duration = 0.36,
-		priority = 4,
-		blendIn = 0.08,
-		blendOut = 0.3,
-	},
-	-- DMC-style Over Drive: rapid 3-slash ranged shockwave barrage (steps 1..3).
-	overdriveWave = {
-		duration = 0.24,
-		priority = 4,
-		blendIn = 0.08,
-		blendOut = 0.28,
-	},
-	-- Charged heavy attack: massive full-body lunge and crushing cleave.
-	heavyAttack = {
-		duration = 0.52,
-		priority = 4,
-		blendIn = 0.1,
+	-- Evasive dash: stays snappy while giving a clean settle tail cancelable into attacks/skills.
+	dash = {
+		duration = 0.32,
+		cancelAt = 0.22,
+		priority = 3,
+		blendIn = 0.12,
 		blendOut = 0.34,
 	},
-	-- Crisp outward sword deflect when a Parry lands.
-	parry = {
-		duration = 0.26,
+	-- Full 360-degree tornado spin slash with recovery settle cancelable into any combo or skill.
+	spin = {
+		duration = 0.78,
+		cancelAt = 0.46,
 		priority = 4,
-		blendIn = 0.1,
-		blendOut = 0.35,
+		blendIn = 0.10,
+		blendOut = 0.34,
+	},
+	-- DMC-style Stinger: explosive forward lance thrust holding a low recovery stance until cancelled.
+	stinger = {
+		duration = 0.72,
+		cancelAt = 0.40,
+		priority = 4,
+		blendIn = 0.08,
+		blendOut = 0.36,
+	},
+	-- DMC-style Over Drive: deliberate 3-slash ranged shockwave barrage (steps 1..3).
+	overdriveWave = {
+		duration = 0.52,
+		cancelAt = 0.30,
+		priority = 4,
+		blendIn = 0.08,
+		blendOut = 0.34,
+	},
+	-- Charged heavy attack: massive full-body lunge, crushing cleave, and recovery.
+	heavyAttack = {
+		duration = 0.94,
+		cancelAt = 0.56,
+		priority = 4,
+		blendIn = 0.09,
+		blendOut = 0.36,
+	},
+	-- Crisp outward sword deflect when a Parry lands, cancelable into a counter-combo.
+	parry = {
+		duration = 0.42,
+		cancelAt = 0.22,
+		priority = 4,
+		blendIn = 0.08,
+		blendOut = 0.36,
 	},
 	-- Short athletic landing squash when touching down from a jump.
 	land = {
-		duration = 0.16,
+		duration = 0.22,
+		cancelAt = 0.0,
 		priority = 1,
-		blendIn = 0.2,
+		blendIn = 0.18,
 		blendOut = 0.55,
 	},
 } :: { [string]: AnimSpec }

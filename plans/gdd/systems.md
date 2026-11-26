@@ -132,7 +132,7 @@ un remoto declarado en el contrato.
 
 - Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash, **bloqueo / parry**,
   el ataque básico que encadena un combo y el **ataque pesado cargado** (manteniendo pulsado el
-  botón de ataque durante 3 segundos). Son los que definen la alta velocidad del juego, así que su
+  botón de ataque durante 2 segundos). Son los que definen la alta velocidad del juego, así que su
   rapidez y fluidez son lo primero que se ajusta.
 - **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
@@ -159,14 +159,22 @@ un remoto declarado en el contrato.
   las siguientes llegan como mejoras de run (1 de 3 al limpiar una sala; ver Mejoras de run).
 - Cada control (ataque, dash, cada habilidad) tiene que poder usarse con teclado y ratón, con
   táctil y con mando (ver [technical.md](technical.md)).
-- En los tres controles por igual (teclado/ratón, mando y táctil), el ataque básico toma como
-  referencia la dirección en la que se mueve o mira el personaje (nunca el cursor del ratón),
-  engancha al enemigo más alineado con esa dirección dentro de un cono frontal de 120° (±60° a
-  izquierda y derecha de la dirección pulsada) y da un impulso corto para pegarse a él durante el
-  combo.
-- Una vez elegido un enemigo al usar un ataque básico o una habilidad por primera vez, continuar el
-  combo mantiene el objetivo pegado a ese mismo enemigo mientras siga vivo, en alcance y el jugador
-  siga dirigiéndose hacia él.
+- En los tres controles por igual (teclado/ratón, mando y táctil), tanto los ataques básicos como
+  las habilidades cuerpo a cuerpo (Giro, Stinger, Ataque Pesado) toman como referencia la dirección
+  en la que se mueve o mira el personaje (nunca el cursor del ratón), enganchan al enemigo más
+  alineado dentro del cono frontal de 120° (±60°) e impulsan al jugador hacia él frenando justo en
+  el punto dulce medio del alcance de ataque para conectar en el centro sin pasarse de largo.
+- **Bloqueo de objetivo y aturdimiento estilo Devil May Cry:** cada golpe aplicado a un enemigo lo
+  hace retroceder brevemente, interrumpe su ataque en curso y lo deja progresivamente más incapacitado
+  para atacar o moverse (`hitstun` + ralentización acumulativa tras el impacto). Mientras el jugador
+  no pulse dirección o apunte en la dirección general del objetivo (`Config.TARGET_LOCK_CONE`, 120°),
+  el bloqueo se mantiene activo y acompaña el pequeño movimiento del enemigo para permanecer pegado;
+  pulsar cualquier otra dirección rompe el bloqueo al instante para saltar a otro enemigo o alejarse.
+- **Cancelación en recuperación de combos:** cada ataque básico y cada habilidad tiene animaciones
+  más largas y marcadas (≈1,5×–2×) con una fase de recuperación visible al final (`cancelAt` en
+  `Config/Animations.luau`); cualquier otro ataque o habilidad puede cancelar esa recuperación para
+  encadenar combos fluidos (con búfer de entrada breve antes de entrar en recuperación), y Dash o
+  Bloqueo cancelan en cualquier momento.
 - En el corte de prueba, el personaje lleva equipada una espada (`Config.TEST_SWORD_MODEL`).
 - Al morir por daño del jugador, cada enemigo tiene un 30% de probabilidad (`Config.DROP_CHANCE`)
   de soltar un objeto recogible en el suelo:
@@ -191,15 +199,16 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
 | Ataque pesado cargado | Mantener Atacar 2 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
-| Tiempo para encadenar el combo | 0,6 s (`Config.COMBO_WINDOW`) |
-| Enganche frontal del ataque básico | Cono de 120° (±60° desde la dirección pulsada) hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
+| Tiempo para encadenar el combo | 1,15 s (`Config.COMBO_WINDOW`); cadencia cancelable 0,36 s golpes ligeros / 0,50 s remate (`Config.ATTACK_INTERVAL`, `Config.ATTACK_FINISHER_INTERVAL`), búfer 0,18 s (`Config.COMBO_INPUT_BUFFER`) |
+| Enganche y bloqueo suave de objetivo | Cono de 120° hasta 18 studs (retención en 120° o sin dirección pulsada hasta 22 studs durante 2,4 s), con impulso frenado en punto dulce de hasta 12 studs (11 en Giro) a 78 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.TARGET_LOCK_BREAK_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
+| Hitstun y supresión de enemigos | 0,62 s ligero / 0,82 s medio / 1,05 s pesado (+0,10 s por acumulación hasta 4), retraso de acción +0,35 s y ralentización progresiva 60% → 40% → 25% → 15% durante 1,8 s (`Config.ENEMY_HITSTUN_*`, `Config.ENEMY_DAZE_*`) |
 | Velocidad al correr | 26 studs/s; la de Roblox por defecto es 16 (`Config.MOVE_SPEED`) |
-| Distancia del dash | 18 studs en 0,18 s (`Config.DASH_DISTANCE`, `Config.DASH_DURATION`) |
+| Distancia del dash | 18 studs en 0,20 s (`Config.DASH_DISTANCE`, `Config.DASH_DURATION`) |
 | Recarga del dash | 0,7 s (`Config.DASH_COOLDOWN`) |
-| Invulnerabilidad del dash | 0,25 s: se puede atravesar un ataque con el dash (`Config.DASH_IFRAMES`) |
-| Ataque giratorio (`1`) | 25 de daño, radio 12, recarga 4 s (`Config.SPIN_DAMAGE`, `Config.SPIN_RADIUS`, `Config.SPIN_COOLDOWN`) |
-| Stinger (`2`) | Embestida perforante de 26 studs en 0,24 s, 35 de daño en corredor de 6,5 studs, recarga 5,5 s (`Config.STINGER_DAMAGE`, `Config.STINGER_DISTANCE`, `Config.STINGER_COOLDOWN`) |
-| Over Drive (`3`, Definitiva) | Carga energía 0,75 s y desata 3 ondas crecientes a distancia (56 studs, ancho 9, daño 38 / 42 / 55), recarga 14 s (`Config.OVERDRIVE_COOLDOWN`, `Config.OVERDRIVE_WAVE_DAMAGE`) |
+| Invulnerabilidad del dash | 0,26 s: se puede atravesar un ataque con el dash (`Config.DASH_IFRAMES`) |
+| Ataque giratorio (`1`) | 25 de daño, radio 12, impulso hasta 11 studs al punto dulce, recarga 4 s (`Config.SPIN_DAMAGE`, `Config.SPIN_RADIUS`, `Config.SPIN_LUNGE_MAX_DISTANCE`, `Config.SPIN_COOLDOWN`) |
+| Stinger (`2`) | Embestida perforante de hasta 26 studs en 0,34 s (frena en punto dulce ante objetivo bloqueado), 35 de daño en corredor de 6,5 studs, recarga 5,5 s (`Config.STINGER_DAMAGE`, `Config.STINGER_DISTANCE`, `Config.STINGER_DURATION`, `Config.STINGER_COOLDOWN`) |
+| Over Drive (`3`, Definitiva) | Carga energía 0,75 s y desata 3 ondas crecientes a distancia cada 0,34 s (56 studs, ancho 9, daño 38 / 42 / 55), recarga 14 s (`Config.OVERDRIVE_COOLDOWN`, `Config.OVERDRIVE_WAVE_INTERVAL`, `Config.OVERDRIVE_WAVE_DAMAGE`) |
 | Probabilidad de drop al matar enemigo | 30% (`Config.DROP_CHANCE`), reparto 40/30/30 entre curación, daño y velocidad (`Config.DROP_WEIGHTS`) |
 | Curación de drop | +25 vida (`Config.DROP_HEAL_AMOUNT`) |
 | Buff de ataque | ×1,5 daño durante 10 s (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`) |

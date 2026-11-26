@@ -66,9 +66,22 @@ function CombatAnim.specKey(action: string, step: number?): string
 	return action
 end
 
+-- True once the active swing has landed and the animation has entered its cancelable recovery
+-- follow-through (`cancelAt <= elapsed < duration`).
+function CombatAnim.inRecovery(action: string, step: number?, elapsed: number): boolean
+	local key = CombatAnim.specKey(action, step)
+	local spec = Config.ANIMATIONS[key]
+	if not spec then
+		return false
+	end
+	return elapsed >= spec.cancelAt and elapsed < spec.duration
+end
+
 -- Higher priority actions interrupt lower ones; equal priority interrupts itself (e.g. combo
--- chaining attack 1 -> attack 2 -> attack 3).
-function CombatAnim.canInterrupt(currentKey: string?, nextKey: string): boolean
+-- chaining attack 1 -> attack 2 -> attack 3). Once the current action enters its recovery state
+-- (`currentElapsed >= currentSpec.cancelAt`), ANY combat attack or ability (priority >= 2) can
+-- cancel the recovery animation cleanly into the next move.
+function CombatAnim.canInterrupt(currentKey: string?, nextKey: string, currentElapsed: number?): boolean
 	if not currentKey then
 		return true
 	end
@@ -80,21 +93,34 @@ function CombatAnim.canInterrupt(currentKey: string?, nextKey: string): boolean
 	if not currentSpec then
 		return true
 	end
+	if currentElapsed ~= nil and currentElapsed >= currentSpec.cancelAt and nextSpec.priority >= 2 then
+		return true
+	end
 	return nextSpec.priority >= currentSpec.priority
 end
 
--- Two-phase swing curve: snappy windup (0..split) then explosive follow-through (split..1).
-local function swingPhase(u: number, split: number): number
-	if u < split then
-		return -easeInOutQuad(u / split)
+-- Three-phase DMC swing curve: snappy windup (0..windupEnd), explosive slash to peak follow-through
+-- (windupEnd..impactEnd), then a stylish lingering recovery settle (impactEnd..1) that players can
+-- watch play out or cancel directly into the next attack or ability.
+local function threePhaseSwing(u: number, windupEnd: number, impactEnd: number): (number, number)
+	if u < windupEnd then
+		local p = easeInOutQuad(u / windupEnd)
+		return -p, 0
+	elseif u < impactEnd then
+		local p = easeOutCubic((u - windupEnd) / math.max(impactEnd - windupEnd, 1e-4))
+		return -1 + 2 * p, 0
 	end
-	return easeOutCubic((u - split) / (1 - split))
+	local rec = easeInOutQuad((u - impactEnd) / math.max(1 - impactEnd, 1e-4))
+	-- Slight settle back from full follow-through extension as the swordsman recovers stance.
+	return lerpNumber(1, 0.62, rec), rec
 end
 
 local function evaluateAttack(step: number, u: number): { [string]: CFrame }
 	if step >= Config.COMBO_HITS then
-		-- Step 3 (heavy finisher): overhead windup -> violent downward cleave.
-		local split = 0.28
+		-- Step 3 (heavy finisher): coiled overhead windup (0..0.24) -> violent downward cleave
+		-- (0.24..0.56) -> grounded follow-through recovery (0.56..1.0, cancelable at cancelAt).
+		local windupEnd = 0.24
+		local impactEnd = 0.56
 		local waistPitch: number
 		local waistYaw: number
 		local rootDrop: number
@@ -103,28 +129,39 @@ local function evaluateAttack(step: number, u: number): { [string]: CFrame }
 		local rElbowX: number
 		local lShoulderX: number
 		local lShoulderZ: number
-		if u < split then
-			local p = easeInOutQuad(u / split)
-			waistPitch = lerpNumber(0, 0.28, p)
-			waistYaw = lerpNumber(0, -0.25, p)
-			rootDrop = lerpNumber(0, 0.12, p)
-			rShoulderX = lerpNumber(0.4, 2.45, p)
-			rShoulderZ = lerpNumber(0.2, 0.35, p)
+		if u < windupEnd then
+			local p = easeInOutQuad(u / windupEnd)
+			waistPitch = lerpNumber(0, 0.30, p)
+			waistYaw = lerpNumber(0, -0.28, p)
+			rootDrop = lerpNumber(0, 0.14, p)
+			rShoulderX = lerpNumber(0.4, 2.52, p)
+			rShoulderZ = lerpNumber(0.2, 0.38, p)
 			rElbowX = lerpNumber(0.3, 0.55, p)
-			lShoulderX = lerpNumber(0.2, 1.95, p)
+			lShoulderX = lerpNumber(0.2, 2.02, p)
 			lShoulderZ = lerpNumber(-0.15, -0.3, p)
-		else
-			local p = easeOutCubic((u - split) / (1 - split))
-			waistPitch = lerpNumber(0.28, -0.45, p)
-			waistYaw = lerpNumber(-0.25, 0.35, p)
-			rootDrop = lerpNumber(0.12, -0.22, p)
+		elseif u < impactEnd then
+			local p = easeOutCubic((u - windupEnd) / (impactEnd - windupEnd))
+			waistPitch = lerpNumber(0.30, -0.48, p)
+			waistYaw = lerpNumber(-0.28, 0.38, p)
+			rootDrop = lerpNumber(0.14, -0.26, p)
 			-- Ends at 0.45 rather than lower: with the blade held forward, a deeper follow-through
 			-- drove the tip into the floor at the bottom of the cleave.
-			rShoulderX = lerpNumber(2.45, 0.45, p)
-			rShoulderZ = lerpNumber(0.35, -0.25, p)
-			rElbowX = lerpNumber(0.55, 0.25, p)
-			lShoulderX = lerpNumber(1.95, -0.45, p)
-			lShoulderZ = lerpNumber(-0.3, -0.55, p)
+			rShoulderX = lerpNumber(2.52, 0.45, p)
+			rShoulderZ = lerpNumber(0.38, -0.28, p)
+			rElbowX = lerpNumber(0.55, 0.22, p)
+			lShoulderX = lerpNumber(2.02, -0.48, p)
+			lShoulderZ = lerpNumber(-0.3, -0.58, p)
+		else
+			-- Recovery follow-through: holds the heavy cleave low then rises smoothly back to stance.
+			local rec = easeInOutQuad((u - impactEnd) / (1 - impactEnd))
+			waistPitch = lerpNumber(-0.48, -0.14, rec)
+			waistYaw = lerpNumber(0.38, 0.12, rec)
+			rootDrop = lerpNumber(-0.26, -0.06, rec)
+			rShoulderX = lerpNumber(0.45, 0.58, rec)
+			rShoulderZ = lerpNumber(-0.28, 0.08, rec)
+			rElbowX = lerpNumber(0.22, 0.42, rec)
+			lShoulderX = lerpNumber(-0.48, -0.08, rec)
+			lShoulderZ = lerpNumber(-0.58, -0.22, rec)
 		end
 		return {
 			Root = CFrame.new(0, rootDrop, 0) * CFrame.Angles(waistPitch * 0.35, 0, 0),
@@ -137,64 +174,71 @@ local function evaluateAttack(step: number, u: number): { [string]: CFrame }
 		}
 	end
 
-	-- Steps 1 and 2 alternate right-to-left and backhand left-to-right horizontal cleaves.
+	-- Steps 1 and 2 alternate right-to-left and backhand left-to-right horizontal cleaves with a
+	-- visible follow-through recovery (`0.58..1.0`) ready to be cancelled into the next hit/skill.
 	local dir = if step % 2 == 1 then 1 else -1
-	local s = swingPhase(u, 0.22)
-	local waistYaw = dir * lerpNumber(-0.65, 0.8, (s + 1) * 0.5)
-	local waistPitch = -0.14 - 0.12 * math.max(s, 0)
-	local armSweepY = dir * lerpNumber(-0.85, 1.15, (s + 1) * 0.5)
-	local rShoulderX = 1.15 + 0.25 * math.max(s, 0)
-	local rShoulderZ = if dir > 0 then lerpNumber(1.25, -0.45, (s + 1) * 0.5) else lerpNumber(-0.45, 1.35, (s + 1) * 0.5)
-	local lShoulderX = -0.35 * dir * s
+	local s, rec = threePhaseSwing(u, 0.20, 0.58)
+	local sweepT = (s + 1) * 0.5
+	local waistYaw = dir * lerpNumber(-0.72, 0.88, sweepT)
+	local waistPitch = -0.14 - 0.14 * math.max(s, 0) * (1 - 0.35 * rec)
+	local armSweepY = dir * lerpNumber(-0.92, 1.24, sweepT)
+	local rShoulderX = 1.18 + 0.26 * math.max(s, 0) - 0.18 * rec
+	local rShoulderZ = if dir > 0 then lerpNumber(1.30, -0.48, sweepT) else lerpNumber(-0.48, 1.38, sweepT)
+	local lShoulderX = -0.38 * dir * s
 	local lShoulderZ = -0.55 - 0.25 * math.abs(s)
 
 	return {
 		Waist = CFrame.Angles(waistPitch, waistYaw, -dir * 0.12 * s),
 		Neck = CFrame.Angles(-waistPitch * 0.5, -waistYaw * 0.55, 0),
 		RightShoulder = CFrame.Angles(rShoulderX, armSweepY, rShoulderZ),
-		RightElbow = CFrame.Angles(0.55 + 0.25 * (1 - math.abs(s)), 0, 0),
+		RightElbow = CFrame.Angles(0.52 + 0.25 * (1 - math.abs(s)), 0, 0),
 		LeftShoulder = CFrame.Angles(lShoulderX, -armSweepY * 0.3, lShoulderZ),
 		LeftElbow = CFrame.Angles(0.65, 0, 0),
 	}
 end
 
 local function evaluateDash(u: number): { [string]: CFrame }
-	local burst = easeOutCubic(math.min(u / 0.35, 1))
-	local lean = -0.58 * burst
+	local burst = easeOutCubic(math.min(u / 0.30, 1))
+	local settle = if u > 0.68 then easeInOutQuad((u - 0.68) / 0.32) else 0
+	local power = burst * (1 - 0.45 * settle)
+	local lean = -0.58 * power
 	return {
-		Root = CFrame.new(0, -0.35 * burst, 0) * CFrame.Angles(lean, 0, 0),
-		Waist = CFrame.Angles(-0.22 * burst, 0.28 * burst, 0),
-		Neck = CFrame.Angles(0.52 * burst, -0.22 * burst, 0),
+		Root = CFrame.new(0, -0.35 * power, 0) * CFrame.Angles(lean, 0, 0),
+		Waist = CFrame.Angles(-0.22 * power, 0.28 * power, 0),
+		Neck = CFrame.Angles(0.52 * power, -0.22 * power, 0),
 		-- Sword arm swept out and back so the blade trails behind the body, level. Pitching the
 		-- arm straight back (as the left one does) swings the forward-held blade down through the
 		-- floor halfway into the dash; this path stays ~1.8 studs clear at every point of the burst.
-		RightShoulder = CFrame.Angles(0.4 * burst, 1.4 * burst, 1.8 * burst),
-		RightElbow = CFrame.Angles(2.0 * burst, 0, 0),
-		LeftShoulder = CFrame.Angles(-0.8 * burst, 0, -0.5 * burst),
-		LeftElbow = CFrame.Angles(0.65 * burst, 0, 0),
-		RightHip = CFrame.Angles(0.75 * burst, 0, 0),
-		RightKnee = CFrame.Angles(-0.95 * burst, 0, 0),
-		LeftHip = CFrame.Angles(-0.85 * burst, 0, 0),
-		LeftKnee = CFrame.Angles(-0.45 * burst, 0, 0),
+		RightShoulder = CFrame.Angles(0.4 * power, 1.4 * power, 1.8 * power),
+		RightElbow = CFrame.Angles(2.0 * power, 0, 0),
+		LeftShoulder = CFrame.Angles(-0.8 * power, 0, -0.5 * power),
+		LeftElbow = CFrame.Angles(0.65 * power, 0, 0),
+		RightHip = CFrame.Angles(0.75 * power, 0, 0),
+		RightKnee = CFrame.Angles(-0.95 * power, 0, 0),
+		LeftHip = CFrame.Angles(-0.85 * power, 0, 0),
+		LeftKnee = CFrame.Angles(-0.45 * power, 0, 0),
 	}
 end
 
 local function evaluateSpin(u: number): { [string]: CFrame }
-	-- Full 360-degree tornado rotation with explosive ease-out so the blade sweeps immediately.
-	local angle = -math.pi * 2 * Config.ANIM_SPIN_TURNS * easeOutCubic(u)
-	local crouch = -0.28
+	-- Full 360-degree tornado rotation across the active phase (0..0.58), then holds the sweeping
+	-- deceleration stance through recovery (0.58..1.0) so it can be cancelled cleanly into a combo.
+	local spinU = clamp01(u / 0.58)
+	local rec = if u > 0.58 then easeInOutQuad((u - 0.58) / 0.42) else 0
+	local angle = -math.pi * 2 * Config.ANIM_SPIN_TURNS * easeOutCubic(spinU) - 0.28 * rec
+	local crouch = lerpNumber(-0.30, -0.10, rec)
 	return {
-		Root = CFrame.new(0, crouch, 0) * CFrame.Angles(-0.18, angle, 0),
-		Waist = CFrame.Angles(-0.12, -0.35, 0),
-		Neck = CFrame.Angles(0.18, 0.25, 0),
-		RightShoulder = CFrame.Angles(0.25, 0, 1.48),
-		RightElbow = CFrame.Angles(0.22, 0, 0),
-		LeftShoulder = CFrame.Angles(-0.2, 0, -1.25),
+		Root = CFrame.new(0, crouch, 0) * CFrame.Angles(lerpNumber(-0.20, -0.06, rec), angle, 0),
+		Waist = CFrame.Angles(lerpNumber(-0.14, -0.04, rec), lerpNumber(-0.38, -0.15, rec), 0),
+		Neck = CFrame.Angles(0.18 * (1 - 0.5 * rec), 0.25 * (1 - 0.5 * rec), 0),
+		RightShoulder = CFrame.Angles(lerpNumber(0.25, 0.55, rec), 0, lerpNumber(1.48, 0.85, rec)),
+		RightElbow = CFrame.Angles(lerpNumber(0.22, 0.45, rec), 0, 0),
+		LeftShoulder = CFrame.Angles(-0.2 * (1 - 0.4 * rec), 0, lerpNumber(-1.25, -0.65, rec)),
 		LeftElbow = CFrame.Angles(0.55, 0, 0),
-		RightHip = CFrame.Angles(0.35, 0, 0.12),
-		RightKnee = CFrame.Angles(-0.65, 0, 0),
-		LeftHip = CFrame.Angles(0.2, 0, -0.12),
-		LeftKnee = CFrame.Angles(-0.55, 0, 0),
+		RightHip = CFrame.Angles(0.35 * (1 - 0.5 * rec), 0, 0.12),
+		RightKnee = CFrame.Angles(-0.65 * (1 - 0.5 * rec), 0, 0),
+		LeftHip = CFrame.Angles(0.2 * (1 - 0.5 * rec), 0, -0.12),
+		LeftKnee = CFrame.Angles(-0.55 * (1 - 0.5 * rec), 0, 0),
 	}
 end
 
@@ -231,10 +275,11 @@ end
 
 local function evaluateHeavyAttack(u: number): { [string]: CFrame }
 	-- Coiled overhead-right windup (0..0.22) erupting into a massive full-body diagonal slam
-	-- cleave across the entire front arc (0.22..1.0).
-	local split = 0.22
-	if u < split then
-		local p = easeInOutQuad(u / split)
+	-- cleave across the entire front arc (0.22..0.58), followed by dramatic recovery (0.58..1.0).
+	local windupEnd = 0.22
+	local impactEnd = 0.58
+	if u < windupEnd then
+		local p = easeInOutQuad(u / windupEnd)
 		return {
 			Root = CFrame.new(0, lerpNumber(-0.12, 0.16, p), 0) * CFrame.Angles(lerpNumber(0.05, 0.34, p), lerpNumber(-0.3, -0.55, p), 0),
 			Waist = CFrame.Angles(lerpNumber(0.12, 0.36, p), lerpNumber(-0.45, -0.75, p), 0),
@@ -244,29 +289,44 @@ local function evaluateHeavyAttack(u: number): { [string]: CFrame }
 			LeftShoulder = CFrame.Angles(lerpNumber(1.65, 2.25, p), 0.25, -0.45),
 			LeftElbow = CFrame.Angles(0.55, 0, 0),
 		}
+	elseif u < impactEnd then
+		local p = easeOutCubic((u - windupEnd) / (impactEnd - windupEnd))
+		return {
+			Root = CFrame.new(0, lerpNumber(0.16, -0.42, p), 0) * CFrame.Angles(lerpNumber(0.34, -0.42, p), lerpNumber(-0.55, 0.65, p), 0),
+			Waist = CFrame.Angles(lerpNumber(0.36, -0.52, p), lerpNumber(-0.75, 0.95, p), lerpNumber(0, -0.18, p)),
+			Neck = CFrame.Angles(lerpNumber(-0.18, 0.38, p), lerpNumber(0.55, -0.65, p), 0),
+			RightShoulder = CFrame.Angles(lerpNumber(2.75, 0.28, p), lerpNumber(-0.35, 1.05, p), lerpNumber(0.72, -0.65, p)),
+			RightElbow = CFrame.Angles(lerpNumber(0.65, 0.22, p), 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(2.25, -0.65, p), lerpNumber(0.25, -0.45, p), lerpNumber(-0.45, -0.75, p)),
+			LeftElbow = CFrame.Angles(0.45, 0, 0),
+			RightHip = CFrame.Angles(0.45 * p, 0, 0),
+			RightKnee = CFrame.Angles(-0.75 * p, 0, 0),
+			LeftHip = CFrame.Angles(-0.35 * p, 0, 0),
+			LeftKnee = CFrame.Angles(-0.55 * p, 0, 0),
+		}
 	end
-	local p = easeOutCubic((u - split) / (1 - split))
+	local rec = easeInOutQuad((u - impactEnd) / (1 - impactEnd))
 	return {
-		Root = CFrame.new(0, lerpNumber(0.16, -0.42, p), 0) * CFrame.Angles(lerpNumber(0.34, -0.42, p), lerpNumber(-0.55, 0.65, p), 0),
-		Waist = CFrame.Angles(lerpNumber(0.36, -0.52, p), lerpNumber(-0.75, 0.95, p), lerpNumber(0, -0.18, p)),
-		Neck = CFrame.Angles(lerpNumber(-0.18, 0.38, p), lerpNumber(0.55, -0.65, p), 0),
-		RightShoulder = CFrame.Angles(lerpNumber(2.75, 0.28, p), lerpNumber(-0.35, 1.05, p), lerpNumber(0.72, -0.65, p)),
-		RightElbow = CFrame.Angles(lerpNumber(0.65, 0.22, p), 0, 0),
-		LeftShoulder = CFrame.Angles(lerpNumber(2.25, -0.65, p), lerpNumber(0.25, -0.45, p), lerpNumber(-0.45, -0.75, p)),
+		Root = CFrame.new(0, lerpNumber(-0.42, -0.10, rec), 0) * CFrame.Angles(lerpNumber(-0.42, -0.10, rec), lerpNumber(0.65, 0.18, rec), 0),
+		Waist = CFrame.Angles(lerpNumber(-0.52, -0.14, rec), lerpNumber(0.95, 0.26, rec), lerpNumber(-0.18, -0.04, rec)),
+		Neck = CFrame.Angles(lerpNumber(0.38, 0.10, rec), lerpNumber(-0.65, -0.18, rec), 0),
+		RightShoulder = CFrame.Angles(lerpNumber(0.28, 0.68, rec), lerpNumber(1.05, 0.25, rec), lerpNumber(-0.65, 0.10, rec)),
+		RightElbow = CFrame.Angles(lerpNumber(0.22, 0.45, rec), 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(-0.65, -0.12, rec), lerpNumber(-0.45, -0.10, rec), lerpNumber(-0.75, -0.25, rec)),
 		LeftElbow = CFrame.Angles(0.45, 0, 0),
-		RightHip = CFrame.Angles(0.45 * p, 0, 0),
-		RightKnee = CFrame.Angles(-0.75 * p, 0, 0),
-		LeftHip = CFrame.Angles(-0.35 * p, 0, 0),
-		LeftKnee = CFrame.Angles(-0.55 * p, 0, 0),
+		RightHip = CFrame.Angles(lerpNumber(0.45, 0.12, rec), 0, 0),
+		RightKnee = CFrame.Angles(lerpNumber(-0.75, -0.22, rec), 0, 0),
+		LeftHip = CFrame.Angles(lerpNumber(-0.35, -0.08, rec), 0, 0),
+		LeftKnee = CFrame.Angles(lerpNumber(-0.55, -0.15, rec), 0, 0),
 	}
 end
 
--- Iconic DMC Stinger pose: deep forward thrust lunge with torso twisted right-shoulder-forward,
--- sword arm driven straight ahead like a lance, and left arm swept behind for balance.
+-- Iconic DMC Stinger pose: explosive forward lance thrust (0..0.55) holding low recovery stance
+-- (0.55..1.0) so players can cancel cleanly into combos or abilities.
 local function evaluateStinger(u: number): { [string]: CFrame }
-	local burst = easeOutCubic(math.min(u / 0.22, 1))
-	local settle = if u > 0.72 then (u - 0.72) / 0.28 else 0
-	local thrust = burst * (1 - 0.35 * settle)
+	local burst = easeOutCubic(math.min(u / 0.18, 1))
+	local settle = if u > 0.55 then easeInOutQuad((u - 0.55) / 0.45) else 0
+	local thrust = burst * (1 - 0.52 * settle)
 	return {
 		Root = CFrame.new(0, -0.48 * thrust, 0) * CFrame.Angles(-0.52 * thrust, 0.42 * thrust, 0),
 		Waist = CFrame.Angles(-0.26 * thrust, 0.48 * thrust, 0),
@@ -283,10 +343,11 @@ local function evaluateStinger(u: number): { [string]: CFrame }
 end
 
 -- DMC Over Drive 3-wave ranged slash cadence: alternating wide crescent arcs (steps 1 & 2)
--- finishing with a devastating two-handed vertical-diagonal energy cleave (step 3).
+-- finishing with a devastating two-handed vertical-diagonal energy cleave (step 3), each with a
+-- clean follow-through recovery tail.
 local function evaluateOverDriveWave(step: number, u: number): { [string]: CFrame }
 	if step >= 3 then
-		local s = swingPhase(u, 0.24)
+		local s = threePhaseSwing(u, 0.20, 0.56)
 		local p = (s + 1) * 0.5
 		return {
 			Root = CFrame.new(0, lerpNumber(0.14, -0.34, p), 0) * CFrame.Angles(lerpNumber(0.24, -0.36, p), lerpNumber(-0.42, 0.52, p), 0),
@@ -299,7 +360,7 @@ local function evaluateOverDriveWave(step: number, u: number): { [string]: CFram
 		}
 	end
 	local dir = if step % 2 == 1 then 1 else -1
-	local s = swingPhase(u, 0.2)
+	local s = threePhaseSwing(u, 0.18, 0.56)
 	local p = (s + 1) * 0.5
 	local waistYaw = dir * lerpNumber(-0.85, 1.05, p)
 	local armSweepY = dir * lerpNumber(-1.05, 1.35, p)
@@ -569,18 +630,43 @@ function CombatAnim.selfTest()
 	assert(CombatAnim.specKey("attack", 3) == "attackHeavy", "step 3 uses heavy attack spec")
 	assert(CombatAnim.canInterrupt("attack", "dash"), "dash interrupts an attack")
 	assert(CombatAnim.canInterrupt("dash", "spin"), "spin interrupts a dash")
-	assert(not CombatAnim.canInterrupt("spin", "attack"), "attack cannot cancel a spin")
+	assert(not CombatAnim.canInterrupt("spin", "attack"), "attack cannot cancel an active spin")
+	assert(not CombatAnim.canInterrupt("spin", "attack", 0.2), "attack cannot cancel spin before recovery")
+	assert(CombatAnim.canInterrupt("spin", "attack", Config.ANIMATIONS.spin.cancelAt), "attack cancels spin in recovery")
+	assert(
+		CombatAnim.canInterrupt("stinger", "attack", Config.ANIMATIONS.stinger.cancelAt + 0.02),
+		"attack cancels stinger in recovery"
+	)
+	assert(
+		CombatAnim.canInterrupt("attackHeavy", "spin", Config.ANIMATIONS.attackHeavy.cancelAt),
+		"ability cancels combo finisher in recovery"
+	)
+	assert(
+		not CombatAnim.canInterrupt("spin", "land", Config.ANIMATIONS.spin.cancelAt + 0.05),
+		"landing squash never cancels a combat recovery"
+	)
 	assert(CombatAnim.canInterrupt("attack", "attack"), "combo chain interrupts previous swing")
 	assert(CombatAnim.canInterrupt("land", "attack"), "attack interrupts landing squash")
 
+	-- Recovery state checks: false during active swing, true during [cancelAt, duration), false after.
+	assert(not CombatAnim.inRecovery("attack", 1, 0.1), "active light attack is not in recovery")
+	assert(
+		CombatAnim.inRecovery("attack", 1, Config.ANIMATIONS.attack.cancelAt + 0.05),
+		"light attack past cancelAt is in recovery"
+	)
+	assert(
+		not CombatAnim.inRecovery("attack", 1, Config.ANIMATIONS.attack.duration + 0.01),
+		"finished attack is no longer in recovery"
+	)
+
 	-- Combo steps 1 and 2 swing in opposite directions; step 3 uses an overhead cleave.
-	local a1 = CombatAnim.evaluate("attack", 1, 0.12)
-	local a2 = CombatAnim.evaluate("attack", 2, 0.12)
-	local a3 = CombatAnim.evaluate("attack", 3, 0.06)
+	local a1 = CombatAnim.evaluate("attack", 1, 0.22)
+	local a2 = CombatAnim.evaluate("attack", 2, 0.22)
+	local a3 = CombatAnim.evaluate("attack", 3, 0.15)
 	assert(a1.active and a1.weight > 0.5, "attack step 1 is active mid-swing")
 	assert(a2.active and a1.joints.Waist ~= a2.joints.Waist, "combo steps 1 and 2 mirror their swing")
 	assert(a3.active and a3.joints.Root ~= nil, "heavy step 3 drives full-body cleave")
-	assert(not CombatAnim.evaluate("attack", 1, 1.0).active, "expired attack returns inactive")
+	assert(not CombatAnim.evaluate("attack", 1, 1.5).active, "expired attack returns inactive")
 
 	-- Dash leans forward and bends legs.
 	local d = CombatAnim.evaluate("dash", nil, 0.1)
@@ -633,10 +719,14 @@ function CombatAnim.selfTest()
 	assert(odW1.active and odW2.active and odW3.active, "all 3 overdrive wave animations are active")
 	assert(odW1.joints.Waist ~= odW2.joints.Waist, "overdrive waves 1 and 2 alternate sweep direction")
 
-	-- Every required action spec exists with valid positive duration.
+	-- Every required action spec exists with valid positive duration and recovery cancelAt.
 	for _, key in ipairs({ "attack", "attackHeavy", "heavyAttack", "dash", "spin", "stinger", "overdriveWave", "parry", "land" }) do
 		local spec = Config.ANIMATIONS[key]
 		assert(spec ~= nil and spec.duration > 0, `Config.ANIMATIONS.{key} must exist with positive duration`)
+		assert(
+			type(spec.cancelAt) == "number" and spec.cancelAt >= 0 and spec.cancelAt <= spec.duration,
+			`Config.ANIMATIONS.{key}.cancelAt must lie in [0, duration]`
+		)
 	end
 end
 

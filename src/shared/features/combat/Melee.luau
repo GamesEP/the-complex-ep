@@ -95,11 +95,60 @@ function Melee.inCorridor(
 	return (offset - closest).Magnitude <= halfWidth + 1e-6
 end
 
+-- Minimum time before the next swing may start (entering recovery cancel). The heavy combo
+-- finisher can carry a longer recovery interval than light combo hits.
+function Melee.attackInterval(
+	previousStep: number,
+	comboHits: number,
+	baseInterval: number,
+	finisherInterval: number?
+): number
+	if finisherInterval ~= nil and finisherInterval > 0 and comboHits > 0 and previousStep >= comboHits then
+		return finisherInterval
+	end
+	return baseInterval
+end
+
+-- Decides whether an active DMC soft-lock onto a target should persist: stays locked whenever the
+-- target is within `maxRange + targetRadius` and the player is either pressing no direction
+-- (`moveInput == nil` or degenerate) OR steering in the general direction of the target
+-- (`lockCone`). Pressing any other direction breaks the lock immediately.
+function Melee.shouldKeepLock(
+	origin: Vector3,
+	targetPosition: Vector3,
+	targetRadius: number,
+	moveInput: Vector3?,
+	maxRange: number,
+	lockCone: number
+): boolean
+	if maxRange <= 0 or lockCone <= 0 then
+		return false
+	end
+	local offset = Vector3.new(targetPosition.X - origin.X, 0, targetPosition.Z - origin.Z)
+	local distance = offset.Magnitude
+	if distance > maxRange + math.max(targetRadius, 0) then
+		return false
+	end
+	if not moveInput then
+		return true
+	end
+	local flatMove = Melee.flat(moveInput)
+	if not flatMove then
+		return true
+	end
+	if distance < 1e-3 then
+		return true
+	end
+	local minDot = math.cos(math.rad(math.clamp(lockCone, 0, 360) / 2)) - 1e-6
+	return (offset / distance):Dot(flatMove) >= minDot
+end
+
 -- Picks the best enemy in front of `facing` (within `cone` degrees and `range` studs + enemy
--- radius) to snap a basic attack onto. Prioritises enemies aligned with where the player is
--- looking, breaking ties by proximity so a nearby aligned enemy beats a far dead-ahead one.
--- When `preferredIndex` is given (continuing a combo or following an ability), that target stays
--- locked as long as it remains within range and inside `lockCone` (defaulting to `cone`).
+-- radius) to snap a basic attack or skill onto. Prioritises enemies aligned with where the player
+-- is heading, breaking ties by proximity so a nearby aligned enemy beats a far dead-ahead one.
+-- When `preferredIndex` is given (locked target), that target stays locked while in range if no
+-- directional input is pressed (`hasMoveInput == false`) OR the input stays inside `lockCone`.
+-- Steering outside `lockCone` drops the lock and searches for a new target in `facing`.
 function Melee.pickTarget(
 	origin: Vector3,
 	facing: Vector3,
@@ -108,7 +157,8 @@ function Melee.pickTarget(
 	cone: number,
 	angleWeight: number?,
 	preferredIndex: number?,
-	lockCone: number?
+	lockCone: number?,
+	hasMoveInput: boolean?
 ): TargetPick?
 	local forward = Melee.flat(facing)
 	if not forward or range <= 0 or cone <= 0 then
@@ -123,10 +173,11 @@ function Melee.pickTarget(
 			local distance = offset.Magnitude
 			if distance <= range + radius then
 				local dir = if distance < 1e-3 then forward else offset / distance
-				local dot = if distance < 1e-3 then 1 else dir:Dot(forward)
 				local keepCone = if lockCone ~= nil then lockCone else cone
-				local keepMinDot = math.cos(math.rad(math.clamp(keepCone, 0, 360) / 2)) - 1e-6
-				if keepCone > 0 and dot >= keepMinDot then
+				local keep = if hasMoveInput == false
+					then keepCone > 0
+					else Melee.shouldKeepLock(origin, preferred.position, radius, forward, range, keepCone)
+				if keep then
 					return {
 						index = preferredIndex,
 						direction = dir,
@@ -341,6 +392,36 @@ function Melee.selfTest()
 	assert(not Melee.isChargeReady(10, 12.5, 3, 0.15), "2.5 s is not ready for a 3 s charge")
 	assert(Melee.isChargeReady(10, 12.86, 3, 0.15), "within slack of 3 s is accepted")
 	assert(Melee.isChargeReady(10, 13.0, 3, 0), "exact 3 s is ready")
+
+	-- Soft-lock persistence: neutral input keeps lock even if target shifts sideways/behind;
+	-- steering in general direction keeps lock; steering elsewhere or leaving range breaks lock.
+	local sideEnemy = Vector3.new(8, 0, 0)
+	assert(Melee.shouldKeepLock(origin, sideEnemy, 2, nil, 22, 120), "neutral input keeps target lock")
+	assert(Melee.shouldKeepLock(origin, sideEnemy, 2, Vector3.zero, 22, 120), "zero move input keeps target lock")
+	assert(
+		Melee.shouldKeepLock(origin, sideEnemy, 2, Vector3.new(0.8, 0, -0.5), 22, 120),
+		"input in general direction of target keeps lock"
+	)
+	assert(
+		not Melee.shouldKeepLock(origin, sideEnemy, 2, Vector3.new(-1, 0, 0), 22, 120),
+		"input in opposite direction breaks lock"
+	)
+	assert(
+		not Melee.shouldKeepLock(origin, sideEnemy, 2, north, 22, 120),
+		"input 90 degrees off target breaks 120-deg lock"
+	)
+	assert(not Melee.shouldKeepLock(origin, Vector3.new(30, 0, 0), 2, nil, 22, 120), "out of range breaks lock")
+
+	-- Neutral pickTarget keeps locked target even when character look vector drifted off-angle.
+	local neutralKept = Melee.pickTarget(origin, north, {
+		{ position = Vector3.new(0, 0, -5), radius = 2 },
+		{ position = Vector3.new(8, 0, 2), radius = 2 },
+	}, 18, 120, 0.65, 2, 120, false)
+	assert(neutralKept ~= nil and neutralKept.index == 2, "neutral input keeps locked target regardless of look angle")
+
+	-- Finisher attack interval uses longer cadence only after the final combo hit.
+	assert(Melee.attackInterval(1, 3, 0.36, 0.50) == 0.36, "light step uses base interval")
+	assert(Melee.attackInterval(3, 3, 0.36, 0.50) == 0.50, "combo finisher uses finisher interval")
 end
 
 return Melee

@@ -15,8 +15,9 @@ local Brain = {}
 -- single-sword melee chaining 3+ ultra-fast dashes in different directions before an ambush slash.
 -- slamWindup: mace melee raising its crusher overhead before slamming the floor to stun players.
 -- beamCharge: rifle ranged unit charging a devastating beam. evade: ranged unit leaping backward.
--- lunge: grabber charging forward. recover: just acted, frozen. fuse: the exploder is about to
--- go off. spent: the exploder went off. holding: the grabber is currently immobilising a player.
+-- lunge: grabber charging forward. recover: just acted, frozen. hitstun: reeling from a player
+-- hit, unable to act or move normally. fuse: the exploder is about to go off. spent: the exploder
+-- went off. holding: the grabber is currently immobilising a player.
 -- rushWindup / rush: the grabber lowering its shoulder, then bull-charging in a straight line to
 -- knock players away (its answer to a player who keeps out of grab reach).
 export type Phase =
@@ -31,6 +32,7 @@ export type Phase =
 	| "evade"
 	| "lunge"
 	| "recover"
+	| "hitstun"
 	| "fuse"
 	| "spent"
 	| "holding"
@@ -551,6 +553,72 @@ function Brain.finishAxeRetrieve(state: State, recover: number, cooldown: number
 	return with(state, "recover", now + recover, nil, nil, false, nil, nil, nil, 0, false, false, nil, nil, nil, nil, now + cooldown)
 end
 
+-- Applies DMC-style hitstun when an enemy takes a player hit: interrupts active windups/abilities,
+-- locks the enemy in `hitstun` (unable to attack or chase), and pushes back its attack & evade
+-- cooldowns so comboed targets cannot instantly retaliate or leap away between hits.
+-- Grabbers holding a player, spent exploders, and active Paso Fantasma dashes are not overridden,
+-- nor anything mid-flight: a rushing grabber, a leaping boss, or an axe enemy walking to its
+-- dropped axe (hitstun would return it to `chase` unarmed, with the axe left on the floor).
+function Brain.applyHitstun(
+	kindName: string,
+	state: State,
+	duration: number,
+	now: number,
+	actionDelay: number?
+): (State, boolean)
+	if duration <= 0 then
+		return state, false
+	end
+	if
+		state.phase == "holding"
+		or state.phase == "spent"
+		or state.phase == "phantomStep"
+		or state.phase == "rush"
+		or state.phase == "bossLeap"
+		or state.phase == "axeRetrieve"
+		or (state.phase == "windup" and state.phantomStepFinisher == true)
+	then
+		return state, false
+	end
+	-- A fusing exploder jolts slightly without resetting its detonation forever.
+	if kindName == "exploder" and state.phase == "fuse" then
+		local delay = math.min(duration * 0.25, 0.2)
+		return with(state, "fuse", state.endsAt + delay), true
+	end
+
+	local nextEndsAt = if state.phase == "hitstun" then math.max(state.endsAt, now + duration) else now + duration
+	local readyAfter = nextEndsAt + math.max(actionDelay or 0, 0)
+	local pushed = with(
+		state,
+		"hitstun",
+		nextEndsAt,
+		math.max(state.nextSpinAt or 0, readyAfter),
+		0,
+		false,
+		math.max(state.nextBeamAt or 0, readyAfter),
+		math.max(state.nextEvadeAt or 0, readyAfter),
+		math.max(state.nextPhantomStepAt or 0, readyAfter),
+		0,
+		false,
+		false,
+		math.max(state.nextSlamAt or 0, readyAfter),
+		math.max(state.nextRushAt or 0, readyAfter),
+		nil,
+		nil,
+		math.max(state.nextAxeThrowAt or 0, readyAfter)
+	)
+	pushed.nextFireAt = math.max(state.nextFireAt, readyAfter)
+	return pushed, true
+end
+
+-- Movement speed multiplier while dazed after taking consecutive combo hits.
+function Brain.dazeSpeedFactor(staggerStacks: number, factors: { number }): number
+	if staggerStacks <= 0 or #factors == 0 then
+		return 1
+	end
+	return factors[math.clamp(staggerStacks, 1, #factors)]
+end
+
 -- Advances grab-escape progress (from the trapped player's presses or teammates' hits) and
 -- reports whether the player has broken free.
 function Brain.escapeProgress(current: number, delta: number, goal: number): (number, boolean)
@@ -572,6 +640,12 @@ function Brain.step(
 	now: number,
 	canAttack: boolean?
 ): (State, Intent)
+	if state.phase == "hitstun" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
 	local behaviour = BEHAVIOURS[kindName]
 	if not behaviour then
 		return state, { move = "hold" }
@@ -932,6 +1006,50 @@ function Brain.selfTest()
 	assert(is(bo.phase, "bossNovaWindup"), "boss Oh winds up 360 nova once cooldown is ready")
 	bo, intent = Brain.step("bossOh", bossKind, bo, 20, 7.4, true)
 	assert(is(bo.phase, "recover") and is(intent.action, "bossNovaFire"), "boss Oh fires 360 nova")
+
+	-- Hitstun interrupts windups/actions, prevents attacking & chasing while staggered, pushes back
+	-- ranged fire/evade cooldowns, and resumes chase cleanly once elapsed.
+	local hs: any = Brain.initial(0)
+	hs, intent = Brain.step("melee", meleeKind, hs, 5, 1)
+	assert(is(hs.phase, "windup"), "melee starts windup before hitstun test")
+	local stunned: boolean
+	hs, stunned = Brain.applyHitstun("melee", hs, 0.65, 1.2, 0.35)
+	assert(stunned and is(hs.phase, "hitstun"), "hitstun interrupts melee windup")
+	hs, intent = Brain.step("melee", meleeKind, hs, 4, 1.5)
+	assert(is(hs.phase, "hitstun") and is(intent.move, "hold") and is(intent.action, nil), "hitstun holds enemy still without attacking")
+	hs, intent = Brain.step("melee", meleeKind, hs, 4, 1.9)
+	assert(is(hs.phase, "chase"), "hitstun ends back into chase")
+
+	-- Ranged enemy in hitstun cannot immediately fire or backstep-evade right when hitstun ends.
+	local rhs: any = Brain.initial(0)
+	rhs, stunned = Brain.applyHitstun("ranged", rhs, 0.6, 2.0, 0.4)
+	assert(stunned and rhs.nextFireAt >= 3.0 and (rhs.nextEvadeAt or 0) >= 3.0, "hitstun delays ranged fire & evade")
+
+	-- Holding grabber is not knocked out of holding by hitstun (handled by escape progress).
+	local gHoldState = Brain.enterHolding(Brain.initial(0))
+	local gAfter, gStunned = Brain.applyHitstun("grabber", gHoldState, 0.8, 2.0, 0.3)
+	assert(not gStunned and is(gAfter.phase, "holding"), "hitstun does not break holding phase directly")
+
+	-- Mid-flight phases are never flinched out of: they would freeze mid-air or strand an axe.
+	for _, phase in ipairs({ "rush", "bossLeap", "axeRetrieve" }) do
+		local flying: any = Brain.initial(0)
+		flying.phase = phase
+		local after, flinched = Brain.applyHitstun("melee", flying, 0.8, 2.0, 0.3)
+		assert(not flinched and is(after.phase, phase), `hitstun does not interrupt {phase}`)
+	end
+
+	-- A flinched grabber cannot rush the instant hitstun ends.
+	local rushReady: any = Brain.initial(0)
+	rushReady.nextRushAt = 0
+	local rushStunned = Brain.applyHitstun("grabber", rushReady, 0.6, 2.0, 0.4)
+	assert((rushStunned.nextRushAt or 0) >= 3.0, "hitstun delays the grabber rush")
+
+	-- Progressive daze speed factors drop with each stack and clamp cleanly.
+	local factors = { 0.6, 0.4, 0.25, 0.15 }
+	assert(Brain.dazeSpeedFactor(0, factors) == 1, "zero stacks keeps full speed")
+	assert(Brain.dazeSpeedFactor(1, factors) == 0.6, "1 stack slows to 60%")
+	assert(Brain.dazeSpeedFactor(3, factors) == 0.25, "3 stacks slows to 25%")
+	assert(Brain.dazeSpeedFactor(9, factors) == 0.15, "excess stacks clamp to minimum speed factor")
 end
 
 return Brain

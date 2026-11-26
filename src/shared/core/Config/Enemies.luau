@@ -470,4 +470,23 @@ Config.AI_SHIFT_MAX_SECONDS = 5.2
 -- pressure across teammates instead of forming a single conga line.
 Config.AI_COOP_CROWD_PENALTY = 6
 
+-- DMC-style hitstun & progressive stagger suppression: every player hit flinches the enemy,
+-- interrupts active windups, pushes back its next attack/evade, and stacks a lingering daze
+-- slowdown so sustained combos lock targets down without launching them out of melee reach.
+Config.ENEMY_HITSTUN_LIGHT = 0.62
+Config.ENEMY_HITSTUN_MEDIUM = 0.82
+Config.ENEMY_HITSTUN_HEAVY = 1.05
+Config.ENEMY_HITSTUN_STACK_BONUS = 0.10
+Config.ENEMY_HITSTUN_MAX_STACKS = 4
+Config.ENEMY_HIT_ACTION_DELAY = 0.35
+Config.ENEMY_DAZE_SECONDS = 1.8
+Config.ENEMY_DAZE_SPEED_FACTORS = { 0.60, 0.40, 0.25, 0.15 }
+Config.ENEMY_KNOCKBACK_LIGHT = 1.1
+Config.ENEMY_KNOCKBACK_MEDIUM = 1.7
+Config.ENEMY_KNOCKBACK_HEAVY = 2.4
+Config.ENEMY_KNOCKBACK_DURATION = 0.12
+-- Dampens crowd separation while an enemy is in hitstun so nearby enemies never shove your
+-- combo target sideways out of the sweet spot.
+Config.ENEMY_HITSTUN_SEPARATION_SCALE = 0.15
+
 return Config

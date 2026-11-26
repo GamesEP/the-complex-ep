@@ -96,6 +96,17 @@ export type Enemy = {
 	axeInFlight: boolean,
 	droppedAxePart: Model?,
 	droppedAxePos: Vector3?,
+	staggerStacks: number,
+	dazeUntil: number,
+	hitCount: number,
+	knockbackDir: Vector3?,
+	knockbackSpeed: number,
+	knockbackEndsAt: number,
+}
+
+export type HitInfo = {
+	tier: ("light" | "medium" | "heavy")?,
+	sourcePos: Vector3?,
 }
 
 type Projectile = {
@@ -601,7 +612,7 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 						blastHeight + halfHeight
 					)
 				then
-					EnemyService.damage(other, enemyDamage)
+					EnemyService.damage(other, enemyDamage, { tier = "heavy", sourcePos = origin })
 				end
 			end
 		end
@@ -1202,9 +1213,37 @@ local function stepEnemy(
 		fire(enemy, target.root)
 	end
 
+	-- Hitstun: enemy is reeling from player hits, cannot attack or chase, only slides briefly on
+	-- damped micro-knockback with heavily reduced separation so combos stay rock-solid.
+	if enemy.state.phase == "hitstun" then
+		local baseY = enemy.spec.size.Y / 2
+		local standPos = Vector3.new(position.X, baseY, position.Z)
+		local recoil = Vector3.zero
+		if enemy.knockbackDir and t < enemy.knockbackEndsAt then
+			local dur = math.max(Config.ENEMY_KNOCKBACK_DURATION, 0.04)
+			local remain = math.clamp((enemy.knockbackEndsAt - t) / dur, 0, 1)
+			recoil = enemy.knockbackDir * (enemy.knockbackSpeed * remain)
+		end
+		local push = separationPush(enemy, standPos) * Config.ENEMY_HITSTUN_SEPARATION_SCALE
+		local candidate = standPos + (recoil + push * enemy.spec.speed) * dt
+		local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
+		local look = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, moved.X, moved.Z)
+		return
+	end
+
 	local toward = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
 	local direction = Vector3.zero
 	local speedScale = 1
+	-- Progressive post-hitstun daze slowdown: consecutive combo hits leave the target sluggish
+	-- even after hitstun expires, decaying once the daze window clears.
+	if t < enemy.dazeUntil then
+		speedScale *= Brain.dazeSpeedFactor(enemy.staggerStacks, Config.ENEMY_DAZE_SPEED_FACTORS)
+	elseif enemy.staggerStacks > 0 then
+		enemy.staggerStacks = 0
+	end
 	local isLunging = intent.move == "lunge"
 	if intent.move == "phantomStep" and enemy.phantomOrigin and enemy.phantomTarget then
 		local dur = math.max(enemy.phantomDuration, 0.04)
@@ -1558,7 +1597,7 @@ local function stepProjectiles(list, dt: number, t: number)
 						local dz = enemy.body.Position.Z - position.Z
 						local hitRange = Config.PROJECTILE_HIT_RADIUS + enemy.radius
 						if dx * dx + dz * dz <= hitRange * hitRange then
-							EnemyService.damage(enemy, shot.damage)
+							EnemyService.damage(enemy, shot.damage, { tier = "medium", sourcePos = position })
 							Remotes.CombatSfx:FireAllClients("playerHit", enemy.body.Position)
 							done = true
 							break
@@ -1977,6 +2016,12 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		slowFactor = 1,
 		slowUntil = 0,
 		stunUntil = 0,
+		staggerStacks = 0,
+		dazeUntil = 0,
+		hitCount = 0,
+		knockbackDir = nil,
+		knockbackSpeed = 0,
+		knockbackEndsAt = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
@@ -2075,7 +2120,7 @@ function EnemyService.count(): number
 	return living
 end
 
-function EnemyService.damage(enemy: Enemy, amount: number)
+function EnemyService.damage(enemy: Enemy, amount: number, hitInfo: HitInfo?)
 	if enemy.dead then
 		return
 	end
@@ -2088,6 +2133,7 @@ function EnemyService.damage(enemy: Enemy, amount: number)
 		kill(enemy)
 		return
 	end
+	local t = now()
 	-- Teammates attacking a grabber contribute toward breaking the trapped player free even if
 	-- the trapped player is not pressing the escape button (plans/gdd/content.md).
 	if enemy.grabTarget then
@@ -2096,7 +2142,60 @@ function EnemyService.damage(enemy: Enemy, amount: number)
 		enemy.grabProgress = nextVal
 		enemy.grabTarget:SetAttribute("GrabProgress", nextVal)
 		if freed then
-			releaseGrab(enemy, now(), true)
+			releaseGrab(enemy, t, true)
+		end
+	elseif t >= enemy.stunUntil and enemy.spec.isBoss ~= true then
+		-- Skipped while hard-stunned: the stun already holds the enemy, and writing `hitstun` over
+		-- its "stunned" Phase would keep the stun's exit (telegraph off, axe retrieve) from running.
+		-- Bosses have super armour against flinches, or any combo would chain-lock the only boss.
+		-- Apply DMC-style hitstun & progressive suppression so every hit disrupts enemy actions
+		-- and slows movement while nudging them slightly back inside melee sweet-spot range.
+		local tier = if hitInfo and hitInfo.tier then hitInfo.tier else "light"
+		local baseStun = if tier == "heavy"
+			then Config.ENEMY_HITSTUN_HEAVY
+			elseif tier == "medium" then Config.ENEMY_HITSTUN_MEDIUM
+			else Config.ENEMY_HITSTUN_LIGHT
+		local knockbackDist = if tier == "heavy"
+			then Config.ENEMY_KNOCKBACK_HEAVY
+			elseif tier == "medium" then Config.ENEMY_KNOCKBACK_MEDIUM
+			else Config.ENEMY_KNOCKBACK_LIGHT
+
+		local currentStacks = if t < enemy.dazeUntil or enemy.state.phase == "hitstun" then enemy.staggerStacks else 0
+		local nextStacks = math.min(currentStacks + 1, Config.ENEMY_HITSTUN_MAX_STACKS)
+		local stunDuration = baseStun + (nextStacks - 1) * Config.ENEMY_HITSTUN_STACK_BONUS
+		local nextState, stunned = Brain.applyHitstun(enemy.kind, enemy.state, stunDuration, t, Config.ENEMY_HIT_ACTION_DELAY)
+		if stunned then
+			enemy.staggerStacks = nextStacks
+			enemy.hitCount += 1
+			enemy.state = nextState
+			enemy.dazeUntil = math.max(enemy.dazeUntil, nextState.endsAt + Config.ENEMY_DAZE_SECONDS)
+			if nextState.phase == "hitstun" then
+				enemy.burstLeft = 0
+				enemy.beamDirection = nil
+				enemy.beamLocked = false
+				enemy.lungeDirection = nil
+				enemy.model:SetAttribute("BeamDir", nil)
+				enemy.model:SetAttribute("BeamLocked", false)
+				enemy.model:SetAttribute("ParryTelegraph", false)
+				enemy.model:SetAttribute("AlertIcon", false)
+				enemy.model:SetAttribute("SlamRadius", nil)
+				setTelegraph(enemy, false)
+			end
+			enemy.model:SetAttribute("HitCount", enemy.hitCount)
+			syncPhase(enemy, t)
+
+			if hitInfo and hitInfo.sourcePos and knockbackDist > 0 then
+				local away = Vector3.new(
+					enemy.body.Position.X - hitInfo.sourcePos.X,
+					0,
+					enemy.body.Position.Z - hitInfo.sourcePos.Z
+				)
+				if away.Magnitude > 1e-3 then
+					enemy.knockbackDir = away.Unit
+					enemy.knockbackSpeed = knockbackDist / math.max(Config.ENEMY_KNOCKBACK_DURATION, 0.04)
+					enemy.knockbackEndsAt = t + Config.ENEMY_KNOCKBACK_DURATION
+				end
+			end
 		end
 	end
 	-- A flash on every hit: the feedback that a swing connected, which a hack&slash lives on.

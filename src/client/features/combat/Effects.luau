@@ -27,6 +27,8 @@ local chargeOrb: Part? = nil
 local chargeConn: RBXScriptConnection? = nil
 local chargeSoundStop: (() -> ())? = nil
 local activeBolts: { [number]: { model: Model, conn: RBXScriptConnection } } = {}
+local lockOuterRing: Part? = nil
+local lockInnerRing: Part? = nil
 
 local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.PartType?): Part
 	local part = Instance.new("Part")
@@ -91,10 +93,58 @@ function Effects.spin(root: BasePart)
 	-- A cylinder's axis is X, so it is turned on its side to lie flat as a disc.
 	local cframe = CFrame.new(root.Position - Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
 	local part = ghost(Vector3.new(0.4, 4, 4), cframe, Color3.fromRGB(255, 200, 90), Enum.PartType.Cylinder)
-	TweenService:Create(part, TweenInfo.new(0.2), { Size = Vector3.new(0.4, diameter, diameter), Transparency = 1 }):Play()
-	Debris:AddItem(part, 0.25)
+	TweenService:Create(part, TweenInfo.new(0.36), { Size = Vector3.new(0.4, diameter, diameter), Transparency = 1 }):Play()
+	Debris:AddItem(part, 0.42)
 	SoundPlayer.play("playerSpin")
 	PlayerAnimator.playLocal("spin")
+end
+
+-- Client-only DMC-style ground lock-on indicator beneath the currently locked enemy body.
+-- Parented directly to `workspace` (never `World.Enemies`) so target picking never latches onto it.
+function Effects.updateLockIndicator(targetBody: BasePart?)
+	if not targetBody or not targetBody:IsDescendantOf(workspace) then
+		if lockOuterRing then
+			lockOuterRing:Destroy()
+			lockOuterRing = nil
+		end
+		if lockInnerRing then
+			lockInnerRing:Destroy()
+			lockInnerRing = nil
+		end
+		return
+	end
+
+	local outer = lockOuterRing
+	if not outer or not outer.Parent then
+		outer = ghost(Vector3.new(0.12, 4, 4), CFrame.identity, Color3.fromRGB(255, 90, 90), Enum.PartType.Cylinder)
+		outer.Name = "TargetLockOuter"
+		lockOuterRing = outer
+	end
+	local inner = lockInnerRing
+	if not inner or not inner.Parent then
+		inner = ghost(Vector3.new(0.16, 2.5, 2.5), CFrame.identity, Color3.fromRGB(255, 225, 110), Enum.PartType.Cylinder)
+		inner.Name = "TargetLockInner"
+		lockInnerRing = inner
+	end
+
+	local pos = targetBody.Position
+	local baseRadius = math.max(targetBody.Size.X, targetBody.Size.Z) * 0.5
+	local pulse = 0.28 * math.sin(os.clock() * 10)
+	local outerDiam = baseRadius * 2 + 2.2 + pulse
+	local innerDiam = baseRadius * 2 + 0.9 - pulse * 0.5
+	local floorY = math.max(pos.Y - targetBody.Size.Y * 0.5 + 0.14, 0.14)
+	local flatRot = CFrame.Angles(0, 0, math.rad(90))
+
+	if outer then
+		outer.Size = Vector3.new(0.12, outerDiam, outerDiam)
+		outer.CFrame = CFrame.new(pos.X, floorY, pos.Z) * flatRot
+		outer.Transparency = 0.42
+	end
+	if inner then
+		inner.Size = Vector3.new(0.16, innerDiam, innerDiam)
+		inner.CFrame = CFrame.new(pos.X, floorY + 0.04, pos.Z) * flatRot
+		inner.Transparency = 0.25
+	end
 end
 
 -- Spawns a translucent neon silhouette echo of a character's current pose (clean afterimage wake).

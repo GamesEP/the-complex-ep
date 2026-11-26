@@ -19,6 +19,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
+local CombatAnim = require(Shared.features.combat.CombatAnim)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
@@ -44,6 +45,10 @@ type ActiveMove = {
 	root: BasePart,
 	direction: Vector3,
 	speed: number,
+	-- A tracked lunge's per-frame steering, and how it finishes when the wall guard stops it, so
+	-- a lunge into a pillar still lands its swing instead of silently eating the input.
+	conn: RBXScriptConnection?,
+	onWall: (() -> ())?,
 }
 
 local activeDash: ActiveMove? = nil
@@ -60,15 +65,27 @@ local attackHeld = false
 local chargingHeavy = false
 local chargeToken = 0
 
--- Active attack lunge state; gated on `lungeToken` so a dash or respawn cancels any in-flight
--- step-in cleanly without firing a stale swing.
+-- Active attack/skill lunge state; gated on `lungeToken` so a dash, block, or respawn cancels
+-- any in-flight step-in cleanly without firing a stale swing or leaving residual slide velocity.
 local lungeToken = 0
 local activeLunge: ActiveMove? = nil
 local dashEndsAt = 0
 
--- Sticky target picked by the first basic attack or ability in a combo. Tracked with its own
--- `lastEngageAt` clock (separate from `lastSwingAt`) so an ability can seed or refresh the lock
--- without altering the server-synced combo step window.
+-- Active offensive animation recovery & input buffer (DMC-style cancel window): once `clock >=
+-- activeAction.cancelAt`, any other attack or ability cancels recovery cleanly into the next move.
+type ActiveAction = {
+	key: string,
+	startedAt: number,
+	cancelAt: number,
+	endsAt: number,
+}
+type BufferedKind = "attack" | "spin" | "stinger" | "overDrive"
+local activeAction: ActiveAction? = nil
+local bufferedAction: { kind: BufferedKind, expiresAt: number }? = nil
+
+-- DMC soft target lock: keeps the enemy locked while neutral or steering in its general direction
+-- (`TARGET_LOCK_CONE`), tracks small recoil movement to stay in the sweet spot, and breaks
+-- immediately when steering in any other direction.
 local lockedTarget: BasePart? = nil
 local lastEngageAt = -math.huge
 
@@ -152,11 +169,45 @@ end
 local function clearLunge(hardStop: boolean?)
 	if activeLunge then
 		local moveRoot = activeLunge.root
+		if activeLunge.conn then
+			activeLunge.conn:Disconnect()
+		end
 		activeLunge.velocity:Destroy()
 		activeLunge.attachment:Destroy()
 		activeLunge = nil
+		-- A hard stop zeroes horizontal momentum on arrival so the LinearVelocity never slides the
+		-- player past the target's sweet-spot range.
 		dampenAfterMove(moveRoot, hardStop == true)
 	end
+end
+
+local function recordAction(actionName: string, step: number?, startedAt: number)
+	local key = CombatAnim.specKey(actionName, step)
+	local spec = Config.ANIMATIONS[key]
+	if not spec then
+		return
+	end
+	activeAction = {
+		key = key,
+		startedAt = startedAt,
+		cancelAt = startedAt + spec.cancelAt,
+		endsAt = startedAt + spec.duration,
+	}
+end
+
+local function canStartOffensiveAction(clock: number, kind: BufferedKind): boolean
+	if activeLunge then
+		bufferedAction = { kind = kind, expiresAt = clock + Config.COMBO_INPUT_BUFFER }
+		return false
+	end
+	if activeAction and clock < activeAction.cancelAt then
+		if activeAction.cancelAt - clock <= Config.COMBO_INPUT_BUFFER then
+			bufferedAction = { kind = kind, expiresAt = activeAction.cancelAt + 0.08 }
+		end
+		return false
+	end
+	bufferedAction = nil
+	return true
 end
 
 local function cancelHeavyCharge(notifyServer: boolean)
@@ -257,15 +308,24 @@ local function enemyTargets(): ({ Melee.Target }, { BasePart })
 	return targets, bodies
 end
 
--- Resolves the attack/ability target: keeps `lockedTarget` while continuing a combo and still
--- heading toward it, otherwise picks the best enemy in the forward cone.
-local function selectTarget(root: BasePart, facing: Vector3, clock: number): (Melee.TargetPick?, BasePart?)
+-- Resolves the attack/ability target: keeps `lockedTarget` while neutral (`moveDir == nil`) or
+-- steering in its general direction (`TARGET_LOCK_CONE`); steering any other direction drops the
+-- lock immediately and picks a new target in `moveDir` (or ends the lock if none is there).
+local function selectTarget(
+	root: BasePart,
+	moveDir: Vector3?,
+	fallbackFacing: Vector3,
+	clock: number
+): (Melee.TargetPick?, BasePart?)
 	local targets, bodies = enemyTargets()
 	local preferredIndex: number? = nil
-	if lockedTarget and clock - lastEngageAt <= Config.COMBO_WINDOW and lockedTarget:IsDescendantOf(workspace) then
+	local lockAlive = activeAction ~= nil or (clock - lastEngageAt <= Config.TARGET_LOCK_DURATION)
+	if lockedTarget and lockAlive and lockedTarget:IsDescendantOf(workspace) then
 		preferredIndex = table.find(bodies, lockedTarget)
 	end
 	local assistRange = if Classes.isRanged(classId()) then Config.STAFF_AIM_ASSIST_RANGE else Config.AIM_ASSIST_RANGE
+	local hasMoveInput = moveDir ~= nil
+	local facing = moveDir or fallbackFacing
 	local pick = Melee.pickTarget(
 		root.Position,
 		facing,
@@ -274,10 +334,111 @@ local function selectTarget(root: BasePart, facing: Vector3, clock: number): (Me
 		Config.AIM_ASSIST_CONE,
 		Config.AIM_ASSIST_ANGLE_WEIGHT,
 		preferredIndex,
-		Config.TARGET_LOCK_CONE
+		Config.TARGET_LOCK_CONE,
+		hasMoveInput
 	)
 	local targetBody: BasePart? = if pick then bodies[pick.index] else nil
 	return pick, targetBody
+end
+
+-- Tracks a horizontal `LinearVelocity` impulse toward `targetBody` (or along `aim` if untargeted)
+-- on `RenderStepped`, braking and zeroing horizontal velocity the exact frame the player enters
+-- sweet-spot range (`targetRadius + stopDist`) so attacks & skills never overshoot past the target.
+local function startTrackedLunge(
+	root: BasePart,
+	targetBody: BasePart?,
+	targetRadius: number,
+	aim: Vector3,
+	maxDist: number,
+	stopDist: number,
+	speed: number,
+	onComplete: (Vector3) -> ()
+): boolean
+	local lungeDist = maxDist
+	if targetBody and targetBody:IsDescendantOf(workspace) then
+		local dist = Melee.distance(root.Position, targetBody.Position)
+		lungeDist = Melee.lungeDistance(dist, targetRadius, stopDist, maxDist)
+	end
+	if lungeDist <= 0.15 or speed <= 0 then
+		onComplete(aim)
+		return false
+	end
+
+	lungeToken += 1
+	local myToken = lungeToken
+	clearLunge()
+
+	-- Bounded force with a wall-stop (startSafeVelocity); nil means already flush against a wall,
+	-- so the action fires in place.
+	local move = startSafeVelocity(root, aim, speed)
+	if not move then
+		onComplete(aim)
+		return false
+	end
+	local velocity = move.velocity
+
+	local startPos = root.Position
+	local startedAt = os.clock()
+	local maxDuration = (lungeDist / speed) + 0.05
+	local currentAim = aim
+
+	local function finish(currentAim: Vector3)
+		clearLunge(true)
+		local finalAim = currentAim
+		if targetBody and targetBody:IsDescendantOf(workspace) then
+			finalAim = Melee.flat(targetBody.Position - root.Position) or currentAim
+		end
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
+		onComplete(finalAim)
+	end
+
+	local conn: RBXScriptConnection
+	conn = RunService.RenderStepped:Connect(function(dt: number)
+		if lungeToken ~= myToken then
+			conn:Disconnect()
+			return
+		end
+		local currentRoot = body()
+		if currentRoot ~= root then
+			clearLunge()
+			return
+		end
+
+		local elapsed = os.clock() - startedAt
+		local traveled = Melee.distance(startPos, root.Position)
+		local reachedSweetSpot = false
+
+		-- IsDescendantOf(workspace) rather than .Parent: server Destroy() leaves client child
+		-- pointers intact (see docs/roblox-gotchas.md).
+		if targetBody and targetBody:IsDescendantOf(workspace) then
+			local toTarget = Vector3.new(targetBody.Position.X - root.Position.X, 0, targetBody.Position.Z - root.Position.Z)
+			local dist = toTarget.Magnitude
+			if dist > 1e-3 then
+				currentAim = toTarget / dist
+			end
+			local sweetSpot = targetRadius + stopDist
+			-- Half-frame lookahead brakes just before the sweet spot rather than one frame past it.
+			local lookahead = speed * math.min(dt, 0.033) * 0.5
+			if dist <= sweetSpot + lookahead then
+				reachedSweetSpot = true
+			else
+				velocity.LineDirection = currentAim
+				move.direction = currentAim
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + currentAim)
+			end
+		end
+
+		if reachedSweetSpot or traveled >= lungeDist or elapsed >= maxDuration then
+			finish(currentAim)
+		end
+	end)
+
+	move.conn = conn
+	move.onWall = function()
+		finish(currentAim)
+	end
+	activeLunge = move
+	return true
 end
 
 local function attack()
@@ -292,89 +453,100 @@ local function attack()
 	-- escape struggle instead of launching a melee swing.
 	if player:GetAttribute("Grabbed") == true then
 		lungeToken += 1
-		clearLunge()
+		clearLunge(true)
 		Effects.attackWindup(1)
 		Remotes.GrabEscape:FireServer()
 		return
 	end
-	if blocking or player:GetAttribute("Blocking") == true or isStunned() then
+	if
+		blocking
+		or player:GetAttribute("Blocking") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or isStunned()
+	then
 		return
 	end
 	local clock = os.clock()
-	if clock - lastSwingAt < Config.ATTACK_INTERVAL then
+	if not canStartOffensiveAction(clock, "attack") then
+		return
+	end
+	local minInterval = Melee.attackInterval(
+		comboStep,
+		Config.COMBO_HITS,
+		Config.ATTACK_INTERVAL,
+		Config.ATTACK_FINISHER_INTERVAL
+	)
+	local sinceSwing = clock - lastSwingAt
+	if sinceSwing < minInterval then
+		if minInterval - sinceSwing <= Config.COMBO_INPUT_BUFFER then
+			bufferedAction = { kind = "attack", expiresAt = lastSwingAt + minInterval + 0.08 }
+		end
 		return
 	end
 
 	-- Every input device (mouse, gamepad, touch) swings along where the character is moving or
-	-- looking, snapping onto the enemy best aligned inside the forward cone.
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not facing then
+	-- looking, keeping the locked target on neutral/general-direction input or snapping to a new
+	-- target when steering in another direction.
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	if not facing or not fallbackFacing then
 		return
 	end
 
-	local pick, targetBody = selectTarget(root, facing, clock)
+	local pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 	local aim = if pick then pick.direction else facing
 	local ranged = Classes.isRanged(classId())
 
-	local lungeDist = 0
-	if not ranged and pick and clock >= dashEndsAt then
-		lungeDist = Melee.lungeDistance(
-			pick.distance,
+	comboStep = Melee.nextStep(comboStep, lastSwingAt, clock, Config.COMBO_HITS, Config.COMBO_WINDOW)
+	local step = comboStep
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock else -math.huge
+	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+
+	local didLunge = false
+	local function fireSwing(finalAim: Vector3)
+		local swingClock = os.clock()
+		lastSwingAt = swingClock
+		if targetBody and targetBody:IsDescendantOf(workspace) then
+			lastEngageAt = swingClock
+		end
+		recordAction("attack", step, swingClock)
+		if ranged then
+			Effects.staffAttack(root, finalAim, step)
+		else
+			Effects.slash(root, finalAim, step, didLunge)
+		end
+		Remotes.Attack:FireServer(finalAim)
+	end
+
+	-- Ranged Support casts from where it stands; only melee classes step in.
+	if not ranged and pick and targetBody and clock >= dashEndsAt then
+		local dist = Melee.distance(root.Position, targetBody.Position)
+		local willLunge = Melee.lungeDistance(
+			dist,
 			pick.radius,
 			Config.ATTACK_LUNGE_STOP_DISTANCE,
 			Config.ATTACK_LUNGE_MAX_DISTANCE
-		)
+		) > 0.15
+		if willLunge then
+			didLunge = true
+			Effects.attackWindup(step)
+			startTrackedLunge(
+				root,
+				targetBody,
+				pick.radius,
+				aim,
+				Config.ATTACK_LUNGE_MAX_DISTANCE,
+				Config.ATTACK_LUNGE_STOP_DISTANCE,
+				Config.ATTACK_LUNGE_SPEED,
+				fireSwing
+			)
+			return
+		end
 	end
-	local lungeDuration = if lungeDist > 0 and Config.ATTACK_LUNGE_SPEED > 0
-		then lungeDist / Config.ATTACK_LUNGE_SPEED
-		else 0
 
-	comboStep = Melee.nextStep(comboStep, lastSwingAt, clock, Config.COMBO_HITS, Config.COMBO_WINDOW)
-	local step = comboStep
-	-- Anchor the swing clock to when the remote fires (after any lunge), so the server's interval
-	-- gate never drops the next combo hit and another press cannot start mid-lunge.
-	lastSwingAt = clock + lungeDuration
-	lockedTarget = targetBody
-	lastEngageAt = if targetBody then clock + lungeDuration else -math.huge
-	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
-
-	if lungeDuration > 0 then
-		lungeToken += 1
-		local myToken = lungeToken
-		clearLunge()
-
-		-- Horizontal-only bounded-force velocity: stops cleanly on walls/pillars without flinging.
-		activeLunge = startSafeVelocity(root, aim, Config.ATTACK_LUNGE_SPEED)
-
-		-- Play the attack windup immediately during the step-in, then draw the slash and notify
-		-- the server once the lunge has closed the gap.
-		Effects.attackWindup(step)
-		task.delay(lungeDuration, function()
-			if lungeToken ~= myToken then
-				return
-			end
-			clearLunge()
-			local currentRoot = body()
-			if currentRoot ~= root then
-				return
-			end
-			local finalAim = aim
-			-- IsDescendantOf(workspace) rather than .Parent: server Destroy() leaves client child
-			-- pointers intact (see docs/roblox-gotchas.md).
-			if targetBody and targetBody:IsDescendantOf(workspace) then
-				finalAim = Melee.flat(targetBody.Position - root.Position) or aim
-			end
-			root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
-			Effects.slash(root, finalAim, step, true)
-			Remotes.Attack:FireServer(finalAim)
-		end)
-	elseif ranged then
-		Effects.staffAttack(root, aim, step)
-		Remotes.Attack:FireServer(aim)
-	else
-		Effects.slash(root, aim, step)
-		Remotes.Attack:FireServer(aim)
-	end
+	fireSwing(aim)
 end
 
 local function releaseHeavyAttack()
@@ -394,64 +566,50 @@ local function releaseHeavyAttack()
 	end
 
 	local clock = os.clock()
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not facing then
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	if not facing or not fallbackFacing then
 		Remotes.HeavyCharge:FireServer(false)
 		return
 	end
 
-	local pick, targetBody = selectTarget(root, facing, clock)
+	local pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 	local aim = if pick then pick.direction else facing
 	local currentClass = classId()
 	local ranged = Classes.isRanged(currentClass)
 
-	local lungeDist = 0
-	if not ranged and pick and clock >= dashEndsAt then
-		lungeDist = Melee.lungeDistance(
-			pick.distance,
-			pick.radius,
-			Config.ATTACK_LUNGE_STOP_DISTANCE,
-			Config.HEAVY_ATTACK_LUNGE_MAX_DISTANCE
-		)
-	end
-	local lungeDuration = if lungeDist > 0 and Config.ATTACK_LUNGE_SPEED > 0
-		then lungeDist / Config.ATTACK_LUNGE_SPEED
-		else 0
-
 	comboStep = 0
-	lastSwingAt = clock + lungeDuration
+	bufferedAction = nil
 	heavyReadyAt = now() + Config.HEAVY_ATTACK_COOLDOWN
 	lockedTarget = targetBody
-	lastEngageAt = if targetBody then clock + lungeDuration else -math.huge
+	lastEngageAt = if targetBody then clock else -math.huge
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 
-	if lungeDuration > 0 then
-		lungeToken += 1
-		local myToken = lungeToken
-		clearLunge()
+	local function fireHeavy(finalAim: Vector3)
+		local doneClock = os.clock()
+		lastSwingAt = doneClock
+		if targetBody and targetBody:IsDescendantOf(workspace) then
+			lastEngageAt = doneClock
+		end
+		recordAction("heavyAttack", nil, doneClock)
+		Effects.heavyAttack(root, finalAim, currentClass, true)
+		Remotes.HeavyAttack:FireServer(finalAim)
+	end
 
-		activeLunge = startSafeVelocity(root, aim, Config.ATTACK_LUNGE_SPEED)
-
-		task.delay(lungeDuration, function()
-			if lungeToken ~= myToken then
-				return
-			end
-			clearLunge()
-			local currentRoot = body()
-			if currentRoot ~= root then
-				return
-			end
-			local finalAim = aim
-			if targetBody and targetBody:IsDescendantOf(workspace) then
-				finalAim = Melee.flat(targetBody.Position - root.Position) or aim
-			end
-			root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
-			Effects.heavyAttack(root, finalAim, currentClass, true)
-			Remotes.HeavyAttack:FireServer(finalAim)
-		end)
+	if not ranged and pick and targetBody and clock >= dashEndsAt then
+		startTrackedLunge(
+			root,
+			targetBody,
+			pick.radius,
+			aim,
+			Config.HEAVY_ATTACK_LUNGE_MAX_DISTANCE,
+			Config.ATTACK_LUNGE_STOP_DISTANCE,
+			Config.ATTACK_LUNGE_SPEED,
+			fireHeavy
+		)
 	else
-		Effects.heavyAttack(root, aim, currentClass, true)
-		Remotes.HeavyAttack:FireServer(aim)
+		fireHeavy(aim)
 	end
 end
 
@@ -541,13 +699,16 @@ local function dash()
 	end
 	cancelHeavyCharge(true)
 	lungeToken += 1
-	clearLunge()
+	clearLunge(true)
 	clearDash()
+	activeAction = nil
+	bufferedAction = nil
 	blocking = false
 	dashCharges = nextCharges
 	dashRechargeAt = nextRechargeAt
 	lastDashAt = clock
 	dashEndsAt = clock + Config.DASH_DURATION
+	recordAction("dash", nil, clock)
 
 	-- Bounded-force horizontal dash monitored every Heartbeat: cancels cleanly on wall/pillar
 	-- contact so slamming into an obstacle never flings the player upward or out of the room.
@@ -579,19 +740,54 @@ local function spin()
 	if not root or not humanoid or not ready(spinReadyAt, "SpinReadyAt") then
 		return
 	end
-	cancelHeavyCharge(true)
-	-- Seed or refresh the sticky target on ability use so basic attacks right after stay locked
-	-- onto the same enemy while the player keeps heading toward it.
 	local clock = os.clock()
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if facing then
-		local _, targetBody = selectTarget(root, facing, clock)
+	if not canStartOffensiveAction(clock, "spin") then
+		return
+	end
+	cancelHeavyCharge(true)
+	-- Pick/keep the locked target and impulse right into sweet-spot range before unleashing Spin.
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	local pick: Melee.TargetPick? = nil
+	local targetBody: BasePart? = nil
+	if facing and fallbackFacing then
+		pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 		lockedTarget = targetBody
 		lastEngageAt = if targetBody then clock else -math.huge
 	end
+	local aim = if pick then pick.direction else facing
+	if aim then
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+	end
 	spinReadyAt = now() + Config.SPIN_COOLDOWN
-	Effects.spin(root)
-	Remotes.Spin:FireServer()
+
+	local function fireSpin()
+		local spinClock = os.clock()
+		if targetBody and targetBody:IsDescendantOf(workspace) then
+			lastEngageAt = spinClock
+		end
+		recordAction("spin", nil, spinClock)
+		Effects.spin(root)
+		Remotes.Spin:FireServer()
+	end
+
+	if pick and targetBody and aim and clock >= dashEndsAt then
+		startTrackedLunge(
+			root,
+			targetBody,
+			pick.radius,
+			aim,
+			Config.SPIN_LUNGE_MAX_DISTANCE,
+			Config.ATTACK_LUNGE_STOP_DISTANCE,
+			Config.ATTACK_LUNGE_SPEED,
+			function()
+				fireSpin()
+			end
+		)
+	else
+		fireSpin()
+	end
 end
 
 local function stinger()
@@ -609,11 +805,16 @@ local function stinger()
 		return
 	end
 	local clock = os.clock()
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not facing then
+	if not canStartOffensiveAction(clock, "stinger") then
 		return
 	end
-	local pick, targetBody = selectTarget(root, facing, clock)
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	if not facing or not fallbackFacing then
+		return
+	end
+	local pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 	local aim = if pick then pick.direction else facing
 
 	cancelHeavyCharge(true)
@@ -623,20 +824,31 @@ local function stinger()
 	lastEngageAt = if targetBody then clock + Config.STINGER_DURATION else -math.huge
 	stingerReadyAt = now() + Config.STINGER_COOLDOWN
 	dashEndsAt = clock + Config.STINGER_DURATION
-
-	-- Explosive horizontal piercing thrust (Estocada), bounded force + wall-stop guarded.
-	local stingerSpeed = Config.STINGER_DISTANCE / math.max(Config.STINGER_DURATION, 0.05)
-	activeLunge = startSafeVelocity(root, aim, stingerSpeed)
-	local myToken = lungeToken
-	task.delay(Config.STINGER_DURATION, function()
-		if lungeToken == myToken then
-			clearLunge(false)
-		end
-	end)
+	recordAction("stinger", nil, clock)
 
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 	Effects.stinger(root, aim, true)
 	Remotes.Stinger:FireServer(aim)
+
+	-- Explosive horizontal piercing thrust (DMC Stinger): brakes cleanly right in sweet-spot
+	-- range before a locked target so recovery can cancel straight into combos/skills, or travels
+	-- full distance when untargeted.
+	local stingerSpeed = Config.STINGER_DISTANCE / math.max(Config.STINGER_DURATION, 0.05)
+	startTrackedLunge(
+		root,
+		targetBody,
+		if pick then pick.radius else 0,
+		aim,
+		Config.STINGER_DISTANCE,
+		Config.STINGER_STOP_DISTANCE,
+		stingerSpeed,
+		function()
+			dashEndsAt = os.clock()
+			if targetBody and targetBody:IsDescendantOf(workspace) then
+				lastEngageAt = os.clock()
+			end
+		end
+	)
 end
 
 local function overDrive()
@@ -654,19 +866,33 @@ local function overDrive()
 		return
 	end
 	local clock = os.clock()
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not facing then
+	if not canStartOffensiveAction(clock, "overDrive") then
 		return
 	end
-	local pick, targetBody = selectTarget(root, facing, clock)
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	if not facing or not fallbackFacing then
+		return
+	end
+	local pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 	local aim = if pick then pick.direction else facing
 
 	cancelHeavyCharge(true)
 	lungeToken += 1
-	clearLunge()
+	clearLunge(true)
 	lockedTarget = targetBody
 	lastEngageAt = if targetBody then clock else -math.huge
 	overDriveReadyAt = now() + Config.OVERDRIVE_COOLDOWN
+
+	local waveSpec = Config.ANIMATIONS.overdriveWave
+	local finalWaveAt = clock + Config.OVERDRIVE_CHARGE_SECONDS + Config.OVERDRIVE_WAVE_INTERVAL * (Config.OVERDRIVE_WAVES - 1)
+	activeAction = {
+		key = "overdriveWave",
+		startedAt = clock,
+		cancelAt = finalWaveAt + waveSpec.cancelAt,
+		endsAt = finalWaveAt + waveSpec.duration,
+	}
 
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 	Remotes.OverDrive:FireServer(aim)
@@ -692,11 +918,13 @@ local function castClassAbility(abilityId: string)
 		return
 	end
 	local clock = os.clock()
-	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
-	if not facing then
+	local moveDir = Melee.flat(humanoid.MoveDirection)
+	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
+	local facing = moveDir or fallbackFacing
+	if not facing or not fallbackFacing then
 		return
 	end
-	local pick, targetBody = selectTarget(root, facing, clock)
+	local pick, targetBody = selectTarget(root, moveDir, fallbackFacing, clock)
 	local aim = if pick then pick.direction else facing
 
 	cancelHeavyCharge(true)
@@ -753,7 +981,9 @@ local function setBlock(active: boolean)
 		end
 		cancelHeavyCharge(true)
 		lungeToken += 1
-		clearLunge()
+		clearLunge(true)
+		activeAction = nil
+		bufferedAction = nil
 		blocking = true
 		Remotes.Block:FireServer(true)
 	else
@@ -916,6 +1146,10 @@ function CombatInput.start()
 	player:GetAttributeChangedSignal("Grabbed"):Connect(function()
 		if player:GetAttribute("Grabbed") == true then
 			cancelHeavyCharge(false)
+			activeAction = nil
+			bufferedAction = nil
+			lockedTarget = nil
+			Effects.updateLockIndicator(nil)
 		end
 	end)
 	player:GetAttributeChangedSignal("StunnedUntil"):Connect(function()
@@ -924,6 +1158,10 @@ function CombatInput.start()
 			blocking = false
 			lungeToken += 1
 			clearLunge()
+			activeAction = nil
+			bufferedAction = nil
+			lockedTarget = nil
+			Effects.updateLockIndicator(nil)
 		end
 	end)
 
@@ -959,7 +1197,10 @@ function CombatInput.start()
 
 		if activeLunge then
 			local checkDist = math.clamp(activeLunge.speed * safeDt * 1.15, 1.2, 2.6)
-			if activeLunge.root ~= root or hitsWallAhead(root, activeLunge.direction, checkDist) then
+			local onWall = activeLunge.onWall
+			if activeLunge.root == root and onWall and hitsWallAhead(root, activeLunge.direction, checkDist) then
+				onWall()
+			elseif activeLunge.root ~= root or hitsWallAhead(root, activeLunge.direction, checkDist) then
 				lungeToken += 1
 				clearLunge(true)
 			elseif humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and root.AssemblyLinearVelocity.Y > 6 then
@@ -982,6 +1223,123 @@ function CombatInput.start()
 		end
 	end)
 
+	-- Per-frame DMC combat loop: fires buffered recovery-cancels on frame 1 of recovery, maintains
+	-- or breaks the soft target lock based on directional input, gently tracks small target recoil
+	-- to stay in sweet-spot range, and updates the lock-on ground ring.
+	local wallRayParams = RaycastParams.new()
+	wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+	RunService.RenderStepped:Connect(function(dt: number)
+		local clock = os.clock()
+		if activeAction and clock >= activeAction.endsAt then
+			activeAction = nil
+		end
+
+		local root, humanoid = body()
+		if not root or not humanoid or player:GetAttribute("Grabbed") == true or isStunned() then
+			bufferedAction = nil
+			lockedTarget = nil
+			Effects.updateLockIndicator(nil)
+			return
+		end
+
+		-- Fire any buffered attack or ability on the exact frame recovery begins.
+		if bufferedAction then
+			if clock > bufferedAction.expiresAt then
+				bufferedAction = nil
+			elseif not activeLunge and (not activeAction or clock >= activeAction.cancelAt) then
+				local kind = bufferedAction.kind
+				local canFire = true
+				if kind == "attack" then
+					local minInterval = Melee.attackInterval(
+						comboStep,
+						Config.COMBO_HITS,
+						Config.ATTACK_INTERVAL,
+						Config.ATTACK_FINISHER_INTERVAL
+					)
+					canFire = clock - lastSwingAt >= minInterval
+				end
+				if canFire then
+					bufferedAction = nil
+					if kind == "attack" then
+						attack()
+					elseif kind == "spin" then
+						spin()
+					elseif kind == "stinger" then
+						stinger()
+					elseif kind == "overDrive" then
+						overDrive()
+					end
+				end
+			end
+		end
+
+		-- Soft target lock maintenance: stay locked on neutral or general-direction input, drop
+		-- immediately when pressing any other direction, and stay glued across small enemy recoil.
+		if lockedTarget then
+			local lockTimedOut = activeAction == nil and (clock - lastEngageAt > Config.TARGET_LOCK_DURATION)
+			if lockTimedOut or not lockedTarget:IsDescendantOf(workspace) then
+				lockedTarget = nil
+			else
+				local targetRadius = math.max(lockedTarget.Size.X, lockedTarget.Size.Z) * 0.5
+				local moveDir = Melee.flat(humanoid.MoveDirection)
+				if
+					not activeLunge
+					and not Melee.shouldKeepLock(
+						root.Position,
+						lockedTarget.Position,
+						targetRadius,
+						moveDir,
+						Config.TARGET_LOCK_BREAK_RANGE,
+						Config.TARGET_LOCK_CONE
+					)
+				then
+					lockedTarget = nil
+				elseif
+					not activeLunge
+					and clock >= dashEndsAt
+					-- Ranged Support keeps its distance; the magnet would walk it into melee range.
+					and not Classes.isRanged(classId())
+					and not blocking
+					and player:GetAttribute("Blocking") ~= true
+					and (activeAction ~= nil or clock - lastEngageAt <= Config.COMBO_WINDOW)
+				then
+					local toTarget = Vector3.new(
+						lockedTarget.Position.X - root.Position.X,
+						0,
+						lockedTarget.Position.Z - root.Position.Z
+					)
+					local dist = toTarget.Magnitude
+					if dist > 1e-3 then
+						local dir = toTarget / dist
+						local sweetSpot = targetRadius + Config.ATTACK_LUNGE_STOP_DISTANCE
+						local nextPos = root.Position
+						if dist > sweetSpot + 0.35 and dist <= sweetSpot + Config.TARGET_LOCK_MAGNET_RANGE then
+							local stepDist = math.min(dist - sweetSpot, Config.TARGET_LOCK_MAGNET_SPEED * dt)
+							local character = player.Character
+							local world = workspace:FindFirstChild("World")
+							local enemiesFolder = world and world:FindFirstChild("Enemies")
+							local exclude: { Instance } = {}
+							if character then
+								table.insert(exclude, character)
+							end
+							if enemiesFolder then
+								table.insert(exclude, enemiesFolder)
+							end
+							wallRayParams.FilterDescendantsInstances = exclude
+							if not workspace:Raycast(root.Position, dir * (stepDist + 1.2), wallRayParams) then
+								nextPos = root.Position + dir * stepDist
+							end
+						end
+						root.CFrame = CFrame.lookAt(nextPos, nextPos + dir)
+					end
+				end
+			end
+		end
+
+		Effects.updateLockIndicator(lockedTarget)
+	end)
+
 	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
 	player.CharacterAdded:Connect(function()
 		cancelHeavyCharge(false)
@@ -990,7 +1348,10 @@ function CombatInput.start()
 		dashToken += 1
 		clearDash()
 		dashEndsAt = 0
+		activeAction = nil
+		bufferedAction = nil
 		lockedTarget = nil
+		Effects.updateLockIndicator(nil)
 		lastEngageAt = -math.huge
 		comboStep = 0
 		lastSwingAt = -math.huge

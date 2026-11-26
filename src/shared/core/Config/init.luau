@@ -23,6 +23,7 @@ local PARTS = {
 	"Flags",
 	"Net",
 	"Screen",
+	"Tonemapping",
 	"World",
 }
 

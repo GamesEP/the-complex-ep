@@ -31,6 +31,7 @@ local WALL_MARGIN = 4
 local worldRef: Instance = nil :: any
 local folder: Folder = nil :: any
 local onPickup: (Player, Drops.DropKind) -> boolean = nil :: any
+local isPaused: (() -> boolean)? = nil
 local active: { ActiveDrop } = {}
 local nextDefenseSpawnAt = 0
 
@@ -69,6 +70,9 @@ local function randomRoomPosition(inset: number): Vector3
 end
 
 local function step()
+	if isPaused and isPaused() then
+		return
+	end
 	local t = now()
 	-- Spawn the 50% defense buff periodically across the map while a fight is active (at most one
 	-- on the floor at a time so pickups never pile up).
@@ -173,9 +177,10 @@ function DropService.clear()
 	nextDefenseSpawnAt = 0
 end
 
-function DropService.start(dependencies: { world: Instance, onPickup: (Player, Drops.DropKind) -> boolean })
+function DropService.start(dependencies: { world: Instance, onPickup: (Player, Drops.DropKind) -> boolean, isPaused: (() -> boolean)? })
 	worldRef = dependencies.world
 	onPickup = dependencies.onPickup
+	isPaused = dependencies.isPaused
 	folder = Instance.new("Folder")
 	folder.Name = "Drops"
 	folder.Parent = dependencies.world

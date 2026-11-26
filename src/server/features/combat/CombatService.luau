@@ -11,6 +11,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
@@ -20,6 +21,7 @@ local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
+local Waves = require(Shared.features.enemies.Waves)
 
 local CombatService = {}
 
@@ -27,15 +29,21 @@ local CombatService = {}
 -- this much slack, so a dash pressed the instant the HUD says "ready" is never silently refused.
 local COOLDOWN_SLACK = 0.1
 
-type Enemy = { body: BasePart, radius: number, health: number, spec: any, state: any }
+type Enemy = { body: BasePart, model: Model?, radius: number, health: number, dead: boolean?, spec: any, state: any }
 type Enemies = {
 	list: () -> { Enemy },
 	damage: (Enemy, number) -> (),
 	taunt: (Enemy, Player, number) -> (),
 	shove: (Enemy, Vector3, number, number, number, number) -> (),
+	stun: (Enemy, number) -> (),
 }
 
 local enemies: Enemies = nil :: any
+local isPaused: (() -> boolean)? = nil
+
+local function paused(): boolean
+	return isPaused ~= nil and isPaused()
+end
 
 -- Per player, server-only: the combo and heavy-charge clocks are judged on the server's own
 -- `os.clock()`, which a client cannot move. Forgotten in `forget`, from PlayerRemoving.
@@ -44,8 +52,37 @@ local heavyCharges: { [Player]: number } = {}
 local overDriveTokens: { [Player]: number } = {}
 local dashStates: { [Player]: { charges: number, rechargeAt: number } } = {}
 
--- Active Support protect fields. Server-only: what they *look* like is a CombatVfx broadcast.
-local protectFields: { { position: Vector3, radius: number, untilAt: number } } = {}
+-- Active Support 10 s healing zones, Support ranged bolts/arcane orbs, and Damage boomerang daggers.
+type HealZone = { position: Vector3, radius: number, untilAt: number, nextTickAt: number }
+type PlayerBolt = {
+	id: number,
+	owner: Player,
+	position: Vector3,
+	velocity: Vector3,
+	radius: number,
+	damage: number,
+	splashRadius: number,
+	stunDuration: number,
+	expiresAt: number,
+	kind: string,
+}
+type Boomerang = {
+	owner: Player,
+	startPos: Vector3,
+	apexPos: Vector3,
+	startedAt: number,
+	outSeconds: number,
+	returnSeconds: number,
+	outDamage: number,
+	returnDamage: number,
+	hitOut: { [Enemy]: boolean },
+	hitBack: { [Enemy]: boolean },
+}
+
+local healZones: { HealZone } = {}
+local playerBolts: { PlayerBolt } = {}
+local boomerangs: { Boomerang } = {}
+local nextBoltId = 0
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -256,6 +293,7 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("StunnedUntil", 0)
 	player:SetAttribute("GrabImmuneUntil", 0)
 	player:SetAttribute("BulwarkUntil", 0)
+	player:SetAttribute("ProtectBuffUntil", 0)
 	for _, ability in pairs(Config.ABILITIES) do
 		player:SetAttribute(ability.readyAttribute, 0)
 	end
@@ -280,13 +318,24 @@ end
 
 -- `any` in: EnemyService carries more than this module uses, and a sealed table type would
 -- refuse it for that. What is read from it is the `Enemies` shape above.
-function CombatService.start(dependencies: { enemies: any })
+function CombatService.start(dependencies: { enemies: any, isPaused: (() -> boolean)? })
 	enemies = dependencies.enemies :: Enemies
+	isPaused = dependencies.isPaused
 	Players.RespawnTime = Config.RESPAWN_SECONDS
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in ipairs(Players:GetPlayers()) do
 		onPlayer(player)
 	end
+end
+
+-- Clears in-flight player bolts, boomerang daggers, and persistent healing zones on room reset.
+function CombatService.clear()
+	for _, bolt in ipairs(playerBolts) do
+		Remotes.CombatVfx:FireAllClients("boltImpact", bolt.id, bolt.position, "cancel", 0)
+	end
+	table.clear(playerBolts)
+	table.clear(boomerangs)
+	table.clear(healZones)
 end
 
 -- Called by ClassService once a player has picked a class: the character takes the class's health,
@@ -314,44 +363,29 @@ function CombatService.forget(player: Player)
 	dashStates[player] = nil
 end
 
--- How much of a hit survives the class and the Support's protect field: the Tank's passive and a
--- player standing in a field each cut it, and they stack.
-local function classReduction(player: Player, position: Vector3?, t: number): number
+-- How much of a hit survives the class passive, the Tank's Muralla (-75%), and the Support's
+-- squad-wide defense buff. They stack multiplicatively.
+local function classReduction(player: Player, t: number): number
 	local multiplier = Classes.incomingMultiplier(classIdOf(player))
-	if position then
-		for _, field in ipairs(protectFields) do
-			if t < field.untilAt and Melee.inRadius(field.position, position, field.radius) then
-				multiplier *= 1 - Config.PROTECT_FIELD_REDUCTION
-				break
-			end
-		end
-	end
+	multiplier *= Classes.bulwarkMultiplier(player:GetAttribute("BulwarkUntil"), t)
+	multiplier *= Classes.protectMultiplier(player:GetAttribute("ProtectBuffUntil"), t)
 	return multiplier
 end
 
 -- Every hit a player lands goes through here: the class multiplier, and the Damage passive when
--- the enemy is recovering from its own attack (its stun window) or is hit from behind.
+-- the enemy is stunned/recovering or hit from behind.
 local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3)
-	local vulnerable = (enemy.state and enemy.state.phase == "recover")
+	local t = now()
+	local stunnedAttr = if enemy.model then enemy.model:GetAttribute("StunnedUntil") else nil
+	local isStunned = type(stunnedAttr) == "number" and t < stunnedAttr
+	local vulnerable = isStunned
+		or (enemy.state and enemy.state.phase == "recover")
 		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
 	enemies.damage(enemy, damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable))
 end
 
--- Whether a hit from `origin` lands on the Tank's raised Muralla: inside its frontal arc.
-local function stoppedByBulwark(player: Player, root: BasePart?, origin: Vector3?, t: number): boolean
-	local untilAt = player:GetAttribute("BulwarkUntil")
-	if not root or not origin or type(untilAt) ~= "number" or t >= untilAt then
-		return false
-	end
-	local facing = Melee.flat(root.CFrame.LookVector)
-	return facing ~= nil and Melee.inArc(root.Position, facing, origin, math.huge, Config.BULWARK_ARC)
-end
-
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
 -- through a dashing player ("invulnerable") and reflect back on a perfect "parry".
---
--- `origin` is where the hit came from, for the attacks the Tank's Muralla can stop (shots and
--- beams); a hit without one is never stopped by it.
 function CombatService.hurt(
 	player: Player,
 	amount: number,
@@ -364,9 +398,7 @@ function CombatService.hurt(
 	end
 
 	local t = now()
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	local rootBase = if rootPart and rootPart:IsA("BasePart") then rootPart else nil
-	amount *= classReduction(player, if rootBase then rootBase.Position else nil, t)
+	amount *= classReduction(player, t)
 	local finalDamage, outcome = Defense.resolveHit(amount, {
 		now = t,
 		invulnerableUntil = character:GetAttribute("InvulnerableUntil"),
@@ -382,15 +414,6 @@ function CombatService.hurt(
 
 	if outcome == "invulnerable" then
 		return false, "invulnerable"
-	end
-
-	-- After the dodge check (a dash still passes through), before a parry: the shield takes it.
-	-- Reported as a landed block so a projectile is stopped by the shield instead of flying on.
-	if outcome ~= "parry" and stoppedByBulwark(player, rootBase, options and options.origin, t) then
-		if rootBase then
-			Remotes.CombatSfx:FireAllClients("playerBlock", rootBase.Position)
-		end
-		return true, "block"
 	end
 
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -579,7 +602,7 @@ function CombatService.block(player: Player, active: boolean)
 		return
 	end
 
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player, t) then
+	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player, t) then
 		return
 	end
 	if not rootOf(player) then
@@ -601,7 +624,7 @@ function CombatService.heavyCharge(player: Player, active: boolean)
 		cancelCharge(player)
 		return
 	end
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	if player:GetAttribute("ChargingHeavy") == true then
@@ -624,10 +647,43 @@ function CombatService.heavyCharge(player: Player, active: boolean)
 	broadcastOthers(player, "playerHeavyCharge", root.Position)
 end
 
--- Remote "HeavyAttack": unleashes the wide crushing cleave once the server confirms the full
--- full HEAVY_CHARGE_SECONDS hold completed.
+-- Spawns a server-authoritative player projectile (Support basic energy bolt or Heavy arcane orb).
+local function spawnPlayerBolt(
+	owner: Player,
+	origin: Vector3,
+	facing: Vector3,
+	speed: number,
+	range: number,
+	radius: number,
+	damage: number,
+	splashRadius: number,
+	stunDuration: number,
+	kind: string,
+	step: number
+)
+	nextBoltId += 1
+	local boltId = nextBoltId
+	local spawnPos = Vector3.new(origin.X + facing.X * 2.2, 2.5, origin.Z + facing.Z * 2.2)
+	local life = math.max(range / math.max(speed, 1), 0.1)
+	table.insert(playerBolts, {
+		id = boltId,
+		owner = owner,
+		position = spawnPos,
+		velocity = facing * speed,
+		radius = radius,
+		damage = damage,
+		splashRadius = splashRadius,
+		stunDuration = stunDuration,
+		expiresAt = now() + life,
+		kind = kind,
+	})
+	Remotes.CombatVfx:FireAllClients("staffBolt", boltId, spawnPos, facing, step)
+end
+
+-- Remote "HeavyAttack": unleashes a role- and weapon-specific heavy strike once the server
+-- confirms the full HEAVY_CHARGE_SECONDS hold completed.
 function CombatService.heavyAttack(player: Player, aim: Vector3)
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		cancelCharge(player)
 		return
 	end
@@ -648,31 +704,104 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 	end
 
 	local t = now()
+	local classId = classIdOf(player)
+	local dmgMult = Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	player:SetAttribute("HeavyReadyAt", t + Config.HEAVY_ATTACK_COOLDOWN)
 	swings[player] = { step = 0, lastAt = os.clock() }
 
-	local damage = Config.HEAVY_ATTACK_DAMAGE
-		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	broadcastOthers(player, "playerHeavyAttack", root.Position)
 	broadcastAnimOthers(player, "heavyAttack")
 
-	local hitAt: Vector3? = nil
-	for _, enemy in ipairs(enemies.list()) do
-		if
-			Melee.inArc(
-				root.Position,
-				facing,
-				enemy.body.Position,
-				Config.HEAVY_ATTACK_RANGE + enemy.radius,
-				Config.HEAVY_ATTACK_ARC
-			)
-		then
-			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, damage, root.Position)
+	if classId == "tank" then
+		-- Tank (Greatsword & Shield): seismic ground slam that damages, shoves outward, and stuns.
+		local impactPos = root.Position + facing * Config.TANK_HEAVY_OFFSET
+		local damage = Config.TANK_HEAVY_DAMAGE * dmgMult
+		local hitAt: Vector3? = nil
+		for _, enemy in ipairs(enemies.list()) do
+			if Melee.inRadius(impactPos, enemy.body.Position, Config.TANK_HEAVY_RADIUS + enemy.radius) then
+				hitAt = hitAt or enemy.body.Position
+				hitEnemy(player, enemy, damage, root.Position)
+				local away = Melee.flat(enemy.body.Position - impactPos) or facing
+				enemies.shove(enemy, away, Config.TANK_HEAVY_PUSH_DISTANCE, 0.2, 1, t)
+				enemies.stun(enemy, Config.TANK_HEAVY_STUN_DURATION)
+			end
 		end
-	end
-	if hitAt then
-		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", impactPos)
+		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "tank")
+		if hitAt then
+			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		end
+	elseif classId == "dps" then
+		-- Damage (Dual Daggers): blistering twin diagonal X-slash burst (two rapid strikes).
+		local hitDamage = Config.DPS_HEAVY_HIT_DAMAGE * dmgMult
+		local function doSlash(originPos: Vector3, slashFacing: Vector3)
+			local hitAt: Vector3? = nil
+			for _, enemy in ipairs(enemies.list()) do
+				if
+					Melee.inArc(
+						originPos,
+						slashFacing,
+						enemy.body.Position,
+						Config.DPS_HEAVY_RANGE + enemy.radius,
+						Config.DPS_HEAVY_ARC
+					)
+				then
+					hitAt = hitAt or enemy.body.Position
+					hitEnemy(player, enemy, hitDamage, originPos)
+				end
+			end
+			if hitAt then
+				Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			end
+		end
+		doSlash(root.Position, facing)
+		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "dps")
+		task.delay(Config.DPS_HEAVY_SECOND_DELAY, function()
+			local currentRoot = rootOf(player)
+			if not currentRoot or player:GetAttribute("Grabbed") == true or isStunned(player) then
+				return
+			end
+			local secondFacing = Melee.flat(currentRoot.CFrame.LookVector) or facing
+			doSlash(currentRoot.Position, secondFacing)
+		end)
+	elseif classId == "support" then
+		-- Support (Energy Staff): launches a long-range explosive arcane orb that stuns in an AoE.
+		local damage = Config.SUPPORT_HEAVY_DAMAGE * dmgMult
+		spawnPlayerBolt(
+			player,
+			root.Position,
+			facing,
+			Config.SUPPORT_HEAVY_SPEED,
+			Config.SUPPORT_HEAVY_RANGE,
+			Config.SUPPORT_HEAVY_ORB_RADIUS,
+			damage,
+			Config.SUPPORT_HEAVY_BLAST_RADIUS,
+			Config.SUPPORT_HEAVY_STUN_DURATION,
+			"supportHeavy",
+			4
+		)
+	else
+		-- Default (no class yet / test sword): classic wide horizontal crescent cleave.
+		local damage = Config.HEAVY_ATTACK_DAMAGE * dmgMult
+		local hitAt: Vector3? = nil
+		for _, enemy in ipairs(enemies.list()) do
+			if
+				Melee.inArc(
+					root.Position,
+					facing,
+					enemy.body.Position,
+					Config.HEAVY_ATTACK_RANGE + enemy.radius,
+					Config.HEAVY_ATTACK_ARC
+				)
+			then
+				hitAt = hitAt or enemy.body.Position
+				hitEnemy(player, enemy, damage, root.Position)
+			end
+		end
+		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "default")
+		if hitAt then
+			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		end
 	end
 end
 
@@ -680,7 +809,7 @@ end
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
 function CombatService.attack(player: Player, aim: Vector3)
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	local root = rootOf(player)
@@ -705,6 +834,26 @@ function CombatService.attack(player: Player, aim: Vector3)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), now(), Config.BUFF_DAMAGE_MULTIPLIER)
 	broadcastOthers(player, CombatAudio.attackCue(step, Config.COMBO_HITS), root.Position, step)
 	broadcastAnimOthers(player, "attack", step)
+
+	-- Support fights at range with energy bolts from its staff instead of swinging in melee.
+	if Classes.isRanged(classIdOf(player)) then
+		local isFinisher = step >= Config.COMBO_HITS
+		spawnPlayerBolt(
+			player,
+			root.Position,
+			facing,
+			Config.STAFF_BOLT_SPEED,
+			Config.STAFF_BOLT_RANGE,
+			if isFinisher then Config.STAFF_BOLT_FINISHER_RADIUS else Config.STAFF_BOLT_RADIUS,
+			damage,
+			if isFinisher then Config.STAFF_BOLT_FINISHER_SPLASH else 0,
+			0,
+			if isFinisher then "staffFinisher" else "staffBolt",
+			step
+		)
+		return
+	end
+
 	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
@@ -720,7 +869,7 @@ end
 -- Remote "Dash". The motion already happened on the client; this grants the invulnerability and
 -- meters the cooldown (1 charge normally, 2 charges back-to-back while Speed Buff is active).
 function CombatService.dash(player: Player)
-	if player:GetAttribute("Grabbed") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Grabbed") == true or isStunned(player) then
 		return
 	end
 	local character = player.Character
@@ -757,7 +906,8 @@ function CombatService.spin(player: Player)
 		return
 	end
 	if
-		player:GetAttribute("Grabbed") == true
+		paused()
+		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
 		or isStunned(player)
@@ -798,7 +948,8 @@ function CombatService.stinger(player: Player, aim: Vector3)
 		return
 	end
 	if
-		player:GetAttribute("Grabbed") == true
+		paused()
+		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
 		or isStunned(player)
@@ -848,7 +999,8 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 		return
 	end
 	if
-		player:GetAttribute("Grabbed") == true
+		paused()
+		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
 		or isStunned(player)
@@ -966,70 +1118,94 @@ end
 -- Each handler runs once the shared checks (class owns it, not grabbed/stunned/blocking, off
 -- cooldown) have passed and the cooldown has started.
 local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } = {
-	-- Tank: every enemy in reach targets the tank for a few seconds.
+	-- Tank: deafening war cry that stuns every enemy in radius, interrupts windups/grabs, and draws aggro.
 	taunt = function(player, root, _facing, t)
-		local untilAt = t + Config.TAUNT_DURATION
+		local tauntUntil = t + Config.TAUNT_DURATION
+		local shockDamage = buffed(player, Config.TAUNT_DAMAGE, t)
+		local hitAt: Vector3? = nil
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.TAUNT_RADIUS + enemy.radius) then
-				enemies.taunt(enemy, player, untilAt)
+				hitAt = hitAt or enemy.body.Position
+				enemies.stun(enemy, Config.TAUNT_STUN_DURATION)
+				enemies.taunt(enemy, player, tauntUntil)
+				hitEnemy(player, enemy, shockDamage, root.Position)
 			end
 		end
 		Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", root.Position)
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", root.Position)
 		Remotes.CombatVfx:FireAllClients("taunt", player, Config.TAUNT_RADIUS)
-	end,
-
-	-- Tank: a frontal shield that stops shots and beams from in front (see `stoppedByBulwark`).
-	bulwark = function(player, root, _facing, t)
-		player:SetAttribute("BulwarkUntil", t + Config.BULWARK_DURATION)
-		Remotes.CombatSfx:FireAllClients("playerBlock", root.Position)
-		Remotes.CombatVfx:FireAllClients("bulwark", player, Config.BULWARK_DURATION)
-	end,
-
-	-- Damage: a frontal strike that triples against an enemy already low on health.
-	execute = function(player, root, facing, t)
-		local base = buffed(player, Config.EXECUTE_DAMAGE, t)
-		local hitAt: Vector3? = nil
-		for _, enemy in ipairs(enemies.list()) do
-			if Melee.inArc(root.Position, facing, enemy.body.Position, Config.EXECUTE_RANGE + enemy.radius, Config.EXECUTE_ARC) then
-				hitAt = hitAt or enemy.body.Position
-				local spec = enemy.spec or {}
-				hitEnemy(player, enemy, Classes.executeDamage(base, enemy.health, spec.health or 1), root.Position)
-			end
-		end
-		broadcastOthers(player, "playerHeavyAttack", root.Position)
-		broadcastAnimOthers(player, "attack", Config.COMBO_HITS)
-		Remotes.CombatVfx:FireAllClients("execute", root.Position, facing)
 		if hitAt then
 			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
 		end
 	end,
 
-	-- Support: heals every living player in the radius, the caster included.
-	healPulse = function(_player, root, _facing, _t)
-		for _, entry in ipairs(playersNear(root.Position, Config.HEAL_PULSE_RADIUS)) do
-			heal(entry.humanoid, Config.HEAL_PULSE_AMOUNT)
-		end
-		Remotes.CombatSfx:FireAllClients("dropHeal", root.Position)
-		Remotes.CombatVfx:FireAllClients("healPulse", root.Position, Config.HEAL_PULSE_RADIUS)
-	end,
-
-	-- Support: a zone on the floor where every hit is cut (see `classReduction`).
-	protectField = function(_player, root, _facing, t)
-		local floorPoint = Vector3.new(root.Position.X, 0, root.Position.Z)
-		table.insert(protectFields, {
-			position = floorPoint,
-			radius = Config.PROTECT_FIELD_RADIUS,
-			untilAt = t + Config.PROTECT_FIELD_DURATION,
-		})
+	-- Tank: personal armored self-buff cutting ALL incoming damage by 75% (see `classReduction`).
+	bulwark = function(player, root, _facing, t)
+		player:SetAttribute("BulwarkUntil", t + Config.BULWARK_DURATION)
 		Remotes.CombatSfx:FireAllClients("dropBuff", root.Position)
-		Remotes.CombatVfx:FireAllClients("protectField", floorPoint, Config.PROTECT_FIELD_RADIUS, Config.PROTECT_FIELD_DURATION)
+		Remotes.CombatVfx:FireAllClients("bulwark", player, Config.BULWARK_DURATION)
 	end,
 
-	-- Support: hurts, pushes away and slows every enemy around the caster.
+	-- Damage: throws twin spinning boomerang daggers forward that pierce enemies and curve back to the caster.
+	execute = function(player, root, facing, t)
+		local startPos = Vector3.new(root.Position.X, 2.4, root.Position.Z)
+		local clamped = Waves.clamp(startPos + facing * Config.BOOMERANG_RANGE, Config.ROOM_SIZE, 2)
+		local apexPos = Vector3.new(clamped.X, 2.4, clamped.Z)
+		table.insert(boomerangs, {
+			owner = player,
+			startPos = startPos,
+			apexPos = apexPos,
+			startedAt = t,
+			outSeconds = Config.BOOMERANG_OUT_SECONDS,
+			returnSeconds = Config.BOOMERANG_RETURN_SECONDS,
+			outDamage = buffed(player, Config.BOOMERANG_OUT_DAMAGE, t),
+			returnDamage = buffed(player, Config.BOOMERANG_RETURN_DAMAGE, t),
+			hitOut = {},
+			hitBack = {},
+		})
+		broadcastOthers(player, "playerAttackHeavy", root.Position)
+		broadcastAnimOthers(player, "attack", Config.COMBO_HITS)
+		Remotes.CombatVfx:FireAllClients("boomerang", player, startPos, apexPos)
+	end,
+
+	-- Support: drops a persistent 10 s healing zone on the floor that steadily heals every player passing through.
+	healPulse = function(_player, root, _facing, t)
+		local floorPoint = Vector3.new(root.Position.X, 0, root.Position.Z)
+		for _, entry in ipairs(playersNear(floorPoint, Config.HEAL_ZONE_RADIUS)) do
+			heal(entry.humanoid, Config.HEAL_ZONE_INITIAL_BURST)
+		end
+		table.insert(healZones, {
+			position = floorPoint,
+			radius = Config.HEAL_ZONE_RADIUS,
+			untilAt = t + Config.HEAL_ZONE_DURATION,
+			nextTickAt = t + Config.HEAL_ZONE_TICK_SECONDS,
+		})
+		Remotes.CombatSfx:FireAllClients("dropHeal", root.Position)
+		Remotes.CombatVfx:FireAllClients("healZone", floorPoint, Config.HEAL_ZONE_RADIUS, Config.HEAL_ZONE_DURATION)
+	end,
+
+	-- Support: grants a team-wide defense buff to EVERY living player in the squad (see `classReduction`).
+	protectField = function(_player, root, _facing, t)
+		local untilAt = t + Config.PROTECT_BUFF_DURATION
+		for _, other in ipairs(Players:GetPlayers()) do
+			if rootOf(other) then
+				local current = other:GetAttribute("ProtectBuffUntil")
+				if type(current) ~= "number" or untilAt > current then
+					other:SetAttribute("ProtectBuffUntil", untilAt)
+				end
+			end
+		end
+		Remotes.CombatSfx:FireAllClients("dropBuff", root.Position)
+		Remotes.CombatVfx:FireAllClients("protectBuff", Config.PROTECT_BUFF_DURATION)
+	end,
+
+	-- Support: expanding shockwave that damages, shoves away, and hard-stuns every enemy around the caster.
 	shockwave = function(player, root, _facing, t)
 		local damage = buffed(player, Config.SHOCKWAVE_DAMAGE, t)
+		local hitAt: Vector3? = nil
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.SHOCKWAVE_RADIUS + enemy.radius) then
+				hitAt = hitAt or enemy.body.Position
 				hitEnemy(player, enemy, damage, root.Position)
 				local away = Melee.flat(enemy.body.Position - root.Position) or Melee.flat(root.CFrame.LookVector)
 				if away then
@@ -1042,10 +1218,14 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 						t + Config.SHOCKWAVE_SLOW_SECONDS
 					)
 				end
+				enemies.stun(enemy, Config.SHOCKWAVE_STUN_DURATION)
 			end
 		end
 		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", root.Position)
 		Remotes.CombatVfx:FireAllClients("shockwave", root.Position, Config.SHOCKWAVE_RADIUS)
+		if hitAt then
+			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		end
 	end,
 }
 
@@ -1058,7 +1238,8 @@ function CombatService.useAbility(player: Player, abilityId: string, aim: Vector
 		return
 	end
 	if
-		player:GetAttribute("Grabbed") == true
+		paused()
+		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
 		or isStunned(player)
@@ -1083,15 +1264,114 @@ function CombatService.useAbility(player: Player, abilityId: string, aim: Vector
 	handler(player, root, facing, t)
 end
 
--- The Support's passive and the protect fields' expiry, on one slow tick: once a second is plenty
--- for a regeneration and keeps it off every frame.
-local function supportTick()
+-- Steps server-authoritative Support bolts/heavy orbs, Damage boomerang daggers, and persistent
+-- 10 s healing zones every Heartbeat.
+local function stepCombat(dt: number)
+	if paused() then
+		return
+	end
 	local t = now()
-	for i = #protectFields, 1, -1 do
-		if t >= protectFields[i].untilAt then
-			table.remove(protectFields, i)
+	local enemyList = enemies.list()
+
+	-- 1. Support basic energy bolts & explosive arcane heavy orbs.
+	for i = #playerBolts, 1, -1 do
+		local bolt = playerBolts[i]
+		local nextPos = bolt.position + bolt.velocity * dt
+		bolt.position = nextPos
+		local expired = t >= bolt.expiresAt
+		if not expired then
+			local inside = Waves.clamp(nextPos, Config.ROOM_SIZE, 0)
+			expired = inside.X ~= nextPos.X or inside.Z ~= nextPos.Z
+		end
+
+		local hitEnemyTarget: Enemy? = nil
+		if not expired then
+			for _, enemy in ipairs(enemyList) do
+				if not enemy.dead and Melee.inRadius(nextPos, enemy.body.Position, bolt.radius + enemy.radius) then
+					hitEnemyTarget = enemy
+					break
+				end
+			end
+		end
+
+		if hitEnemyTarget or expired then
+			local impactPos = if hitEnemyTarget then hitEnemyTarget.body.Position else nextPos
+			if bolt.splashRadius > 0 and (hitEnemyTarget or bolt.kind == "supportHeavy") then
+				local anyHit = false
+				for _, enemy in ipairs(enemyList) do
+					if not enemy.dead and Melee.inRadius(impactPos, enemy.body.Position, bolt.splashRadius + enemy.radius) then
+						anyHit = true
+						hitEnemy(bolt.owner, enemy, bolt.damage, impactPos)
+						if bolt.stunDuration > 0 then
+							enemies.stun(enemy, bolt.stunDuration)
+						end
+					end
+				end
+				if bolt.kind == "supportHeavy" then
+					Remotes.CombatSfx:FireAllClients("enemyExploderBlast", impactPos)
+				end
+				if anyHit then
+					Remotes.CombatSfx:FireAllClients("playerHit", impactPos)
+				end
+			elseif hitEnemyTarget then
+				hitEnemy(bolt.owner, hitEnemyTarget, bolt.damage, nextPos)
+				Remotes.CombatSfx:FireAllClients("playerHit", impactPos)
+			end
+			Remotes.CombatVfx:FireAllClients("boltImpact", bolt.id, impactPos, bolt.kind, bolt.splashRadius)
+			table.remove(playerBolts, i)
 		end
 	end
+
+	-- 2. Damage Boomerang Daggers (outbound slice + live-homing return slice).
+	for i = #boomerangs, 1, -1 do
+		local b = boomerangs[i]
+		local elapsed = t - b.startedAt
+		local progress: number
+		local returning = false
+		if elapsed <= b.outSeconds then
+			progress = elapsed / math.max(b.outSeconds, 0.05)
+		else
+			returning = true
+			progress = 1 + (elapsed - b.outSeconds) / math.max(b.returnSeconds, 0.05)
+		end
+		if progress >= 2 or not b.owner.Parent then
+			table.remove(boomerangs, i)
+			continue
+		end
+		local casterRoot = rootOf(b.owner)
+		local casterPos = if casterRoot
+			then Vector3.new(casterRoot.Position.X, 2.4, casterRoot.Position.Z)
+			else b.startPos
+		local pos = Classes.boomerangPosition(b.startPos, b.apexPos, casterPos, progress)
+		local hitSet = if returning then b.hitBack else b.hitOut
+		local baseDmg = if returning then b.returnDamage else b.outDamage
+		for _, enemy in ipairs(enemyList) do
+			if not enemy.dead and not hitSet[enemy] and Melee.inRadius(pos, enemy.body.Position, Config.BOOMERANG_HIT_RADIUS + enemy.radius) then
+				hitSet[enemy] = true
+				local spec = enemy.spec or {}
+				hitEnemy(b.owner, enemy, Classes.executeDamage(baseDmg, enemy.health, spec.health or 1), pos)
+				Remotes.CombatSfx:FireAllClients("playerHit", enemy.body.Position)
+			end
+		end
+	end
+
+	-- 3. Persistent 10 s Support healing zones.
+	for i = #healZones, 1, -1 do
+		local zone = healZones[i]
+		if t >= zone.untilAt then
+			table.remove(healZones, i)
+		elseif t >= zone.nextTickAt then
+			zone.nextTickAt += Config.HEAL_ZONE_TICK_SECONDS
+			local healTick = Config.HEAL_ZONE_HEAL_PER_SECOND * Config.HEAL_ZONE_TICK_SECONDS
+			for _, entry in ipairs(playersNear(zone.position, zone.radius)) do
+				heal(entry.humanoid, healTick)
+			end
+		end
+	end
+end
+
+-- The Support's passive regeneration aura on a 1-second tick so it stays off every frame.
+local function supportTick()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if classIdOf(player) == "support" then
 			local root = rootOf(player)
@@ -1106,6 +1386,7 @@ end
 
 -- Started from the server bootstrap after `start`.
 function CombatService.startSupportTick()
+	RunService.Heartbeat:Connect(stepCombat)
 	task.spawn(function()
 		while true do
 			task.wait(1)

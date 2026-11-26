@@ -203,53 +203,176 @@ local function assembleWeapon(name: string, grip: any, parts: { any }, pitch: nu
 end
 
 local STEEL = Color3.fromRGB(205, 214, 228)
-local DARK = Color3.fromRGB(40, 44, 54)
-local GOLD = Color3.fromRGB(230, 195, 105)
+local GUNMETAL = Color3.fromRGB(68, 76, 90)
+local DARK = Color3.fromRGB(36, 40, 50)
+local GOLD = Color3.fromRGB(230, 190, 95)
+local HAZARD_YELLOW = Color3.fromRGB(245, 196, 0)
+local TANK_BLUE = Color3.fromRGB(85, 195, 255)
+local TANK_ARMOR = Color3.fromRGB(58, 82, 132)
+local DPS_CRIMSON = Color3.fromRGB(255, 65, 115)
+local SUPPORT_MINT = Color3.fromRGB(75, 245, 160)
 
--- Tank: a broad, heavy greatsword. Wider and thicker than the test sword but no longer, so it keeps
--- the same clearance above the floor at rest and in the dash (measured for the test sword).
+-- Tank (legacy model kept for reference/fallbacks): heavy greatsword.
 local function buildGreatsword(): any
 	local grip = makePart({ name = "Grip", size = Vector3.new(0.3, 0.3, 1.1), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
 	return assembleWeapon("WeaponGreatsword", grip, {
 		makePart({ name = "Pommel", size = Vector3.new(0.42, 0.42, 0.42), cframe = CFrame.new(0, 0, 0.62), color = GOLD, material = Enum.Material.Metal, shape = Enum.PartType.Ball, anchored = false }),
 		makePart({ name = "Guard", size = Vector3.new(1.7, 0.32, 0.36), cframe = CFrame.new(0, 0, -0.6), color = GOLD, material = Enum.Material.Metal, anchored = false, castShadow = true }),
 		makePart({ name = "Blade", size = Vector3.new(0.62, 0.18, 2.9), cframe = CFrame.new(0, 0, -2.2), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
-		makePart({ name = "BladeCore", size = Vector3.new(0.2, 0.22, 2.5), cframe = CFrame.new(0, 0, -2.1), color = Color3.fromRGB(110, 160, 255), material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "BladeCore", size = Vector3.new(0.2, 0.22, 2.5), cframe = CFrame.new(0, 0, -2.1), color = TANK_BLUE, material = Enum.Material.Neon, anchored = false }),
 		makePart({ name = "BladeTip", size = Vector3.new(0.44, 0.17, 0.55), cframe = CFrame.new(0, 0, -3.78) * CFrame.Angles(0, math.rad(45), 0), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
 	}, 70)
 end
 
--- Tank: a kite shield for the left forearm. The plate is thin along X and spans Y/Z, so with the
--- grip turned it sits flat against the outside of the forearm, facing forward.
+-- Tank: heavy industrial spiked war-mace (replaces the greatsword). Keeps total reach ~3.75 studs
+-- so it clears the floor at rest and during dashes, with a banded steel haft, flanged armored head,
+-- glowing blue kinetic core rings, 8 radial steel spikes, and a heavy crown spike.
+local function buildSpikedMace(): any
+	local grip = makePart({
+		name = "Grip",
+		size = Vector3.new(0.28, 0.28, 1.05),
+		cframe = CFrame.new(0, 0, 0),
+		color = DARK,
+		material = Enum.Material.SmoothPlastic,
+		anchored = false,
+	})
+	local parts: { any } = {
+		-- Pommel & grip wrap bands.
+		makePart({ name = "PommelCap", size = Vector3.new(0.44, 0.44, 0.28), cframe = CFrame.new(0, 0, 0.58), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "PommelSpike", size = Vector3.new(0.22, 0.22, 0.34), cframe = CFrame.new(0, 0, 0.8) * CFrame.Angles(0, 0, math.rad(45)), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "GripBand1", size = Vector3.new(0.32, 0.32, 0.14), cframe = CFrame.new(0, 0, 0.24), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "GripBand2", size = Vector3.new(0.32, 0.32, 0.14), cframe = CFrame.new(0, 0, -0.24), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		-- Guard collar & reinforced heavy shaft.
+		makePart({ name = "CollarGuard", size = Vector3.new(0.56, 0.56, 0.24), cframe = CFrame.new(0, 0, -0.58) * CFrame.Angles(0, 0, math.rad(45)), color = GOLD, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "Shaft", size = Vector3.new(0.26, 0.26, 1.9), cframe = CFrame.new(0, 0, -1.55), color = GUNMETAL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "ShaftConduit", size = Vector3.new(0.3, 0.12, 1.55), cframe = CFrame.new(0, 0, -1.55), color = TANK_BLUE, material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "ShaftBrace1", size = Vector3.new(0.36, 0.36, 0.18), cframe = CFrame.new(0, 0, -1.15), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "ShaftBrace2", size = Vector3.new(0.36, 0.36, 0.18), cframe = CFrame.new(0, 0, -1.9), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		-- Heavy multi-layered armored mace head (centered at z = -2.65).
+		makePart({ name = "HeadNeck", size = Vector3.new(0.62, 0.62, 0.34), cframe = CFrame.new(0, 0, -2.18) * CFrame.Angles(0, 0, math.rad(45)), color = TANK_ARMOR, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "HeadCoreA", size = Vector3.new(0.98, 0.98, 1.05), cframe = CFrame.new(0, 0, -2.72), color = TANK_ARMOR, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "HeadCoreB", size = Vector3.new(0.98, 0.98, 1.05), cframe = CFrame.new(0, 0, -2.72) * CFrame.Angles(0, 0, math.rad(45)), color = GUNMETAL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "HeadBandRear", size = Vector3.new(1.08, 1.08, 0.18), cframe = CFrame.new(0, 0, -2.32) * CFrame.Angles(0, 0, math.rad(45)), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "HeadBandFront", size = Vector3.new(1.08, 1.08, 0.18), cframe = CFrame.new(0, 0, -3.12) * CFrame.Angles(0, 0, math.rad(45)), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "HeadEnergyCore", size = Vector3.new(1.12, 1.12, 0.24), cframe = CFrame.new(0, 0, -2.72) * CFrame.Angles(0, 0, math.rad(22.5)), color = TANK_BLUE, material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "HeadCrown", size = Vector3.new(0.68, 0.68, 0.22), cframe = CFrame.new(0, 0, -3.28) * CFrame.Angles(0, 0, math.rad(45)), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		-- Heavy forward crown spike.
+		makePart({ name = "CrownSpikeBase", size = Vector3.new(0.32, 0.32, 0.3), cframe = CFrame.new(0, 0, -3.48) * CFrame.Angles(0, 0, math.rad(45)), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "CrownSpikeTip", size = Vector3.new(0.16, 0.16, 0.36), cframe = CFrame.new(0, 0, -3.72) * CFrame.Angles(0, 0, math.rad(45)), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+	}
+
+	-- 8 staggered radial steel spikes (4 primary mid-ring + 4 angled front-ring).
+	for i = 0, 3 do
+		local a1 = math.rad(i * 90)
+		local r1 = CFrame.new(0, 0, -2.72) * CFrame.Angles(0, 0, a1)
+		table.insert(parts, makePart({
+			name = `SpikeMidBase_{i + 1}`,
+			size = Vector3.new(0.26, 0.34, 0.26),
+			cframe = r1 * CFrame.new(0, 0.66, 0) * CFrame.Angles(0, math.rad(45), 0),
+			color = STEEL,
+			material = Enum.Material.Metal,
+			anchored = false,
+			castShadow = true,
+		}))
+		table.insert(parts, makePart({
+			name = `SpikeMidTip_{i + 1}`,
+			size = Vector3.new(0.14, 0.36, 0.14),
+			cframe = r1 * CFrame.new(0, 0.92, 0) * CFrame.Angles(0, math.rad(45), 0),
+			color = STEEL,
+			material = Enum.Material.Metal,
+			anchored = false,
+		}))
+
+		local a2 = math.rad(i * 90 + 45)
+		local r2 = CFrame.new(0, 0, -3.02) * CFrame.Angles(0, 0, a2)
+		table.insert(parts, makePart({
+			name = `SpikeFrontBase_{i + 1}`,
+			size = Vector3.new(0.22, 0.28, 0.22),
+			cframe = r2 * CFrame.new(0, 0.62, -0.08) * CFrame.Angles(math.rad(-22), math.rad(45), 0),
+			color = STEEL,
+			material = Enum.Material.Metal,
+			anchored = false,
+		}))
+		table.insert(parts, makePart({
+			name = `SpikeFrontTip_{i + 1}`,
+			size = Vector3.new(0.12, 0.3, 0.12),
+			cframe = r2 * CFrame.new(0, 0.84, -0.18) * CFrame.Angles(math.rad(-22), math.rad(45), 0),
+			color = STEEL,
+			material = Enum.Material.Metal,
+			anchored = false,
+		}))
+	end
+
+	return assembleWeapon("WeaponSpikedMace", grip, parts, 70)
+end
+
+-- Tank: detailed industrial armored tower shield for the left forearm (layered steel plates,
+-- gold-trimmed perimeter frame, corner rivets, hazard accent, and glowing kinetic emitter core).
 local function buildShield(): any
-	local grip = makePart({ name = "Grip", size = Vector3.new(0.2, 0.2, 0.6), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.22, 0.22, 0.72), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
 	return assembleWeapon("WeaponShield", grip, {
-		makePart({ name = "Plate", size = Vector3.new(0.22, 2.4, 1.9), cframe = CFrame.new(-0.25, 0, -0.35), color = Color3.fromRGB(70, 95, 150), material = Enum.Material.Metal, anchored = false, castShadow = true }),
-		makePart({ name = "Rim", size = Vector3.new(0.26, 2.55, 0.18), cframe = CFrame.new(-0.25, 0, 0.62), color = GOLD, material = Enum.Material.Metal, anchored = false }),
-		makePart({ name = "Boss", size = Vector3.new(0.5, 0.5, 0.5), cframe = CFrame.new(-0.45, 0, -0.35), color = Color3.fromRGB(110, 160, 255), material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+		-- Forearm strap & rear mounting bracket.
+		makePart({ name = "ArmBrace", size = Vector3.new(0.16, 0.95, 0.95), cframe = CFrame.new(-0.14, 0, -0.25), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		-- Main layered armored plates (tapered kite/tower silhouette along Y/Z).
+		makePart({ name = "PlateMain", size = Vector3.new(0.22, 2.35, 1.85), cframe = CFrame.new(-0.28, 0.05, -0.35), color = TANK_ARMOR, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "PlateOuter", size = Vector3.new(0.14, 1.85, 1.38), cframe = CFrame.new(-0.4, 0.05, -0.35), color = GUNMETAL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "PlateTip", size = Vector3.new(0.2, 0.95, 0.95), cframe = CFrame.new(-0.28, -1.18, -0.35) * CFrame.Angles(math.rad(45), 0, 0), color = TANK_ARMOR, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		-- Heavy armored perimeter frame.
+		makePart({ name = "RimTop", size = Vector3.new(0.3, 0.2, 2.02), cframe = CFrame.new(-0.29, 1.24, -0.35), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RimFront", size = Vector3.new(0.3, 2.42, 0.18), cframe = CFrame.new(-0.29, 0.05, -1.3), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RimBack", size = Vector3.new(0.3, 2.42, 0.18), cframe = CFrame.new(-0.29, 0.05, 0.6), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RimBottomA", size = Vector3.new(0.28, 0.18, 1.05), cframe = CFrame.new(-0.29, -1.36, -0.78) * CFrame.Angles(math.rad(38), 0, 0), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RimBottomB", size = Vector3.new(0.28, 0.18, 1.05), cframe = CFrame.new(-0.29, -1.36, 0.08) * CFrame.Angles(math.rad(-38), 0, 0), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		-- Industrial hazard trim & twin vertical energy conduits.
+		makePart({ name = "HazardStripe", size = Vector3.new(0.16, 0.22, 1.5), cframe = CFrame.new(-0.42, 0.92, -0.35), color = HAZARD_YELLOW, material = Enum.Material.SmoothPlastic, anchored = false }),
+		makePart({ name = "EnergyBarTop", size = Vector3.new(0.14, 0.52, 0.16), cframe = CFrame.new(-0.46, 0.52, -0.35), color = TANK_BLUE, material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "EnergyBarBot", size = Vector3.new(0.14, 0.62, 0.16), cframe = CFrame.new(-0.46, -0.52, -0.35), color = TANK_BLUE, material = Enum.Material.Neon, anchored = false }),
+		-- Central reinforced emitter boss + 4 corner steel rivets.
+		makePart({ name = "BossHousing", size = Vector3.new(0.24, 0.72, 0.72), cframe = CFrame.new(-0.46, 0.02, -0.35) * CFrame.Angles(math.rad(45), 0, 0), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "BossCore", size = Vector3.new(0.32, 0.42, 0.42), cframe = CFrame.new(-0.52, 0.02, -0.35), color = TANK_BLUE, material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+		makePart({ name = "RivetTL", size = Vector3.new(0.18, 0.16, 0.16), cframe = CFrame.new(-0.44, 0.82, -1.0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RivetTR", size = Vector3.new(0.18, 0.16, 0.16), cframe = CFrame.new(-0.44, 0.82, 0.3), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RivetBL", size = Vector3.new(0.18, 0.16, 0.16), cframe = CFrame.new(-0.44, -0.78, -1.0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RivetBR", size = Vector3.new(0.18, 0.16, 0.16), cframe = CFrame.new(-0.44, -0.78, 0.3), color = STEEL, material = Enum.Material.Metal, anchored = false }),
 	}, 70, 0, 0)
 end
 
--- Damage: a short, light dagger, one in each hand.
+-- Damage: detailed tactical cyber-dagger (one in each hand) with swept guard wings, pommel ring,
+-- dark spine, serrated ridge, razor steel edge, and crimson plasma core.
 local function buildDagger(): any
-	local grip = makePart({ name = "Grip", size = Vector3.new(0.22, 0.22, 0.7), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.2, 0.2, 0.72), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
 	return assembleWeapon("WeaponDagger", grip, {
-		makePart({ name = "Guard", size = Vector3.new(0.75, 0.18, 0.2), cframe = CFrame.new(0, 0, -0.4), color = Color3.fromRGB(120, 30, 40), material = Enum.Material.Metal, anchored = false }),
-		makePart({ name = "Blade", size = Vector3.new(0.3, 0.1, 1.5), cframe = CFrame.new(0, 0, -1.2), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
-		makePart({ name = "BladeCore", size = Vector3.new(0.1, 0.12, 1.3), cframe = CFrame.new(0, 0, -1.15), color = Color3.fromRGB(255, 70, 80), material = Enum.Material.Neon, anchored = false }),
-		makePart({ name = "BladeTip", size = Vector3.new(0.22, 0.09, 0.34), cframe = CFrame.new(0, 0, -2.02) * CFrame.Angles(0, math.rad(45), 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "PommelRing", size = Vector3.new(0.34, 0.12, 0.34), cframe = CFrame.new(0, 0, 0.46) * CFrame.Angles(0, math.rad(45), 0), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "PommelGem", size = Vector3.new(0.16, 0.16, 0.16), cframe = CFrame.new(0, 0, 0.46), color = DPS_CRIMSON, material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+		makePart({ name = "GuardCenter", size = Vector3.new(0.46, 0.22, 0.22), cframe = CFrame.new(0, 0, -0.4), color = Color3.fromRGB(130, 32, 48), material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "GuardWingL", size = Vector3.new(0.42, 0.14, 0.16), cframe = CFrame.new(-0.32, 0, -0.5) * CFrame.Angles(0, math.rad(-28), 0), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "GuardWingR", size = Vector3.new(0.42, 0.14, 0.16), cframe = CFrame.new(0.32, 0, -0.5) * CFrame.Angles(0, math.rad(28), 0), color = GUNMETAL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Spine", size = Vector3.new(0.14, 0.14, 1.48), cframe = CFrame.new(0.08, 0, -1.2), color = GUNMETAL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "Blade", size = Vector3.new(0.32, 0.09, 1.55), cframe = CFrame.new(-0.02, 0, -1.24), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "PlasmaEdge", size = Vector3.new(0.11, 0.11, 1.45), cframe = CFrame.new(-0.14, 0, -1.24), color = DPS_CRIMSON, material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "BladeTip", size = Vector3.new(0.24, 0.09, 0.42), cframe = CFrame.new(-0.02, 0, -2.1) * CFrame.Angles(0, math.rad(35), 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "TipGlow", size = Vector3.new(0.1, 0.1, 0.28), cframe = CFrame.new(-0.08, 0, -2.14) * CFrame.Angles(0, math.rad(35), 0), color = DPS_CRIMSON, material = Enum.Material.Neon, anchored = false }),
 	}, 70)
 end
 
--- Support: an energy staff held upright (pitched past vertical, so the shaft runs up from the hand
--- and the orb sits above the head instead of pointing at the enemies).
+-- Support: detailed sci-fi energy conduit staff held upright (pitched past vertical so the floating
+-- plasma emitter orb sits above the head, framed by angled metallic prongs and conduit rings).
 local function buildStaff(): any
 	local grip = makePart({ name = "Grip", size = Vector3.new(0.26, 0.26, 0.9), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
 	return assembleWeapon("WeaponStaff", grip, {
-		makePart({ name = "Shaft", size = Vector3.new(0.22, 0.22, 3.6), cframe = CFrame.new(0, 0, -0.9), color = Color3.fromRGB(120, 90, 60), material = Enum.Material.Wood, anchored = false, castShadow = true }),
-		makePart({ name = "Cap", size = Vector3.new(0.34, 0.34, 0.3), cframe = CFrame.new(0, 0, 0.95), color = GOLD, material = Enum.Material.Metal, anchored = false }),
-		makePart({ name = "Crown", size = Vector3.new(0.7, 0.7, 0.5), cframe = CFrame.new(0, 0, -2.75), color = GOLD, material = Enum.Material.Metal, anchored = false }),
-		makePart({ name = "Orb", size = Vector3.new(0.75, 0.75, 0.75), cframe = CFrame.new(0, 0, -3.2), color = Color3.fromRGB(90, 240, 150), material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+		makePart({ name = "Shaft", size = Vector3.new(0.22, 0.22, 3.65), cframe = CFrame.new(0, 0, -0.88), color = GUNMETAL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "ConduitVein", size = Vector3.new(0.26, 0.09, 2.5), cframe = CFrame.new(0, 0, -1.35), color = SUPPORT_MINT, material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "BaseCap", size = Vector3.new(0.36, 0.36, 0.28), cframe = CFrame.new(0, 0, 0.98), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "BaseSpike", size = Vector3.new(0.18, 0.18, 0.32), cframe = CFrame.new(0, 0, 1.24) * CFrame.Angles(0, 0, math.rad(45)), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RingLower", size = Vector3.new(0.34, 0.34, 0.14), cframe = CFrame.new(0, 0, -0.58), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "RingUpper", size = Vector3.new(0.38, 0.38, 0.16), cframe = CFrame.new(0, 0, -2.18), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		-- Sculpted emitter crown + 3 angled prongs cradling the floating plasma core.
+		makePart({ name = "CrownBase", size = Vector3.new(0.68, 0.68, 0.36), cframe = CFrame.new(0, 0, -2.68) * CFrame.Angles(0, 0, math.rad(45)), color = GOLD, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "Prong1", size = Vector3.new(0.14, 0.14, 0.85), cframe = CFrame.new(0, 0.38, -3.14) * CFrame.Angles(math.rad(-18), 0, 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Prong2", size = Vector3.new(0.14, 0.14, 0.85), cframe = CFrame.new(-0.34, -0.22, -3.14) * CFrame.Angles(math.rad(12), math.rad(16), 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Prong3", size = Vector3.new(0.14, 0.14, 0.85), cframe = CFrame.new(0.34, -0.22, -3.14) * CFrame.Angles(math.rad(12), math.rad(-16), 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "OrbCore", size = Vector3.new(0.62, 0.62, 0.62), cframe = CFrame.new(0, 0, -3.26), color = Color3.fromRGB(220, 255, 240), material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+		makePart({ name = "OrbHalo", size = Vector3.new(0.95, 0.95, 0.95), cframe = CFrame.new(0, 0, -3.26), color = SUPPORT_MINT, material = Enum.Material.ForceField, transparency = 0.25, shape = Enum.PartType.Ball, anchored = false }),
 	}, 165)
 end
 
@@ -1680,6 +1803,7 @@ end
 
 writeModel("TestSword.rbxmx", buildTestSword())
 writeModel("WeaponGreatsword.rbxmx", buildGreatsword())
+writeModel("WeaponSpikedMace.rbxmx", buildSpikedMace())
 writeModel("WeaponShield.rbxmx", buildShield())
 writeModel("WeaponDagger.rbxmx", buildDagger())
 writeModel("WeaponStaff.rbxmx", buildStaff())

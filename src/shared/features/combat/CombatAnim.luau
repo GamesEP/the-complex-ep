@@ -314,9 +314,62 @@ local function evaluateOverDriveWave(step: number, u: number): { [string]: CFram
 	}
 end
 
+-- Support upright staff cast (steps 1..3): flicks/thrusts the energy orb forward without
+-- swinging the 165-deg vertical shaft horizontally through the torso.
+local function evaluateStaffCast(step: number, u: number): { [string]: CFrame }
+	local split = 0.24
+	local p = if u < split then -easeInOutQuad(u / split) else easeOutCubic((u - split) / (1 - split))
+	local thrust = (p + 1) * 0.5
+	if step >= Config.COMBO_HITS then
+		return {
+			Root = CFrame.new(0, lerpNumber(0.08, -0.14, thrust), 0) * CFrame.Angles(lerpNumber(0.14, -0.18, thrust), 0, 0),
+			Waist = CFrame.Angles(lerpNumber(0.16, -0.22, thrust), lerpNumber(-0.18, 0.22, thrust), 0),
+			Neck = CFrame.Angles(lerpNumber(-0.12, 0.16, thrust), 0, 0),
+			RightShoulder = CFrame.Angles(lerpNumber(1.65, 1.05, thrust), lerpNumber(-0.18, 0.12, thrust), 0.12),
+			RightElbow = CFrame.Angles(lerpNumber(0.65, 0.18, thrust), 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(1.25, 1.35, thrust), lerpNumber(0.2, -0.1, thrust), -0.15),
+			LeftElbow = CFrame.Angles(lerpNumber(0.75, 0.2, thrust), 0, 0),
+		}
+	end
+	local side = if step % 2 == 1 then 1 else -1
+	return {
+		Waist = CFrame.Angles(lerpNumber(0.08, -0.14, thrust), side * lerpNumber(-0.24, 0.28, thrust), 0),
+		Neck = CFrame.Angles(-0.04, -side * lerpNumber(-0.18, 0.2, thrust), 0),
+		RightShoulder = CFrame.Angles(lerpNumber(1.35, 0.95, thrust), side * lerpNumber(-0.12, 0.18, thrust), 0.14),
+		RightElbow = CFrame.Angles(lerpNumber(0.62, 0.22, thrust), 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(0.55, 0.95, thrust), 0.15, -0.25),
+		LeftElbow = CFrame.Angles(0.55, 0, 0),
+	}
+end
+
+-- Support heavy arcane orb release: channels energy overhead then pushes forward with both arms.
+local function evaluateStaffHeavy(u: number): { [string]: CFrame }
+	local split = 0.25
+	local p = if u < split then easeInOutQuad(u / split) else easeOutCubic((u - split) / (1 - split))
+	if u < split then
+		return {
+			Waist = CFrame.Angles(lerpNumber(0.05, 0.25, p), 0, 0),
+			RightShoulder = CFrame.Angles(lerpNumber(1.3, 2.05, p), 0, 0.18),
+			RightElbow = CFrame.Angles(0.55, 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(1.1, 1.85, p), 0, -0.18),
+			LeftElbow = CFrame.Angles(0.55, 0, 0),
+		}
+	end
+	return {
+		Root = CFrame.new(0, lerpNumber(0.1, -0.2, p), 0) * CFrame.Angles(lerpNumber(0.12, -0.24, p), 0, 0),
+		Waist = CFrame.Angles(lerpNumber(0.25, -0.32, p), 0, 0),
+		Neck = CFrame.Angles(lerpNumber(-0.15, 0.22, p), 0, 0),
+		RightShoulder = CFrame.Angles(lerpNumber(2.05, 1.12, p), 0, 0.12),
+		RightElbow = CFrame.Angles(lerpNumber(0.55, 0.14, p), 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(1.85, 1.28, p), 0, -0.14),
+		LeftElbow = CFrame.Angles(lerpNumber(0.55, 0.16, p), 0, 0),
+	}
+end
+
 -- Evaluates an active one-shot action (`attack`, `heavyAttack`, `dash`, `spin`, `stinger`,
--- `overdriveWave`, `parry`, `land`) at `elapsed` seconds.
-function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Pose
+-- `overdriveWave`, `parry`, `land`) at `elapsed` seconds. Optional `classId` picks staff-specific
+-- casts for Support while melee roles share weapon-swing poses.
+function CombatAnim.evaluate(action: string, step: number?, elapsed: number, classId: string?): Pose
 	local key = CombatAnim.specKey(action, step)
 	local spec = Config.ANIMATIONS[key]
 	if not spec or elapsed < 0 or elapsed >= spec.duration then
@@ -327,9 +380,9 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 	local weight = envelope(u, spec.blendIn, spec.blendOut)
 	local joints: { [string]: CFrame }
 	if action == "attack" then
-		joints = evaluateAttack(step or 1, u)
+		joints = if classId == "support" then evaluateStaffCast(step or 1, u) else evaluateAttack(step or 1, u)
 	elseif action == "heavyAttack" then
-		joints = evaluateHeavyAttack(u)
+		joints = if classId == "support" then evaluateStaffHeavy(u) else evaluateHeavyAttack(u)
 	elseif action == "dash" then
 		joints = evaluateDash(u)
 	elseif action == "spin" then
@@ -418,14 +471,41 @@ function CombatAnim.staggerPose(clock: number): Pose
 	}
 end
 
--- Continuous sword guard while the player holds Block: the blade held level across the chest,
--- about 1.9 studs in front, tip to the left, with the left hand bracing the flat. Upper body only,
--- so the legs stay free to strafe slowly.
---
--- Solved against the live R15 rig with the sword mounted at Config.SWORD_GRIP_PITCH (forward
--- kinematics over the AnimationConstraint attachments); change that pitch and these angles stop
--- putting the blade in front. The previous guard only raised the sword beside the right shoulder.
-function CombatAnim.blockPose(): Pose
+-- Continuous guard while the player holds Block, tailored to the equipped weapon silhouette:
+-- - tank: raises the left-arm tower shield squarely across the front while cocking the mace back.
+-- - support: plants the upright energy staff vertically in front with both hands channeling guard.
+-- - dps / default: holds the blade level across the chest, braced by the left hand.
+function CombatAnim.blockPose(classId: string?): Pose
+	if classId == "tank" then
+		return {
+			active = true,
+			weight = Config.ANIM_BLOCK_WEIGHT,
+			joints = {
+				Waist = CFrame.Angles(-0.1, -0.28, 0),
+				Neck = CFrame.Angles(0.06, 0.25, 0),
+				-- Left arm raised firmly across the chest to present the tower shield forward.
+				LeftShoulder = CFrame.Angles(1.32, -0.58, 0.36),
+				LeftElbow = CFrame.Angles(0.92, 0, 0),
+				-- Right arm holds the spiked mace poised behind the shield for a counter-strike.
+				RightShoulder = CFrame.Angles(0.75, -0.32, 0.52),
+				RightElbow = CFrame.Angles(0.78, 0, 0),
+			},
+		}
+	elseif classId == "support" then
+		return {
+			active = true,
+			weight = Config.ANIM_BLOCK_WEIGHT,
+			joints = {
+				Waist = CFrame.Angles(-0.06, 0.1, 0),
+				Neck = CFrame.Angles(0.04, -0.1, 0),
+				-- Keeps the 165-deg upright staff vertical in front while channeling a barrier.
+				RightShoulder = CFrame.Angles(1.12, -0.22, -0.12),
+				RightElbow = CFrame.Angles(0.68, 0, 0),
+				LeftShoulder = CFrame.Angles(1.08, 0.34, 0.18),
+				LeftElbow = CFrame.Angles(0.82, 0, 0),
+			},
+		}
+	end
 	return {
 		active = true,
 		weight = Config.ANIM_BLOCK_WEIGHT,
@@ -520,10 +600,16 @@ function CombatAnim.selfTest()
 	local land = CombatAnim.evaluate("land", nil, Config.ANIMATIONS.land.duration * 0.5)
 	assert(land.active and land.joints.Root.Position.Y < -0.1, "landing squashes root downward")
 
-	-- Block, Parry, Stagger, and Heavy Charge/Attack poses.
+	-- Block, Parry, Stagger, and Heavy Charge/Attack poses (including role-specific Tank/Support guards).
 	local blk = CombatAnim.blockPose()
+	local blkTank = CombatAnim.blockPose("tank")
+	local blkSupport = CombatAnim.blockPose("support")
 	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose holds the sword guard")
 	assert(blk.joints.LeftShoulder ~= nil, "block pose brings the left hand up to brace the blade")
+	assert(blkTank.joints.LeftShoulder ~= blk.joints.LeftShoulder, "tank shield guard differs from sword guard")
+	assert(blkSupport.joints.RightShoulder ~= blk.joints.RightShoulder, "support staff guard keeps staff upright")
+	local staffCast = CombatAnim.evaluate("attack", 1, 0.12, "support")
+	assert(staffCast.active and staffCast.joints.RightShoulder ~= a1.joints.RightShoulder, "support uses staff cast pose instead of sword slash")
 	local stgA = CombatAnim.staggerPose(0)
 	local stgB = CombatAnim.staggerPose(0.2)
 	assert(stgA.active and stgA.joints.Root ~= stgB.joints.Root, "stagger pose sways body while stunned")

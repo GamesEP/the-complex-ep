@@ -212,6 +212,16 @@ end
 -- Renders as a TextButton when `interactive` is true so touch presses sink and never reach the
 -- camera; renders as a Frame when read-only so desktop telemetry never steals mouse clicks.
 function ui.Actuator(props)
+	local releaseConnRef = React.useRef(nil :: RBXScriptConnection?)
+	React.useEffect(function()
+		return function()
+			if releaseConnRef.current then
+				releaseConnRef.current:Disconnect()
+				releaseConnRef.current = nil
+			end
+		end
+	end, {})
+
 	local diameter = props.size or 56
 	local ringColor = props.ringColor or Theme.HAZARD
 	local fillColor = props.fillColor or ringColor
@@ -356,13 +366,16 @@ function ui.Actuator(props)
 				props.onPress()
 			end
 			if props.onRelease then
-				local conn: RBXScriptConnection? = nil
-				conn = input:GetPropertyChangedSignal("UserInputState"):Connect(function()
+				if releaseConnRef.current then
+					releaseConnRef.current:Disconnect()
+					releaseConnRef.current = nil
+				end
+				releaseConnRef.current = input:GetPropertyChangedSignal("UserInputState"):Connect(function()
 					local state = input.UserInputState
 					if state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
-						if conn then
-							conn:Disconnect()
-							conn = nil
+						if releaseConnRef.current then
+							releaseConnRef.current:Disconnect()
+							releaseConnRef.current = nil
 						end
 						props.onRelease()
 					end

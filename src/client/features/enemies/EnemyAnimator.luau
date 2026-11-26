@@ -50,6 +50,7 @@ type Rig = {
 	slamOuter: Part?,
 	slamInner: Part?,
 	alertGui: BillboardGui?,
+	stunOrbs: { Part }?,
 	lastAfterimageAt: number,
 	afterimageIndex: number,
 }
@@ -178,6 +179,14 @@ local function detachEnemy(inst: Instance)
 			rig.alertGui:Destroy()
 			rig.alertGui = nil
 		end
+		if rig.stunOrbs then
+			for _, orb in ipairs(rig.stunOrbs) do
+				if orb.Parent then
+					orb:Destroy()
+				end
+			end
+			rig.stunOrbs = nil
+		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
 		end
@@ -219,6 +228,7 @@ local function attachEnemy(inst: Instance)
 			slamOuter = nil,
 			slamInner = nil,
 			alertGui = nil,
+			stunOrbs = nil,
 			lastAfterimageAt = 0,
 			afterimageIndex = 0,
 		}
@@ -609,7 +619,11 @@ local function onRenderStepped(dt: number)
 		local targetPose: EnemyAnim.LimbPose
 		local strikeElapsed = clock - rig.strikeStartedAt
 		local fireElapsed = clock - rig.fireStartedAt
-		if phase == "holding" then
+		local stunnedUntil = model:GetAttribute("StunnedUntil")
+		local isStunned = phase == "stunned" or (type(stunnedUntil) == "number" and serverNow < stunnedUntil)
+		if isStunned then
+			targetPose = EnemyAnim.stunPose(clock)
+		elseif phase == "holding" then
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "spin" then
 			targetPose = EnemyAnim.spinPose(clock)
@@ -813,6 +827,51 @@ local function onRenderStepped(dt: number)
 		elseif rig.alertGui then
 			rig.alertGui:Destroy()
 			rig.alertGui = nil
+		end
+
+		-- Spinning golden stun halo (3 orbiting stars above head) while stunned.
+		if isStunned then
+			local orbs = rig.stunOrbs
+			if not orbs then
+				orbs = {}
+				for i = 1, 3 do
+					local star = Instance.new("Part")
+					star.Name = "EnemyStunStar"
+					star.Shape = Enum.PartType.Ball
+					star.Anchored = true
+					star.CanCollide = false
+					star.CanQuery = false
+					star.CanTouch = false
+					star.CastShadow = false
+					star.Material = Enum.Material.Neon
+					star.Color = if i == 1 then Color3.fromRGB(255, 240, 120) else Color3.fromRGB(255, 195, 45)
+					star.Transparency = 0.1
+					star.Size = Vector3.one * 0.48
+					star.Parent = getCorpseFolder()
+					table.insert(orbs, star)
+				end
+				rig.stunOrbs = orbs
+			end
+			local haloY = pos.Y + rig.body.Size.Y / 2 + 1.45
+			local orbitR = math.max(rig.body.Size.X * 0.45, 1.35)
+			for i, star in ipairs(orbs) do
+				if star.Parent then
+					local angle = clock * 5.2 + (i - 1) * (math.pi * 2 / 3)
+					local bob = math.sin(clock * 9 + i) * 0.14
+					star.Position = Vector3.new(
+						pos.X + math.cos(angle) * orbitR,
+						haloY + bob,
+						pos.Z + math.sin(angle) * orbitR
+					)
+				end
+			end
+		elseif rig.stunOrbs then
+			for _, orb in ipairs(rig.stunOrbs) do
+				if orb.Parent then
+					orb:Destroy()
+				end
+			end
+			rig.stunOrbs = nil
 		end
 
 		-- Instant snap during high-speed spin or Paso Fantasma dash so pose never lags behind.

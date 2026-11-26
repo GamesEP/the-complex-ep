@@ -216,11 +216,13 @@ local function onStepped()
 		-- Layer 1.5: seismic stagger/stun, continuous sword guard, Over Drive power-channeling, or
 		-- coiled power-charge stance while holding Attack for the heavy attack.
 		local serverNow = workspace:GetServerTimeNow()
+		local classAttr = player:GetAttribute("Class")
+		local classId = if type(classAttr) == "string" and classAttr ~= "" then classAttr else nil
 		local stunnedUntil = player:GetAttribute("StunnedUntil")
 		if type(stunnedUntil) == "number" and serverNow < stunnedUntil then
 			applyPose(rig, CombatAnim.staggerPose(now))
 		elseif player:GetAttribute("Blocking") == true then
-			applyPose(rig, CombatAnim.blockPose())
+			applyPose(rig, CombatAnim.blockPose(classId))
 		elseif player:GetAttribute("OverDriveCharging") == true then
 			local progress = Melee.chargeProgress(
 				player:GetAttribute("OverDriveChargeStart"),
@@ -239,7 +241,7 @@ local function onStepped()
 
 		-- Layer 2: one-shot combat or landing action.
 		if rig.action then
-			local pose = CombatAnim.evaluate(rig.action, rig.step, now - rig.startedAt)
+			local pose = CombatAnim.evaluate(rig.action, rig.step, now - rig.startedAt, classId)
 			if pose.active then
 				applyPose(rig, pose)
 			else

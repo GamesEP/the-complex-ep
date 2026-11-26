@@ -43,8 +43,8 @@ Each action is predicted on the client and confirmed by the server:
 
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
-| Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, plays swing anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
-| Heavy Attack (hold Attack 2 s) | Tap still swings immediately; holding past `HEAVY_CHARGE_DELAY` starts charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (2 s) lunges, draws shockwave, plays `heavyAttack` anim/SFX, fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), damages every enemy in the wide `HEAVY_ATTACK_ARC` |
+| Attack | Picks the best enemy in the forward cone (extended to `STAFF_AIM_ASSIST_RANGE` with no lunge for ranged Support), turns and lunges in for melee, plays anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo; damages in melee arc for Tank/Damage or launches a traveling `staffBolt` (with finisher splash on step 3) for Support |
+| Heavy Attack (hold Attack 2 s) | Tap still attacks immediately; holding past `HEAVY_CHARGE_DELAY` starts role-tinted charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (2 s) triggers role-specific heavy VFX/SFX and fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), then executes Tank seismic slam (+stun), Damage twin X-slash, or Support explosive arcane orb (+AoE stun) |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
 | Spin (`1` + `E`) | Draws the ring, fires `Spin()` | Checks `SpinReadyAt`, damages everything in `SPIN_RADIUS` |
 | Stinger (`2` + `E`) | Applies high-speed forward thrust `LinearVelocity`, draws lance streak & anim, fires `Stinger(aim)` | Checks `StingerReadyAt`, pierces every enemy along `Melee.inCorridor` (`STINGER_DISTANCE` × `STINGER_WIDTH`) |

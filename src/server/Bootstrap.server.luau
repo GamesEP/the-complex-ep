@@ -81,14 +81,13 @@ Lighting.ClockTime = Config.LIGHTING_CLOCK_TIME
 
 local world = WorldBuilder.build()
 
--- Each takes the other through its `start` rather than by path (CLAUDE.md): enemies hurt players
--- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
--- Before anybody can join, so a first character is already set up.
-CombatService.start({ enemies = EnemyService })
-CombatService.startSupportTick()
 -- Before anybody joins: every player starts with `Class = ""` and the board waits on it.
 ClassService.start({ applyClass = CombatService.applyClass })
-DropService.start({ world = world, onPickup = CombatService.applyDrop })
+-- Each takes the other through its `start` rather than by path (CLAUDE.md): enemies hurt players
+-- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
+CombatService.start({ enemies = EnemyService, isPaused = ClassService.isPaused })
+CombatService.startSupportTick()
+DropService.start({ world = world, onPickup = CombatService.applyDrop, isPaused = ClassService.isPaused })
 EnemyService.start({
 	hurt = CombatService.hurt,
 	world = world,
@@ -100,8 +99,14 @@ EnemyService.start({
 	stun = CombatService.stun,
 	isPaused = ClassService.isPaused,
 })
--- After EnemyService and DropService, whose folders it populates and resets.
-WaveDirector.start({ world = world, onReset = DropService.clear })
+-- After EnemyService, DropService and CombatService, whose state it resets on room wipe.
+WaveDirector.start({
+	world = world,
+	onReset = function()
+		DropService.clear()
+		CombatService.clear()
+	end,
+})
 
 -- Staff, in one place, so the flags and the admin-only remotes cannot disagree about who counts.
 --

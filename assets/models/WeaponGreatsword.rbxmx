@@ -42,7 +42,7 @@
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
         <bool name="CastShadow">false</bool>
-        <Color3uint8 name="Color3uint8">2632758</Color3uint8>
+        <Color3uint8 name="Color3uint8">2369586</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">272</token>
         <Vector3 name="size">
@@ -112,7 +112,7 @@
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
         <bool name="CastShadow">false</bool>
-        <Color3uint8 name="Color3uint8">15123305</Color3uint8>
+        <Color3uint8 name="Color3uint8">15122015</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <token name="shape">0</token>
@@ -148,7 +148,7 @@
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
         <bool name="CastShadow">true</bool>
-        <Color3uint8 name="Color3uint8">15123305</Color3uint8>
+        <Color3uint8 name="Color3uint8">15122015</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
@@ -218,7 +218,7 @@
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
         <bool name="CastShadow">false</bool>
-        <Color3uint8 name="Color3uint8">7250175</Color3uint8>
+        <Color3uint8 name="Color3uint8">5620735</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">288</token>
         <Vector3 name="size">

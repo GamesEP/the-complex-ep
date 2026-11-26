@@ -38,7 +38,7 @@ Config.SFX = {
 		pitchSpread = 0.05,
 		maxDistance = 75,
 	},
-	-- Rising power hum while holding Attack to charge the heavy attack.
+	-- Rising power hum while holding Attack to charge the heavy attack (2 s total hold).
 	playerHeavyCharge = {
 		file = "player-heavy-charge.ogg",
 		fallbackId = 9117060347,
@@ -46,7 +46,7 @@ Config.SFX = {
 		pitch = 0.72,
 		pitchSpread = 0.03,
 		maxDistance = 75,
-		maxDuration = 2.75,
+		maxDuration = 1.85,
 	},
 	-- Devastating shockwave cleave unleashed at the end of a full charge.
 	playerHeavyAttack = {

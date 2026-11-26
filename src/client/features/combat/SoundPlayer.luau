@@ -28,7 +28,12 @@ local function startBgm()
 	if not spec then
 		return
 	end
-	local assetId = CombatAudio.resolveId(spec, Assets.id(spec.file))
+	-- Private uploaded audio (>6 s) is rejected in unpublished local Studio sessions (`GameId == 0`)
+	-- before playback, spamming console warnings; jump straight to the public Creator Store fallback
+	-- locally while published staging/prod universes still load the uploaded `Assets.id`.
+	local assetId = if game.GameId == 0 and spec.fallbackId and spec.fallbackId > 0
+		then spec.fallbackId
+		else CombatAudio.resolveId(spec, Assets.id(spec.file))
 	if assetId == 0 then
 		return
 	end
@@ -80,17 +85,17 @@ local function preloadAll()
 	end
 end
 
-function SoundPlayer.play(cue: string, position: Vector3?, step: number?)
+function SoundPlayer.play(cue: string, position: Vector3?, step: number?): (() -> ())?
 	if type(cue) ~= "string" then
-		return
+		return nil
 	end
 	local spec = Config.SFX[cue]
 	if not spec then
-		return
+		return nil
 	end
 	local assetId = CombatAudio.resolveId(spec, Assets.id(spec.file))
 	if assetId == 0 then
-		return
+		return nil
 	end
 
 	local sound = Instance.new("Sound")
@@ -144,6 +149,7 @@ function SoundPlayer.play(cue: string, position: Vector3?, step: number?)
 	-- Safety net: if an asset fails to load, `Ended` never fires and the anchor would stay on
 	-- Terrain forever without a bounded lifetime.
 	task.delay(Config.SFX_MAX_CLEANUP_SECONDS, cleanup)
+	return cleanup
 end
 
 -- Isometric camera sits ~70 studs away from the character (`Config.CAMERA_DISTANCE`). Measuring

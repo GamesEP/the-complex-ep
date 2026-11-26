@@ -102,10 +102,11 @@ servidor de run.
 | Vida | 160 | 85 | 100 |
 | Velocidad | 22 | 28 | 25 |
 | Daño | ×0,85 | ×1,25 | ×0,9 |
-| Arma | Espadón con escudo | Dos dagas | Báculo de energía |
-| Habilidad 1 | **Giro** (ya existe) | **Stinger** (ya existe) | **Pulso curativo:** cura a los aliados cercanos y a sí mismo |
-| Habilidad 2 | **Provocación:** los enemigos cercanos le atacan solo a él unos segundos | **Ejecución:** golpe que hace mucho más daño a enemigos con poca vida | **Campo protector:** zona en el suelo que reduce el daño a quien esté dentro |
-| Habilidad 3 | **Muralla:** escudo frontal que detiene los disparos unos segundos | **Over Drive** (ya existe) | **Onda de choque:** empuja y ralentiza a los enemigos alrededor |
+| Arma | Mazo con púas y escudo (cuerpo a cuerpo) | Dos dagas (cuerpo a cuerpo) | Báculo de energía (**a distancia**, proyectiles de energía) |
+| Ataque pesado (2 s) | **Impacto Sísmico:** golpe sísmico circular con el mazo que aturde y empuja | **Desgarro:** doble tajo rápido en X con dagas | **Orbe de Plasma:** orbe a distancia que explota en área y aturde |
+| Habilidad 1 | **Torbellino:** ataque giratorio 360° alrededor del Tanque | **Estocada:** embestida perforante rápida en línea recta | **Santuario:** deja un área activa durante **10 s** que cura progresivamente en buena cantidad a quien pase por ella |
+| Habilidad 2 | **Rugido:** grito sónico que **aturde** a todos los enemigos en su radio y atrae su atención | **Vórtice:** lanza las dagas hacia delante atravesando enemigos y vuelven en curva hacia el jugador golpeando de regreso | **Barrera:** aumenta la defensa de **todos los jugadores** vivos del equipo (`-45 %` daño) |
+| Habilidad 3 | **Coraza:** buff personal que reduce **todos los golpes recibidos en un 75 %** durante unos segundos | **Corte Final:** carga y suelta 3 ondas cortantes perforantes a distancia | **Repulsión:** empuja, daña y **aturde** a los enemigos alrededor |
 | Pasiva | Recibe un 20 % menos de daño | +25 % de daño a enemigos aturdidos o por la espalda | Regenera vida poco a poco a los aliados cercanos |
 
 Valores exactos (recargas, radios, daños) en `Config/Classes.luau`. Cómo está hecho:
@@ -133,12 +134,7 @@ un remoto declarado en el contrato.
   el ataque básico que encadena un combo y el **ataque pesado cargado** (manteniendo pulsado el
   botón de ataque durante 3 segundos). Son los que definen la alta velocidad del juego, así que su
   rapidez y fluidez son lo primero que se ajusta.
-- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora; mantener
-  pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un corte frontal
-  amplio de alto daño (`Config.HEAVY_ATTACK_DAMAGE`, arco de `160°` y `13` studs de alcance) que se
-  libera automáticamente al completarse la carga. Durante la carga el jugador se desplaza más
-  despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede
-  cancelar soltando antes o usando Dash/Bloqueo.
+- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
   `"Bloquear"`) pone al personaje en guardia, con la espada cruzada delante del pecho y la mano
   izquierda apoyándola, para que se lea de un vistazo que está cubriéndose de frente. Reduce el

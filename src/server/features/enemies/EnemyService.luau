@@ -71,6 +71,8 @@ export type Enemy = {
 	shoveUntil: number,
 	slowFactor: number,
 	slowUntil: number,
+	-- Hard stun (Tank war cry, Support shockwave, Heavy slams): enemy cannot move, attack, or fuse.
+	stunUntil: number,
 	burstLeft: number,
 	nextBurstAt: number,
 	beamDirection: Vector3?,
@@ -707,8 +709,7 @@ local function stepEnemy(
 				canParry = true,
 			})
 			if outcome == "parry" then
-				enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
-				syncPhase(enemy, t)
+				EnemyService.stun(enemy, Config.PARRY_STUN_SECONDS)
 			end
 		else
 			-- Checked in 3D at the moment of the strike: dashing out or jumping over during the windup
@@ -718,9 +719,8 @@ local function stepEnemy(
 			if Hitbox.inEllipsoid(position, target.root.Position, strikeRadius, strikeHeight) then
 				local _, outcome = hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = true })
 				if outcome == "parry" then
-					-- Parrying a melee strike staggers the attacker into an extended recover window.
-					enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
-					syncPhase(enemy, t)
+					-- Parrying a melee strike hard-stuns the attacker in place with dazed visuals.
+					EnemyService.stun(enemy, Config.PARRY_STUN_SECONDS)
 				end
 			end
 		end
@@ -753,9 +753,7 @@ local function stepEnemy(
 			if Hitbox.inEllipsoid(position, candidate.root.Position, spinRadius, strikeHeight) then
 				local _, outcome = hurt(candidate.player, tickDamage, { canBlock = true, canParry = true })
 				if outcome == "parry" then
-					enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
-					setTelegraph(enemy, false)
-					syncPhase(enemy, t)
+					EnemyService.stun(enemy, Config.PARRY_STUN_SECONDS)
 					break
 				end
 			end
@@ -1370,6 +1368,12 @@ local function step(dt: number)
 				moveEnemy(enemy, CFrame.new(pushed) * enemy.body.CFrame.Rotation)
 				grid:move(enemy, pushed.X, pushed.Z)
 			end
+			if t < enemy.stunUntil then
+				continue
+			elseif enemy.model:GetAttribute("Phase") == "stunned" then
+				setTelegraph(enemy, false)
+				syncPhase(enemy, t)
+			end
 			local enemyDt = if t < enemy.slowUntil then dt * enemy.slowFactor else dt
 			stepEnemy(enemy, list, grabbedPositions, target, dist, canAttack, sectorAngle, enemyDt, t)
 		end
@@ -1575,6 +1579,7 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		shoveUntil = 0,
 		slowFactor = 1,
 		slowUntil = 0,
+		stunUntil = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
@@ -1605,6 +1610,47 @@ function EnemyService.shove(enemy: Enemy, direction: Vector3, distance: number, 
 	enemy.shoveUntil = t + seconds
 	enemy.slowFactor = slowFactor
 	enemy.slowUntil = slowUntil
+end
+
+-- Hard-stuns an enemy for `duration` seconds: interrupts windups, abilities, beams, fuses, and
+-- even active grabs (freeing a held teammate), and flags `StunnedUntil` for visuals and DPS passive.
+function EnemyService.stun(enemy: Enemy, duration: number)
+	if enemy.dead or duration <= 0 then
+		return
+	end
+	local t = now()
+	if enemy.grabTarget then
+		releaseGrab(enemy, t, true)
+	end
+	enemy.burstLeft = 0
+	enemy.lungeDirection = nil
+	enemy.rushDirection = nil
+	enemy.rushHit = nil
+	enemy.beamDirection = nil
+	enemy.beamLocked = false
+	enemy.phantomOrigin = nil
+	enemy.phantomTarget = nil
+	enemy.phantomStepIndex = 0
+	enemy.state = Brain.initial(t)
+	local baseY = enemy.spec.size.Y / 2
+	local pos = enemy.body.Position
+	if math.abs(pos.Y - baseY) > 0.05 then
+		local snapped = Vector3.new(pos.X, baseY, pos.Z)
+		moveEnemy(enemy, CFrame.new(snapped) * enemy.body.CFrame.Rotation)
+		grid:move(enemy, snapped.X, snapped.Z)
+	end
+	local untilAt = math.max(enemy.stunUntil, t + duration)
+	enemy.stunUntil = untilAt
+	enemy.model:SetAttribute("StunnedUntil", untilAt)
+	enemy.model:SetAttribute("Phase", "stunned")
+	enemy.model:SetAttribute("PhaseStartedAt", t)
+	enemy.model:SetAttribute("PhaseDuration", untilAt - t)
+	enemy.model:SetAttribute("BeamDir", nil)
+	enemy.model:SetAttribute("BeamLocked", false)
+	enemy.model:SetAttribute("ParryTelegraph", false)
+	enemy.model:SetAttribute("AlertIcon", false)
+	enemy.model:SetAttribute("SlamRadius", nil)
+	setTelegraph(enemy, true, Color3.fromRGB(255, 225, 75))
 end
 
 function EnemyService.list(): { Enemy }

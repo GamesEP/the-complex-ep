@@ -427,6 +427,20 @@ function EnemyAnim.grabHoldPose(clock: number): LimbPose
 	}
 end
 
+-- Dazed stagger pose while stunned (Tank war cry, Support shockwave, heavy slams).
+function EnemyAnim.stunPose(clock: number): LimbPose
+	local sway = math.sin(clock * 5.2)
+	local wobble = math.cos(clock * 7.4)
+	return {
+		torso = CFrame.new(sway * 0.14, -0.26, 0.12) * CFrame.Angles(-0.28 + wobble * 0.06, sway * 0.16, sway * 0.14),
+		head = CFrame.new(0, -0.1, 0) * CFrame.Angles(-0.32 + wobble * 0.1, -sway * 0.32, sway * 0.22),
+		leftLeg = CFrame.Angles(0.24, 0, -0.14),
+		rightLeg = CFrame.Angles(-0.22, 0, 0.14),
+		leftArm = CFrame.Angles(-0.25 + wobble * 0.14, 0, -0.32 - sway * 0.12),
+		rightArm = CFrame.Angles(-0.25 - wobble * 0.14, 0, 0.32 - sway * 0.12),
+	}
+end
+
 -- Death collapse pose (`progress` in [0, 1]): returns `(rootDelta, limbPose, fadeAlpha)`.
 -- Knocks the unit backward onto the floor with splayed limbs, then fades out cleanly.
 function EnemyAnim.deathPose(progress: number): (CFrame, LimbPose, number)
@@ -514,6 +528,9 @@ function EnemyAnim.selfTest()
 	assert(EnemyAnim.rushPose(0).torso.Position.Z < -0.1, "the rush leans into the charge")
 	assert(EnemyAnim.rushPose(0).leftLeg ~= EnemyAnim.rushPose(0.07).leftLeg, "the rush legs keep striding")
 	assert(gHoldA.leftArm ~= gHoldB.leftArm, "grabber hold pulses squeezing arms continuously")
+	local stA = EnemyAnim.stunPose(0)
+	local stB = EnemyAnim.stunPose(0.25)
+	assert(stA.head ~= stB.head and stA.torso.Position.Y < -0.1, "stun pose hunches and sways dazedly")
 
 	for _, name in ipairs(GROUPS) do
 		assert((walkA :: any)[name] ~= nil, `walk pose must include {name}`)

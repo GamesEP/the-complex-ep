@@ -94,6 +94,44 @@ local function isStunned(): boolean
 	return type(stunnedUntil) == "number" and now() < stunnedUntil
 end
 
+local function classId(): string?
+	local current = player:GetAttribute("Class")
+	return if type(current) == "string" and current ~= "" then current else nil
+end
+
+-- Matches ClassService.isPaused(): blocks combat inputs while this player or any teammate is still
+-- on the class selection screen so nobody attacks frozen enemies or casts before picking a class.
+local function isChoosingClass(): boolean
+	if not classId() then
+		return true
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local c = other:GetAttribute("Class")
+		if type(c) ~= "string" or c == "" then
+			return true
+		end
+	end
+	return false
+end
+
+-- True when a desktop mouse click lands on an active GuiButton (e.g. ability actuator or menu
+-- button) so clicking UI never also fires a basic attack or starts charging a heavy attack.
+local function pointerOverGuiButton(input: InputObject?): boolean
+	if not input or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return false
+	end
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		return false
+	end
+	for _, guiObj in ipairs(playerGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)) do
+		if guiObj:IsA("GuiButton") and guiObj.Visible and guiObj.Active then
+			return true
+		end
+	end
+	return false
+end
+
 local function body(): (BasePart?, Humanoid?)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -138,11 +176,12 @@ local function selectTarget(root: BasePart, facing: Vector3, clock: number): (Me
 	if lockedTarget and clock - lastEngageAt <= Config.COMBO_WINDOW and lockedTarget:IsDescendantOf(workspace) then
 		preferredIndex = table.find(bodies, lockedTarget)
 	end
+	local assistRange = if Classes.isRanged(classId()) then Config.STAFF_AIM_ASSIST_RANGE else Config.AIM_ASSIST_RANGE
 	local pick = Melee.pickTarget(
 		root.Position,
 		facing,
 		targets,
-		Config.AIM_ASSIST_RANGE,
+		assistRange,
 		Config.AIM_ASSIST_CONE,
 		Config.AIM_ASSIST_ANGLE_WEIGHT,
 		preferredIndex,
@@ -153,6 +192,9 @@ local function selectTarget(root: BasePart, facing: Vector3, clock: number): (Me
 end
 
 local function attack()
+	if isChoosingClass() then
+		return
+	end
 	local root, humanoid = body()
 	if not root or not humanoid then
 		return
@@ -183,9 +225,10 @@ local function attack()
 
 	local pick, targetBody = selectTarget(root, facing, clock)
 	local aim = if pick then pick.direction else facing
+	local ranged = Classes.isRanged(classId())
 
 	local lungeDist = 0
-	if pick and clock >= dashEndsAt then
+	if not ranged and pick and clock >= dashEndsAt then
 		lungeDist = Melee.lungeDistance(
 			pick.distance,
 			pick.radius,
@@ -246,6 +289,9 @@ local function attack()
 			Effects.slash(root, finalAim, step, true)
 			Remotes.Attack:FireServer(finalAim)
 		end)
+	elseif ranged then
+		Effects.staffAttack(root, aim, step)
+		Remotes.Attack:FireServer(aim)
 	else
 		Effects.slash(root, aim, step)
 		Remotes.Attack:FireServer(aim)
@@ -277,9 +323,11 @@ local function releaseHeavyAttack()
 
 	local pick, targetBody = selectTarget(root, facing, clock)
 	local aim = if pick then pick.direction else facing
+	local currentClass = classId()
+	local ranged = Classes.isRanged(currentClass)
 
 	local lungeDist = 0
-	if pick and clock >= dashEndsAt then
+	if not ranged and pick and clock >= dashEndsAt then
 		lungeDist = Melee.lungeDistance(
 			pick.distance,
 			pick.radius,
@@ -329,17 +377,17 @@ local function releaseHeavyAttack()
 				finalAim = Melee.flat(targetBody.Position - root.Position) or aim
 			end
 			root.CFrame = CFrame.lookAt(root.Position, root.Position + finalAim)
-			Effects.heavyAttack(root, finalAim)
+			Effects.heavyAttack(root, finalAim, currentClass, true)
 			Remotes.HeavyAttack:FireServer(finalAim)
 		end)
 	else
-		Effects.heavyAttack(root, aim)
+		Effects.heavyAttack(root, aim, currentClass, true)
 		Remotes.HeavyAttack:FireServer(aim)
 	end
 end
 
 local function beginAttackHold()
-	if attackHeld then
+	if attackHeld or isChoosingClass() then
 		return
 	end
 	attack()
@@ -375,7 +423,7 @@ local function beginAttackHold()
 		end
 
 		chargingHeavy = true
-		Effects.startCharge(currentRoot)
+		Effects.startCharge(currentRoot, classId())
 		Remotes.HeavyCharge:FireServer(true)
 
 		local remaining = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0)
@@ -397,7 +445,7 @@ local function clearDash()
 end
 
 local function dash()
-	if player:GetAttribute("Grabbed") == true or isStunned() then
+	if isChoosingClass() or player:GetAttribute("Grabbed") == true or isStunned() then
 		return
 	end
 	local root, humanoid = body()
@@ -572,11 +620,6 @@ local function overDrive()
 	Remotes.OverDrive:FireServer(aim)
 end
 
-local function classId(): string?
-	local current = player:GetAttribute("Class")
-	return if type(current) == "string" and current ~= "" then current else nil
-end
-
 -- Every ability that came with the classes: aimed like the Stinger (forward target sticking),
 -- predicted locally only for its cooldown and the caster's own pose. Its visuals come back from
 -- the server to everyone, the caster included, so they are never drawn twice.
@@ -620,6 +663,9 @@ end
 -- The selected slot's ability for this player's class. No class yet (still on the selection
 -- screen) means no ability.
 local function useActiveAbility()
+	if isChoosingClass() then
+		return
+	end
 	local abilityId = Classes.abilityAt(classId(), AbilityStore.current())
 	if abilityId == "spin" then
 		spin()
@@ -641,7 +687,8 @@ end
 local function setBlock(active: boolean)
 	if active then
 		if
-			blocking
+			isChoosingClass()
+			or blocking
 			or player:GetAttribute("Grabbed") == true
 			or player:GetAttribute("OverDriveCharging") == true
 			or isStunned()
@@ -787,8 +834,11 @@ function CombatInput.start()
 
 	-- Attack: tap fires the basic combo immediately; holding continuously for HEAVY_CHARGE_SECONDS
 	-- (2 s) charges and unleashes the Heavy Attack. Releasing early cancels the charge cleanly.
-	ContextActionService:BindActionAtPriority("Attack", function(_, state: Enum.UserInputState)
+	ContextActionService:BindActionAtPriority("Attack", function(_, state: Enum.UserInputState, input: InputObject)
 		if state == Enum.UserInputState.Begin then
+			if pointerOverGuiButton(input) then
+				return Enum.ContextActionResult.Pass
+			end
 			beginAttackHold()
 			return Enum.ContextActionResult.Sink
 		elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then

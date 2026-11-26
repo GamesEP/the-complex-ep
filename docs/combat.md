@@ -241,11 +241,15 @@ and `lune run scripts/generate-models.luau`, mounted at `ReplicatedStorage.Model
 `default.project.json` (never built part-by-part at runtime, per `CLAUDE.md`). Every combat enemy
 model anchors only `Body` and rigs limbs via `Group`-tagged `Motor6D` pivots so `EnemyService`
 updates `Body.CFrame` while `EnemyAnimator` drives walk/strafe/sprint, weapon-specific melee
-strikes, dual-blade DPS tornado spin (`spinPose` + danger disc), ranged gun recoil (single orb,
-double-burst orb, or 6-round minigun tracer lines), rifle charged rail-beam (`beamChargePose` +
-targeting laser guide + `beamFire` plasma blast checked via `Hitbox.inBeam`), ranged parabolic
-backstep evade leaps (`evadeJumpPose`, >=5 s cooldown), exploder fuse shake, muscular grabber
-windup/lunge/hold, and client death collapses at 60 FPS without Humanoids.
+strikes, single-sword Sandevistan multi-directional ambush dashes (`sandevistanPose` + neon
+afterimage silhouettes in `_EnemyCorpses`, 3+ hops via `Tactics.sandevistanWaypoint` into an
+unavoidable parry-only finisher slash that shadows the player and passes `canDodge = false,
+canBlock = false, canParry = true` to `CombatService.hurt`, telegraphed by `ParryWarningUntil` +
+a pulsing `SandevistanParryGlint`), dual-blade DPS tornado spin (`spinPose` + danger disc), ranged gun
+recoil (single orb, double-burst orb, or 6-round minigun tracer lines), rifle charged rail-beam
+(`beamChargePose` + targeting laser guide + `beamFire` plasma blast checked via `Hitbox.inBeam`),
+ranged parabolic backstep evade leaps (`evadeJumpPose`, >=5 s cooldown), exploder fuse shake,
+muscular grabber windup/lunge/hold, and client death collapses at 60 FPS without Humanoids.
 
 - **Arena (`ComplexArena.rbxmx`):** industrial sci-fi sector room (140×140 studs, floor top at
   `y = 0`) cloned by `WorldBuilder.build()`, with `SpawnLocation` placed from the arena's pivot

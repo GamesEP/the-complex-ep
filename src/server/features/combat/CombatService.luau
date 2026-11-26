@@ -184,6 +184,7 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("GrabProgress", 0)
 	player:SetAttribute("GrabGoal", Config.GRAB_ESCAPE_PRESSES)
 	player:SetAttribute("GrabWarningUntil", 0)
+	player:SetAttribute("ParryWarningUntil", 0)
 	player:SetAttribute("GrabImmuneUntil", 0)
 	task.spawn(equipTestSword, character)
 end
@@ -225,7 +226,7 @@ end
 function CombatService.hurt(
 	player: Player,
 	amount: number,
-	options: { canBlock: boolean?, canParry: boolean? }?
+	options: { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?
 ): (boolean, Defense.HitOutcome)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -240,6 +241,7 @@ function CombatService.hurt(
 		blocking = player:GetAttribute("Blocking") == true,
 		parryUntil = player:GetAttribute("ParryUntil"),
 		defenseBuffUntil = player:GetAttribute("DefenseBuffUntil"),
+		canDodge = if options then options.canDodge else true,
 		canBlock = if options then options.canBlock else true,
 		canParry = if options then options.canParry else true,
 		blockReduction = Config.BLOCK_DAMAGE_REDUCTION,
@@ -297,6 +299,14 @@ function CombatService.warnGrab(player: Player, untilAt: number)
 	local current = player:GetAttribute("GrabWarningUntil")
 	if type(current) ~= "number" or untilAt > current then
 		player:SetAttribute("GrabWarningUntil", untilAt)
+	end
+end
+
+-- Signals an unavoidable Sandevistan ambush slash so the HUD alerts `player` to Parry.
+function CombatService.warnParry(player: Player, untilAt: number)
+	local current = player:GetAttribute("ParryWarningUntil")
+	if type(current) ~= "number" or untilAt > current then
+		player:SetAttribute("ParryWarningUntil", untilAt)
 	end
 end
 

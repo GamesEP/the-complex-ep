@@ -19,6 +19,7 @@ export type HitContext = {
 	blocking: boolean,
 	parryUntil: any,
 	defenseBuffUntil: any,
+	canDodge: boolean?,
 	canBlock: boolean?,
 	canParry: boolean?,
 	blockReduction: number,
@@ -30,7 +31,8 @@ function Defense.resolveHit(rawDamage: number, ctx: HitContext): (number, HitOut
 	if rawDamage <= 0 then
 		return 0, "hit"
 	end
-	if type(ctx.invulnerableUntil) == "number" and ctx.now < ctx.invulnerableUntil then
+	local canDodge = if ctx.canDodge ~= nil then ctx.canDodge else true
+	if canDodge and type(ctx.invulnerableUntil) == "number" and ctx.now < ctx.invulnerableUntil then
 		return 0, "invulnerable"
 	end
 
@@ -143,6 +145,27 @@ function Defense.selfTest()
 	grabCtx.canParry = false
 	dmg, out = Defense.resolveHit(8, grabCtx)
 	assert(math.abs(dmg - 4) < 1e-6 and out == "hit", "unblockable drain ignores guard but keeps 50% defense buff")
+
+	-- Parry-only Sandevistan strike: bypasses Dash i-frames and passive Block, countered only by Parry.
+	local sandyDashCtx = table.clone(base)
+	sandyDashCtx.invulnerableUntil = 10.5
+	sandyDashCtx.canDodge = false
+	sandyDashCtx.canBlock = false
+	sandyDashCtx.canParry = true
+	dmg, out = Defense.resolveHit(15, sandyDashCtx)
+	assert(dmg == 15 and out == "hit", "parry-only strike bypasses dash i-frames")
+
+	local sandyBlockCtx = table.clone(sandyDashCtx)
+	sandyBlockCtx.blocking = true
+	sandyBlockCtx.parryUntil = 9.5
+	dmg, out = Defense.resolveHit(15, sandyBlockCtx)
+	assert(dmg == 15 and out == "hit", "parry-only strike bypasses passive block outside parry window")
+
+	local sandyParryCtx = table.clone(sandyDashCtx)
+	sandyParryCtx.blocking = true
+	sandyParryCtx.parryUntil = 10.2
+	dmg, out = Defense.resolveHit(15, sandyParryCtx)
+	assert(dmg == 0 and out == "parry", "parry negates parry-only strike completely")
 
 	-- WalkSpeed combinations.
 	assert(Defense.walkSpeed(26, 0, false, true, 10, 1.35, 0.55) == 0, "grabbed player has 0 WalkSpeed")

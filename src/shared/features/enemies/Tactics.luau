@@ -224,8 +224,8 @@ function Tactics.assignMeleeTokens(candidates: { MeleeCandidate }, maxAttackers:
 
 	for _, bucket in pairs(byTarget) do
 		table.sort(bucket, function(a, b)
-			local aCommitted = a.phase == "windup" or a.phase == "spin"
-			local bCommitted = b.phase == "windup" or b.phase == "spin"
+			local aCommitted = a.phase == "windup" or a.phase == "spin" or a.phase == "sandevistan"
+			local bCommitted = b.phase == "windup" or b.phase == "spin" or b.phase == "sandevistan"
 			if aCommitted ~= bCommitted then
 				return aCommitted
 			end
@@ -361,6 +361,47 @@ function Tactics.grabberApproach(
 	return flatUnit(radial + tangent * (inFront * flankWeight * 1.4)) or radial
 end
 
+-- Computes the destination waypoint for each hop of a Sandevistan multi-dash ambush (`stepIndex`
+-- in `1..totalSteps`). Alternates sharply across left/right flanks before snapping behind/beside
+-- the player on the final hop so every dash moves in a distinct unpredictable direction.
+function Tactics.sandevistanWaypoint(
+	enemyPos: Vector3,
+	targetPos: Vector3,
+	targetFacing: Vector3,
+	stepIndex: number,
+	totalSteps: number,
+	orbitSign: number
+): Vector3
+	local fromTarget = Vector3.new(enemyPos.X - targetPos.X, 0, enemyPos.Z - targetPos.Z)
+	local baseAngle = if fromTarget.Magnitude > 1e-3 then math.atan2(fromTarget.Z, fromTarget.X) else 0
+	local sign = if orbitSign < 0 then -1 else 1
+	local steps = math.max(totalSteps, 3)
+
+	if stepIndex >= steps then
+		-- Final ambush hop: snap right behind (or sharp side-back of) where the player is facing.
+		local facing = flatUnit(targetFacing)
+		local ambushAngle = if facing
+			then math.atan2(-facing.Z, -facing.X) + sign * math.rad(28)
+			else baseAngle + sign * math.rad(145)
+		local strikeDist = 5.2
+		return Vector3.new(
+			targetPos.X + math.cos(ambushAngle) * strikeDist,
+			enemyPos.Y,
+			targetPos.Z + math.sin(ambushAngle) * strikeDist
+		)
+	end
+
+	-- Intermediate zig-zag hops: snap sharply across opposing angles around the player.
+	local swingDeg = if stepIndex % 2 == 1 then 82 else -118
+	local nextAngle = baseAngle + sign * math.rad(swingDeg)
+	local ringDist = if stepIndex % 2 == 1 then 13.5 else 10.5
+	return Vector3.new(
+		targetPos.X + math.cos(nextAngle) * ringDist,
+		enemyPos.Y,
+		targetPos.Z + math.sin(nextAngle) * ringDist
+	)
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -442,6 +483,17 @@ function Tactics.selfTest()
 	local pushClose = Tactics.antiClumpPush(Vector3.zero, { Vector3.new(2, 0, 0) }, 10, 1, 1.45)
 	local pushEdge = Tactics.antiClumpPush(Vector3.zero, { Vector3.new(8, 0, 0) }, 10, 1, 1.45)
 	assert(pushClose.X < 0 and pushClose.Magnitude > pushEdge.Magnitude * 3, "anti-clump push ramps up strongly")
+
+	-- Sandevistan 3-hop waypoints move in 3 distinct directions and finish close behind the player.
+	local p0 = Vector3.new(0, 2.5, -18)
+	local w1 = Tactics.sandevistanWaypoint(p0, Vector3.zero, Vector3.new(0, 0, -1), 1, 3, 1)
+	local w2 = Tactics.sandevistanWaypoint(w1, Vector3.zero, Vector3.new(0, 0, -1), 2, 3, 1)
+	local w3 = Tactics.sandevistanWaypoint(w2, Vector3.zero, Vector3.new(0, 0, -1), 3, 3, 1)
+	local d1 = Vector3.new(w1.X - p0.X, 0, w1.Z - p0.Z).Unit
+	local d2 = Vector3.new(w2.X - w1.X, 0, w2.Z - w1.Z).Unit
+	local d3 = Vector3.new(w3.X - w2.X, 0, w3.Z - w2.Z).Unit
+	assert(d1:Dot(d2) < 0.5 and d2:Dot(d3) < 0.7, "Sandevistan hops change direction sharply")
+	assert(w3.Z > 2 and Vector3.new(w3.X, 0, w3.Z).Magnitude < 6, "final hop lands close behind player")
 end
 
 return Tactics

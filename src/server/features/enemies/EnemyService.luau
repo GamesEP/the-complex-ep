@@ -66,6 +66,11 @@ export type Enemy = {
 	evadeTarget: Vector3?,
 	evadeStartedAt: number,
 	evadeDuration: number,
+	sandyOrigin: Vector3?,
+	sandyTarget: Vector3?,
+	sandyStartedAt: number,
+	sandyDuration: number,
+	sandyStepIndex: number,
 }
 
 type Projectile = {
@@ -84,11 +89,13 @@ local FLASH_SECONDS = 0.08
 local HIT_COLOR = Color3.new(1, 1, 1)
 local PARRIED_SHOT_COLOR = Color3.fromRGB(255, 225, 90)
 
-local hurt: (Player, number, { canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?) = nil :: any
+local hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?) =
+	nil :: any
 local onKill: ((Vector3) -> ())? = nil
 local canGrab: ((Player) -> boolean)? = nil
 local setGrabbed: ((Player, boolean, number?, number?) -> ())? = nil
 local warnGrab: ((Player, number) -> ())? = nil
+local warnParry: ((Player, number) -> ())? = nil
 local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
@@ -475,6 +482,7 @@ local function stepEnemy(
 		if
 			enemy.state.phase == "windup"
 			or enemy.state.phase == "spin"
+			or enemy.state.phase == "sandevistan"
 			or enemy.state.phase == "beamCharge"
 			or enemy.state.phase == "evade"
 			or enemy.state.phase == "lunge"
@@ -484,8 +492,12 @@ local function stepEnemy(
 			enemy.lungeDirection = nil
 			enemy.beamDirection = nil
 			enemy.beamLocked = false
+			enemy.sandyOrigin = nil
+			enemy.sandyTarget = nil
+			enemy.sandyStepIndex = 0
 			enemy.model:SetAttribute("BeamDir", nil)
 			enemy.model:SetAttribute("BeamLocked", false)
+			enemy.model:SetAttribute("ParryTelegraph", false)
 			setTelegraph(enemy, false)
 			syncPhase(enemy, t)
 		end
@@ -545,11 +557,18 @@ local function stepEnemy(
 			enemy,
 			state.phase == "windup"
 				or state.phase == "spin"
+				or state.phase == "sandevistan"
 				or state.phase == "beamCharge"
 				or state.phase == "lunge"
 				or state.phase == "fuse"
 		)
 		syncPhase(enemy, t)
+		if before == "sandevistan" and state.phase ~= "sandevistan" then
+			enemy.sandyStepIndex = 0
+			enemy.sandyOrigin = nil
+			enemy.sandyTarget = nil
+		end
+		enemy.model:SetAttribute("ParryTelegraph", state.phase == "windup" and state.sandevistanFinisher == true)
 		if before == "evade" then
 			-- Ensure ground elevation snaps cleanly to exact floor height on landing.
 			local baseY = enemy.spec.size.Y / 2
@@ -562,6 +581,13 @@ local function stepEnemy(
 				Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
 				if warnGrab then
 					warnGrab(target.player, state.endsAt + (enemy.spec.lungeDuration or 0))
+				end
+			elseif state.pendingSandevistan then
+				Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
+			elseif state.sandevistanFinisher then
+				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+				if warnParry then
+					warnParry(target.player, state.endsAt)
 				end
 			else
 				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
@@ -594,16 +620,47 @@ local function stepEnemy(
 		if enemy.hasJoints then
 			Remotes.EnemyAnim:FireAllClients("strike", enemy.model, enemy.weapon)
 		end
-		-- Checked in 3D at the moment of the strike: dashing out or jumping over during the windup
-		-- both earn the miss.
-		local strikeRadius = (enemy.spec.reach + enemy.radius) * 1.2
-		local strikeHeight = enemy.spec.strikeHeight or enemy.spec.size.Y
-		if Hitbox.inEllipsoid(position, target.root.Position, strikeRadius, strikeHeight) then
-			local _, outcome = hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = true })
+		if enemy.state.sandevistanFinisher then
+			-- Sandevistan ambush finisher is unavoidable at hyper-speed: even if the player runs,
+			-- jumps, or Dashes, the swordsman stays locked on them and only a timed Parry stops it.
+			local baseY = enemy.spec.size.Y / 2
+			local toEnemy = Vector3.new(position.X - target.root.Position.X, 0, position.Z - target.root.Position.Z)
+			local offsetDir = if toEnemy.Magnitude > 1e-3
+				then toEnemy.Unit
+				else -Vector3.new(target.root.CFrame.LookVector.X, 0, target.root.CFrame.LookVector.Z).Unit
+			local snapXZ = Waves.clamp(target.root.Position + offsetDir * 4.4, Config.ROOM_SIZE, WALL_MARGIN)
+			local snapPos = Vector3.new(snapXZ.X, baseY, snapXZ.Z)
+			local lookAtPlayer = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+			if (lookAtPlayer - snapPos).Magnitude > 1e-3 then
+				moveEnemy(enemy, CFrame.lookAt(snapPos, lookAtPlayer))
+			else
+				moveEnemy(enemy, CFrame.new(snapPos))
+			end
+			grid:move(enemy, snapPos.X, snapPos.Z)
+			position = snapPos
+
+			local strikeDamage = enemy.spec.sandevistanDamage or enemy.spec.damage
+			local _, outcome = hurt(target.player, strikeDamage, {
+				canDodge = false,
+				canBlock = false,
+				canParry = true,
+			})
 			if outcome == "parry" then
-				-- Parrying a melee strike staggers the attacker into an extended recover window.
 				enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
 				syncPhase(enemy, t)
+			end
+		else
+			-- Checked in 3D at the moment of the strike: dashing out or jumping over during the windup
+			-- both earn the miss.
+			local strikeRadius = (enemy.spec.reach + enemy.radius) * 1.2
+			local strikeHeight = enemy.spec.strikeHeight or enemy.spec.size.Y
+			if Hitbox.inEllipsoid(position, target.root.Position, strikeRadius, strikeHeight) then
+				local _, outcome = hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = true })
+				if outcome == "parry" then
+					-- Parrying a melee strike staggers the attacker into an extended recover window.
+					enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
+					syncPhase(enemy, t)
+				end
 			end
 		end
 	elseif intent.action == "spinTick" then
@@ -718,6 +775,30 @@ local function stepEnemy(
 		enemy.evadeStartedAt = t
 		enemy.evadeDuration = enemy.spec.evadeDuration or 0.34
 		Remotes.CombatSfx:FireAllClients("playerDash", position)
+	elseif intent.action == "sandevistanHop" then
+		-- Single-sword Cyberpunk Sandevistan: chain 3+ rapid dashes across sharp angles before
+		-- snapping close behind the player for a surprise slash.
+		if before ~= "sandevistan" then
+			enemy.sandyStepIndex = 1
+		else
+			enemy.sandyStepIndex += 1
+		end
+		local totalSteps = math.max(enemy.spec.sandevistanSteps or 3, 3)
+		local rawWaypoint = Tactics.sandevistanWaypoint(
+			position,
+			target.root.Position,
+			target.root.CFrame.LookVector,
+			enemy.sandyStepIndex,
+			totalSteps,
+			enemy.orbitSign
+		)
+		local clamped = Waves.clamp(rawWaypoint, Config.ROOM_SIZE, WALL_MARGIN)
+		local baseY = enemy.spec.size.Y / 2
+		enemy.sandyOrigin = Vector3.new(position.X, baseY, position.Z)
+		enemy.sandyTarget = Vector3.new(clamped.X, baseY, clamped.Z)
+		enemy.sandyStartedAt = t
+		enemy.sandyDuration = enemy.spec.sandevistanStepDuration or 0.15
+		Remotes.CombatSfx:FireAllClients("playerDash", position)
 	elseif intent.action == "fire" then
 		lastRangedShotAt[target.player] = t
 		local burstCount = enemy.spec.burstCount or 1
@@ -742,7 +823,53 @@ local function stepEnemy(
 	local direction = Vector3.zero
 	local speedScale = 1
 	local isLunging = intent.move == "lunge"
-	if intent.move == "evade" and enemy.evadeOrigin and enemy.evadeTarget then
+	if intent.move == "sandevistan" and enemy.sandyOrigin and enemy.sandyTarget then
+		local dur = math.max(enemy.sandyDuration, 0.04)
+		local u = math.clamp((t - enemy.sandyStartedAt) / dur, 0, 1)
+		local ease = 1 - (1 - u) * (1 - u)
+		local baseY = enemy.spec.size.Y / 2
+		local dashPos = Vector3.new(
+			enemy.sandyOrigin.X + (enemy.sandyTarget.X - enemy.sandyOrigin.X) * ease,
+			baseY,
+			enemy.sandyOrigin.Z + (enemy.sandyTarget.Z - enemy.sandyOrigin.Z) * ease
+		)
+		local totalSteps = math.max(enemy.spec.sandevistanSteps or 3, 3)
+		local travel = Vector3.new(enemy.sandyTarget.X - enemy.sandyOrigin.X, 0, enemy.sandyTarget.Z - enemy.sandyOrigin.Z)
+		local lookTarget: Vector3
+		if enemy.sandyStepIndex >= totalSteps and u >= 0.65 then
+			lookTarget = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+		elseif travel.Magnitude > 1e-3 then
+			lookTarget = dashPos + travel.Unit
+		else
+			lookTarget = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+		end
+		local nextCFrame = if (lookTarget - dashPos).Magnitude > 1e-3
+			then CFrame.lookAt(dashPos, lookTarget)
+			else CFrame.new(dashPos)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, dashPos.X, dashPos.Z)
+		return
+	elseif enemy.state.phase == "windup" and enemy.state.sandevistanFinisher then
+		-- Shadow-step lock during the Sandevistan finisher windup: if the player tries to sprint,
+		-- jump, or Dash out of range, the hyper-speed swordsman sticks right on them.
+		local baseY = enemy.spec.size.Y / 2
+		local toEnemy = Vector3.new(position.X - target.root.Position.X, 0, position.Z - target.root.Position.Z)
+		local offsetDir = if toEnemy.Magnitude > 1e-3
+			then toEnemy.Unit
+			else -Vector3.new(target.root.CFrame.LookVector.X, 0, target.root.CFrame.LookVector.Z).Unit
+		local desiredXZ = Waves.clamp(target.root.Position + offsetDir * 4.4, Config.ROOM_SIZE, WALL_MARGIN)
+		local alpha = math.clamp(dt * 24, 0, 1)
+		local lockPos = Vector3.new(
+			position.X + (desiredXZ.X - position.X) * alpha,
+			baseY,
+			position.Z + (desiredXZ.Z - position.Z) * alpha
+		)
+		local look = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+		local nextCFrame = if (look - lockPos).Magnitude > 1e-3 then CFrame.lookAt(lockPos, look) else CFrame.new(lockPos)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, lockPos.X, lockPos.Z)
+		return
+	elseif intent.move == "evade" and enemy.evadeOrigin and enemy.evadeTarget then
 		-- Parabolic backstep leap: fast horizontal ease-out + real aerial jump arc, facing the player.
 		local dur = math.max(enemy.evadeDuration, 0.05)
 		local u = math.clamp((t - enemy.evadeStartedAt) / dur, 0, 1)
@@ -1092,18 +1219,20 @@ local function step(dt: number)
 end
 
 function EnemyService.start(dependencies: {
-	hurt: (Player, number, { canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?),
+	hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?),
 	world: Instance,
 	onKill: ((Vector3) -> ())?,
 	canGrab: ((Player) -> boolean)?,
 	setGrabbed: ((Player, boolean, number?, number?) -> ())?,
 	warnGrab: ((Player, number) -> ())?,
+	warnParry: ((Player, number) -> ())?,
 })
 	hurt = dependencies.hurt
 	onKill = dependencies.onKill
 	canGrab = dependencies.canGrab
 	setGrabbed = dependencies.setGrabbed
 	warnGrab = dependencies.warnGrab
+	warnParry = dependencies.warnParry
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
@@ -1265,6 +1394,11 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		evadeTarget = nil,
 		evadeStartedAt = 0,
 		evadeDuration = 0,
+		sandyOrigin = nil,
+		sandyTarget = nil,
+		sandyStartedAt = 0,
+		sandyDuration = 0,
+		sandyStepIndex = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder

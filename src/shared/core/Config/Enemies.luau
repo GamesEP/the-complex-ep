@@ -16,6 +16,14 @@ export type EnemyVariant = {
 	spinRadius: number?,
 	spinCooldown: number?,
 	spinMoveFactor: number?,
+	-- Melee single-sword Sandevistan multi-dash ambush ability.
+	canSandevistan: boolean?,
+	sandevistanSteps: number?,
+	sandevistanStepDuration: number?,
+	sandevistanRange: number?,
+	sandevistanCooldown: number?,
+	sandevistanStrikeWindup: number?,
+	sandevistanDamage: number?,
 	-- Ranged burst / tracer-line / charged rail-beam fire overrides.
 	burstCount: number?,
 	burstInterval: number?,
@@ -72,11 +80,22 @@ export type EnemyKind = {
 
 Config.ENEMY_KINDS = {
 	-- Telegraphs every swing with a windup, so a dash during it always works. Spawns across
-	-- four rigged `.rbxmx` weapon variants; dual-blade units also unleash a high-DPS spin attack.
+	-- four rigged `.rbxmx` weapon variants: single-sword units can trigger a Sandevistan 3-dash
+	-- ambush, and dual-blade units unleash a high-DPS spin attack.
 	melee = {
 		model = "EnemyMelee",
 		variants = {
-			{ model = "EnemyMelee", weapon = "sword" },
+			{
+				model = "EnemyMelee",
+				weapon = "sword",
+				canSandevistan = true,
+				sandevistanSteps = 3,
+				sandevistanStepDuration = 0.15,
+				sandevistanRange = 24,
+				sandevistanCooldown = 7.0,
+				sandevistanStrikeWindup = 0.38,
+				sandevistanDamage = 15,
+			},
 			{
 				model = "EnemyMeleeDual",
 				weapon = "dual",

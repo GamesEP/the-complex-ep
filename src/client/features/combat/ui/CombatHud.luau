@@ -37,6 +37,7 @@ local SPEED_BUFF_COLOR = Color3.fromRGB(70, 225, 255)
 local DEFENSE_BUFF_COLOR = Color3.fromRGB(75, 145, 255)
 local GRAB_COLOR = Color3.fromRGB(235, 85, 225)
 local GRAB_WARN_COLOR = Color3.fromRGB(255, 195, 60)
+local PARRY_WARN_COLOR = Color3.fromRGB(70, 245, 255)
 local HEAVY_CHARGE_COLOR = Color3.fromRGB(255, 135, 45)
 
 local function Bar(props)
@@ -110,6 +111,7 @@ local function CombatHud(props)
 	local defenseBuff, setDefenseBuff = React.useBinding(0)
 	local heavyCharge, setHeavyCharge = React.useBinding(0)
 	local grabWarn, setGrabWarn = React.useBinding(false)
+	local parryWarn, setParryWarn = React.useBinding(false)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
 		setDashCharge(charge(player:GetAttribute("DashReadyAt"), Config.DASH_COOLDOWN, now))
@@ -125,6 +127,8 @@ local function CombatHud(props)
 		end
 		local warnUntil = player:GetAttribute("GrabWarningUntil")
 		setGrabWarn(type(warnUntil) == "number" and now < warnUntil and player:GetAttribute("Grabbed") ~= true)
+		local parryUntil = player:GetAttribute("ParryWarningUntil")
+		setParryWarn(type(parryUntil) == "number" and now < parryUntil and player:GetAttribute("Grabbed") ~= true)
 	end)
 
 	local function fillOf(binding)
@@ -235,6 +239,23 @@ local function CombatHud(props)
 			TextStrokeTransparency = 0.4,
 			Text = "¡AGARRE INMINENTE! Usa Dash",
 			Visible = grabWarn,
+		}, {
+			Corner = React.createElement(ui.Round, { radius = 6 }),
+		}),
+		ParryWarning = React.createElement("TextLabel", {
+			Name = "ParryWarning",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, ui.MARGIN + Layout.inset() + 72),
+			Size = UDim2.fromOffset(math.min(420, metrics.room.X - 2 * ui.MARGIN), 30),
+			BackgroundColor3 = ui.INK,
+			BackgroundTransparency = 0.2,
+			BorderSizePixel = 0,
+			Font = ui.TITLE_FONT,
+			TextSize = 18,
+			TextColor3 = PARRY_WARN_COLOR,
+			TextStrokeTransparency = 0.35,
+			Text = "¡SANDEVISTAN! ¡Haz PARRY!",
+			Visible = parryWarn,
 		}, {
 			Corner = React.createElement(ui.Round, { radius = 6 }),
 		}),

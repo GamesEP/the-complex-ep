@@ -46,6 +46,9 @@ type Rig = {
 	spinRing: Part?,
 	beamGuide: Part?,
 	beamOrb: Part?,
+	parryGlint: Part?,
+	lastAfterimageAt: number,
+	afterimageIndex: number,
 }
 
 type DeathAnim = {
@@ -156,6 +159,10 @@ local function detachEnemy(inst: Instance)
 			rig.beamOrb:Destroy()
 			rig.beamOrb = nil
 		end
+		if rig.parryGlint then
+			rig.parryGlint:Destroy()
+			rig.parryGlint = nil
+		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
 		end
@@ -193,6 +200,9 @@ local function attachEnemy(inst: Instance)
 			spinRing = nil,
 			beamGuide = nil,
 			beamOrb = nil,
+			parryGlint = nil,
+			lastAfterimageAt = 0,
+			afterimageIndex = 0,
 		}
 		for _, child in ipairs(body:GetChildren()) do
 			registerMotor(inst, body, rig, child)
@@ -214,6 +224,46 @@ local function attachEnemy(inst: Instance)
 		)
 		rigs[inst] = rig
 	end)
+end
+
+local SANDEVISTAN_COLORS = {
+	Color3.fromRGB(55, 235, 255),
+	Color3.fromRGB(85, 255, 145),
+	Color3.fromRGB(255, 210, 60),
+	Color3.fromRGB(255, 65, 190),
+}
+
+-- Spawns a Cyberpunk Sandevistan neon afterimage silhouette of the enemy's current pose in
+-- `_EnemyCorpses` so target-locking never selects afterimages.
+local function spawnSandevistanGhost(model: Model, tint: Color3)
+	local ghost = Instance.new("Model")
+	ghost.Name = "SandevistanGhost"
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Transparency < 0.95 then
+			local copy = Instance.new("Part")
+			if desc:IsA("Part") then
+				copy.Shape = desc.Shape
+			end
+			copy.Anchored = true
+			copy.CanCollide = false
+			copy.CanQuery = false
+			copy.CanTouch = false
+			copy.CastShadow = false
+			copy.Material = Enum.Material.Neon
+			copy.Color = tint
+			copy.Transparency = 0.36
+			copy.Size = desc.Size
+			copy.CFrame = desc.CFrame
+			copy.Parent = ghost
+			TweenService:Create(
+				copy,
+				TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Transparency = 1 }
+			):Play()
+		end
+	end
+	ghost.Parent = getCorpseFolder()
+	Debris:AddItem(ghost, 0.36)
 end
 
 -- Renders the devastating rail-beam discharge (bright core + wide outer plasma sheath + muzzle flash).
@@ -367,6 +417,8 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "spin" then
 			targetPose = EnemyAnim.spinPose(clock)
+		elseif phase == "sandevistan" then
+			targetPose = EnemyAnim.sandevistanPose()
 		elseif phase == "evade" then
 			targetPose = EnemyAnim.evadeJumpPose(phaseProgress)
 		elseif phase == "beamCharge" then
@@ -485,13 +537,51 @@ local function onRenderStepped(dt: number)
 			rig.spinRing = nil
 		end
 
-		-- Instant snap during high-speed spin so CFrame:Lerp never fights a 360-degree rotation.
-		if phase == "spin" then
+		-- Instant snap during high-speed spin or Sandevistan dash so pose never lags behind.
+		if phase == "spin" or phase == "sandevistan" then
 			rig.currentPose = targetPose
 		else
 			rig.currentPose = EnemyAnim.blend(rig.currentPose, targetPose, blendRate)
 		end
 		applyPose(rig.joints, rig.currentPose)
+
+		-- Cyberpunk Sandevistan neon afterimage trail sampled rapidly after posing limbs.
+		if phase == "sandevistan" and clock - rig.lastAfterimageAt >= 0.042 then
+			rig.lastAfterimageAt = clock
+			rig.afterimageIndex = (rig.afterimageIndex % #SANDEVISTAN_COLORS) + 1
+			spawnSandevistanGhost(model, SANDEVISTAN_COLORS[rig.afterimageIndex])
+		end
+
+		-- Vivid pulsing parry-only glint while the Sandevistan finisher is winding up.
+		if model:GetAttribute("ParryTelegraph") == true then
+			local glint = rig.parryGlint
+			if not glint or not glint.Parent then
+				local flare = Instance.new("Part")
+				flare.Name = "SandevistanParryGlint"
+				flare.Shape = Enum.PartType.Ball
+				flare.Anchored = true
+				flare.CanCollide = false
+				flare.CanQuery = false
+				flare.CanTouch = false
+				flare.CastShadow = false
+				flare.Material = Enum.Material.Neon
+				flare.Parent = getCorpseFolder()
+				rig.parryGlint = flare
+				glint = flare
+			end
+			if glint then
+				local pulse = 1.6 + 1.2 * math.abs(math.sin(clock * 32))
+				glint.Size = Vector3.one * pulse
+				glint.Color = if math.sin(clock * 36) > 0
+					then Color3.fromRGB(70, 245, 255)
+					else Color3.fromRGB(255, 230, 85)
+				glint.Transparency = 0.12
+				glint.Position = pos + Vector3.new(0, 2.2, 0) + rig.body.CFrame.LookVector * 1.4
+			end
+		elseif rig.parryGlint then
+			rig.parryGlint:Destroy()
+			rig.parryGlint = nil
+		end
 	end
 
 	-- Advance client-side death collapses and clean them up once faded out.

@@ -248,6 +248,19 @@ function EnemyAnim.strikePose(progress: number, weapon: string?): LimbPose
 	end
 end
 
+-- Ultra-fast Sandevistan cyber-dash stance: deep forward aerodynamic lean with plasma sword
+-- swept back ready to slice the instant the final hop lands.
+function EnemyAnim.sandevistanPose(): LimbPose
+	return {
+		torso = CFrame.new(0, -0.32, -0.25) * CFrame.Angles(-0.48, -0.42, 0),
+		head = CFrame.new(0, -0.24, -0.18) * CFrame.Angles(0.38, 0.36, 0),
+		leftLeg = CFrame.Angles(0.75, 0, 0),
+		rightLeg = CFrame.Angles(-0.88, 0, 0),
+		leftArm = CFrame.Angles(0.45, 0.4, -0.45),
+		rightArm = CFrame.Angles(-0.95, -0.35, 0.45),
+	}
+end
+
 -- Continuous tornado spin pose for dual-blade melee units executing their high-DPS spin attack:
 -- extends both blades horizontally out to the sides while whirling at high speed.
 function EnemyAnim.spinPose(clock: number): LimbPose
@@ -416,10 +429,12 @@ function EnemyAnim.selfTest()
 	assert(root1.Position.Z > root0.Position.Z + 1, "death collapse knocks body backward")
 	assert(limbs1.rightArm ~= CFrame.identity and fade0 == 0 and fade1 == 1, "death splays limbs and fades out")
 
-	-- Dual-blade tornado spin, ranged beam charge, evade leap, recoil, exploder fuse, and grabber poses.
+	-- Dual-blade tornado spin, single-sword Sandevistan dash, ranged beam charge, evade leap, recoil...
 	local spA = EnemyAnim.spinPose(0)
 	local spB = EnemyAnim.spinPose(0.1)
 	assert(spA.rightArm ~= spB.rightArm and spA.leftArm ~= spB.leftArm, "dual spin whirls both arms continuously")
+	local sv = EnemyAnim.sandevistanPose()
+	assert(sv.torso.Position.Y < -0.2 and sv.rightArm ~= CFrame.identity, "sandevistan leans forward in cyber-dash pose")
 	local bm = EnemyAnim.beamChargePose(1.2, 0.9)
 	assert(bm.leftLeg ~= CFrame.identity and bm.torso.Position.Z > 0.05, "beam charge braces torso and legs")
 	local ev = EnemyAnim.evadeJumpPose(0.5)

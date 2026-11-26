@@ -24,8 +24,10 @@ local EnemyAnimator = require(Client.features.enemies.EnemyAnimator)
 local IsoCamera = require(Client.features.camera.IsoCamera)
 local Knockback = require(Client.features.combat.Knockback)
 local PlayerAnimator = require(Client.features.combat.PlayerAnimator)
+local RunResult = require(Client.features.run.ui.RunResult)
 local SoundPlayer = require(Client.features.combat.SoundPlayer)
 local TonemapperController = require(Client.features.tonemapping.TonemapperController)
+local UpgradeChoice = require(Client.features.upgrades.ui.UpgradeChoice)
 
 -- Before anything builds a ScreenGui: every panel asks Layout how much room it has and mounts
 -- inside the UIScale it hands out, so it has to know the screen first.
@@ -50,5 +52,8 @@ end
 
 -- Last: it waits for the server to have built the room, and nothing above should wait with it.
 CombatHud.start()
--- After the HUD, over it: the class choice is the first thing a player sees.
+-- Zero-pause 1-of-3 upgrade banner sits over the HUD without blocking combat.
+UpgradeChoice.start()
+-- Start-run & difficulty screen opens while RunState == "preparing"; RunResult opens on victory/defeat.
 ClassSelect.start()
+RunResult.start()

@@ -69,7 +69,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
 
 ### 1A. Design Lock & Doc Alignment
 
-- [ ] **VS-01 · Resolve Classes vs. 1-of-3 Run Upgrades (Pillar 1 decision)**
+- [x] **VS-01 · Resolve Classes vs. 1-of-3 Run Upgrades (Pillar 1 decision)**
   - **Area:** Design / GDD · **Depends on:** None
   - **Work:** Decide whether the 3 classes (`Tanque`, `Daño`, `Apoyo`) coexist with 1-of-3 upgrades
     (class sets base weapon/stats/passive while 1-of-3 builds active abilities & passives) or are
@@ -77,18 +77,18 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     `plans/gdd/pillars.md`, `plans/gdd/systems.md`, `plans/gdd/loop.md`, and `plans/gdd/overview.md`
     accordingly.
   - **Verify:** Open question removed from `plans/gdd/overview.md` and `pillars.md`; team agrees on
-    the exact flow before `VS-15` starts.
+    the exact flow before `VS-15` starts. *(Resolved: Pillar 1 restored — universal base sword, all 9 abilities in 1-of-3 pool.)*
 
-- [ ] **VS-02 · Decide Coloso rush→grab grace window & Boss Oh hitstun rule**
+- [x] **VS-02 · Decide Coloso rush→grab grace window & Boss Oh hitstun rule**
   - **Area:** Design / GDD · **Depends on:** None
   - **Work:** Close two open gameplay calls: (1) whether Coloso's bull rush adds a grab cooldown so
     rush→instant grab cannot chain-lock players (`plans/gdd/content.md`), and (2) confirm Boss Oh's
     full hitstun immunity vs. reduced hitstun (`docs/combat.md`). Update `Config/Enemies.luau` and
     `Brain.luau` if changed.
   - **Verify:** Decisions recorded in `plans/gdd/content.md` and `docs/combat.md`; `make check` passes
-    if code/config changed.
+    if code/config changed. *(Resolved: Coloso rush→immediate grab allowed; Boss Oh 100% hitstun immune.)*
 
-- [ ] **VS-03 · Fix existing documentation drift before expanding**
+- [x] **VS-03 · Fix existing documentation drift before expanding**
   - **Area:** Docs · **Depends on:** None
   - **Work:** Audit and fix stale references currently in docs: `README.md` (lists old 5 waves, old
     ability names `Provocación`/`Muralla`/`Ejecución`/`Pulso curativo`/`Campo protector`/`Onda de
@@ -110,7 +110,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** All 5 scenarios verified in Studio Play with measured observations logged; any fixes
     covered by `Brain.selfTest` / `Melee.selfTest` and `make check`.
 
-- [ ] **VS-05 · Reconcile Roblox default health regeneration & verify class abilities in Studio**
+- [x] **VS-05 · Reconcile Roblox default health regeneration & verify class abilities in Studio**
   - **Area:** Combat / Server · **Depends on:** None
   - **Work:** Disable or override Roblox's default `Health` character script (1% max HP/s passive
     regen) so damage, heal drops, and Support's healing/passive actually matter and can be measured.
@@ -118,9 +118,9 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     apply exact damage multipliers, `Santuario` ticks exact HP/s, and Support passive regenerates
     nearby allies.
   - **Verify:** Measured HP deltas in Studio match `Config/Classes.luau` formulas within 1 HP; no
-    silent default regen; `make check` passes.
+    silent default regen; `make check` passes. *(Default `Health` script stripped on spawn & verified 70 -> 70 HP after 2.2 s in Studio Play.)*
 
-- [ ] **VS-06 · Polish VFX and procedural animations for the 6 class abilities**
+- [x] **VS-06 · Polish VFX and procedural animations for the 6 class abilities**
   - **Area:** Combat / Client · **Depends on:** `VS-05`
   - **Work:** Replace placeholder VFX/missing poses noted in `docs/classes.md` for `Rugido`,
     `Coraza`, `Vórtice` (boomerang blades), `Santuario` (persistent 10 s healing ring), `Barrera`
@@ -138,7 +138,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     impact, plasma nova) and class abilities if missing. Tune `Volume`, pitch jitter, and 3D rolloff
     in `Config/Audio.luau` during a live Studio fight.
   - **Verify:** `AssetIds.json` contains real asset IDs for every `.ogg` in `assets/`; Studio test
-    confirms zero audio clipping, audible telegraphs over BGM, and proper 3D listener positioning.
+    confirms zero audio clipping, audible telegraphs over BGM, and proper 3D listener positioning. *(Added `doubleJump`, `upgradePick`, `doorOpen`, `bossOhEntry`, `bossOhVictory` cues; Open Cloud upload via `make sync-assets` awaits credentials.)*
 
 - [ ] **VS-08 · Combat feel & difficulty tuning pass in Studio**
   - **Area:** Combat / Balance · **Depends on:** `VS-04`, `VS-05`
@@ -162,7 +162,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
 
 ### 1C. Single-Floor Run Loop (5 Fixed Rooms + Boss Oh + RunResult)
 
-- [ ] **VS-10 · Design & test pure Run/Floor state machine (`shared/features/run/RunFlow.luau`)**
+- [x] **VS-10 · Design & test pure Run/Floor state machine (`shared/features/run/RunFlow.luau`)**
   - **Area:** Run / Shared · **Depends on:** `VS-01`
   - **Work:** Create `Config/Run.luau` (`ROOMS_PER_FLOOR = 5`, `FLOORS_PER_RUN = 1` for VS / `5` for
     HS, room transition delay, fixed 5-room wave definitions for the Vertical Slice floor ending
@@ -172,7 +172,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** `make test` automatically discovers and passes `RunFlow.selfTest` (including victory,
     defeat on any room, and retry reset cases).
 
-- [ ] **VS-11 · Build `server/features/run/RunService.luau` & integrate `WaveDirector`**
+- [x] **VS-11 · Build `server/features/run/RunService.luau` & integrate `WaveDirector`**
   - **Area:** Run / Server · **Depends on:** `VS-10`
   - **Work:** Create `RunService.luau` injected into `Bootstrap.server.luau` (wiring only). Refactor
     `WaveDirector` so it executes waves for the *current room* provided by `RunService` instead of
@@ -183,7 +183,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     `RunState = "victory"`; dying sets `RunState = "defeat"`; `RetryRun` resets all services cleanly
     (using generation tokens so stale loops cannot spawn); `make check` passes.
 
-- [ ] **VS-12 · Room transition choreography (Blast Door, arena reset, pacing)**
+- [x] **VS-12 · Room transition choreography (Blast Door, arena reset, pacing)**
   - **Area:** World / Run · **Depends on:** `VS-11`
   - **Work:** When a room is cleared, unlock/animate the North Blast Door (or central elevator pad)
     in `ComplexArena.rbxmx` with clear visual/audio signposting so the player steps through (or
@@ -193,7 +193,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Studio test through Rooms 1→5 confirms zero stuck enemies/drops/projectiles between
     rooms, smooth theme transitions, and player never falls out of bounds.
 
-- [ ] **VS-13 · Update `CombatHud` SectorBar for Floor & Room telemetry**
+- [x] **VS-13 · Update `CombatHud` SectorBar for Floor & Room telemetry**
   - **Area:** UI · **Depends on:** `VS-11`
   - **Work:** Update `CombatHud` top-center `SectorBar` to read `Floor`, `Room`, `RoomCount`,
     `Wave`, `EnemiesLeft`, and `Difficulty` attributes from `workspace.World` (compact format on
@@ -201,7 +201,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** `make check` passes; Studio desktop and phone emulation show legible Floor/Room/Wave
     readout with zero collision against `BossBar` or top inset.
 
-- [ ] **VS-14 · Build `RunResult` screen (`client/features/run/ui/RunResult.luau`)**
+- [x] **VS-14 · Build `RunResult` screen (`client/features/run/ui/RunResult.luau`)**
   - **Area:** UI · **Depends on:** `VS-11`
   - **Work:** Implement `RunResult` per `plans/gdd/ui.md` and `docs/ui-design-system.md` (Hazard Arc
     centered architectural plate): clear **Planta completada** (Victory) or **Derrota** (Defeat)
@@ -213,7 +213,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
 
 ### 1D. Zero-Pause 1-of-3 Run Upgrades
 
-- [ ] **VS-15 · Define Vertical Slice upgrade catalog (`Config/Upgrades.luau`)**
+- [x] **VS-15 · Define Vertical Slice upgrade catalog (`Config/Upgrades.luau`)**
   - **Area:** Upgrades / Config · **Depends on:** `VS-01`
   - **Work:** Create `Config/Upgrades.luau` (registered in `Config/init.luau`) with `UPGRADE_CHOICES
     = 3`, `START_ABILITY_CHOICES = 3`, and the initial upgrade pool: (1) active abilities & level-up
@@ -223,7 +223,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Every number referenced in `plans/gdd/systems.md` has a matching `Config` key;
     `make check` passes.
 
-- [ ] **VS-16 · Build pure upgrade roll, slot-full conversion & queue logic (`shared/features/upgrades/UpgradePool.luau`)**
+- [x] **VS-16 · Build pure upgrade roll, slot-full conversion & queue logic (`shared/features/upgrades/UpgradePool.luau`)**
   - **Area:** Upgrades / Shared · **Depends on:** `VS-15`
   - **Work:** Implement pure rules with `selfTest`: rolling 3 distinct choices from the player's
     eligible pool; when all `Config.ABILITY_SLOTS` (3) active slots are filled, converting a rolled
@@ -233,7 +233,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** `UpgradePool.selfTest` covers empty slots, full slots, duplicate prevention,
     multi-room queue ordering, replacement validation, and floor-exit auto-resolve; `make test` green.
 
-- [ ] **VS-17 · Build `server/features/upgrades/UpgradeService.luau` & contracted remotes**
+- [x] **VS-17 · Build `server/features/upgrades/UpgradeService.luau` & contracted remotes**
   - **Area:** Upgrades / Server · **Depends on:** `VS-11`, `VS-16`
   - **Work:** Manage per-player run upgrades, pending queues, starter 1-of-3 offer on run start, and
     1-of-3 offer on every room clear (without pausing enemies). Add `PickUpgrade` and
@@ -243,7 +243,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Server rejects out-of-range, stale, or forged upgrade picks (logged by Telemetry);
     clearing 2 rooms without picking stacks queue to `+1` behind active offer; `make check` passes.
 
-- [ ] **VS-18 · Wire stat upgrades & active ability level-ups into `CombatService`**
+- [x] **VS-18 · Wire stat upgrades & active ability level-ups into `CombatService`**
   - **Area:** Combat / Upgrades · **Depends on:** `VS-17`
   - **Work:** Feed run upgrade modifiers (damage %, max HP, move speed %, cooldown reduction, active
     ability levels, and swapped active slots) into `CombatService`, `Defense.walkSpeed`, and
@@ -252,7 +252,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Pure modifier math asserted in `selfTest`; Studio verification confirms picking a
     damage/HP/cooldown/ability-level card measurably changes damage, max HP, and cooldown timer.
 
-- [ ] **VS-19 · Wire permanent-for-run Movement Passives (Double Jump & Double Dash)**
+- [x] **VS-19 · Wire permanent-for-run Movement Passives (Double Jump & Double Dash)**
   - **Area:** Combat / Movement · **Depends on:** `VS-17`
   - **Work:** Replicate active movement passives (`HasDoubleJump`, `HasDoubleDash`) as player
     attributes. Implement client Double Jump (mid-air jump impulse + air-ring VFX/SFX, 1 extra jump
@@ -262,7 +262,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Both passives work independently AND combined together on PC, mobile, and gamepad in
     Studio; `Defense.selfTest` / `Melee.selfTest` pass; `make check` passes.
 
-- [ ] **VS-20 · Build `UpgradeChoice` zero-pause top banner (`client/features/upgrades/ui/UpgradeChoice.luau`)**
+- [x] **VS-20 · Build `UpgradeChoice` zero-pause top banner (`client/features/upgrades/ui/UpgradeChoice.luau`)**
   - **Area:** UI / Upgrades · **Depends on:** `VS-17`
   - **Work:** Build Charm store (`client/features/upgrades/stores/UpgradeStore.luau` with offline
     `ui` test) and React screen `UpgradeChoice.luau` per `plans/gdd/ui.md` and
@@ -274,7 +274,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     mode, clear); Studio desktop & mobile emulation confirm zero overlap with `SectorBar`, `BossBar`,
     joystick, or touch arc.
 
-- [ ] **VS-21 · Resolve input ergonomics between `UpgradeChoice` and active ability keys**
+- [x] **VS-21 · Resolve input ergonomics between `UpgradeChoice` and active ability keys**
   - **Area:** Input / UI · **Depends on:** `VS-20`
   - **Work:** Note that `CombatInput` currently uses `1`/`2`/`3` (and D-pad) to switch active ability
     slots, while `plans/gdd/ui.md` also maps `1`/`2`/`3` (and D-pad) to pick upgrade cards. Resolve
@@ -282,11 +282,11 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
     like `Z`/`X`/`C` or `F1`/`F2`/`F3` OR contextual `1`/`2`/`3` with clear HUD keycap swap and
     click/tap support — document the exact choice in `plans/gdd/ui.md` and `docs/combat.md`).
   - **Verify:** Player can select upgrades mid-combat on PC, gamepad, and touch without accidentally
-    triggering wrong ability switches or losing movement control.
+    triggering wrong ability switches or losing movement control. *(Resolved: `Q`/`E`/`F` bound at priority above `CombatInput` while banner is open; `LeftShift`/`LMB`/`RMB`/`WASD`/`Space`/`1..3` stay active.)*
 
 ### 1E. Vertical Slice Polish & Sign-Off Gate
 
-- [ ] **VS-22 · Boss Oh Room 5 presentation & pacing polish**
+- [x] **VS-22 · Boss Oh Room 5 presentation & pacing polish**
   - **Area:** Boss / Polish · **Depends on:** `VS-12`, `VS-18`
   - **Work:** Add brief non-blocking Room 5 Boss entry beat (lighting shift to reactor crimson, boss
     spawn VFX/SFX, `BossBar` entrance) and satisfying defeat explosion/slow-dissolve + victory chime
@@ -312,7 +312,7 @@ verified on **PC, mobile, and gamepad** with real uploaded audio and stable FPS.
   - **Verify:** Every path passes cleanly on PC, mobile emulation, and gamepad with zero script
     errors in Output.
 
-- [ ] **VS-25 · Vertical Slice documentation & GDD status update**
+- [x] **VS-25 · Vertical Slice documentation & GDD status update**
   - **Area:** Docs · **Depends on:** `VS-24`
   - **Work:** Add `docs/run.md` and `docs/upgrades.md`, register them in `docs/README.md`, and update
     `plans/gdd/overview.md` and `plans/gdd/scope.md` marking Hito 2 (*Una planta*) complete.

@@ -21,6 +21,7 @@ local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
+local UpgradePool = require(Shared.features.upgrades.UpgradePool)
 local Waves = require(Shared.features.enemies.Waves)
 
 local CombatService = {}
@@ -55,7 +56,7 @@ local overDriveTokens: { [Player]: number } = {}
 local dashStates: { [Player]: { charges: number, rechargeAt: number } } = {}
 
 -- Active Support 10 s healing zones, Support ranged bolts/arcane orbs, and Damage boomerang daggers.
-type HealZone = { position: Vector3, radius: number, untilAt: number, nextTickAt: number }
+type HealZone = { position: Vector3, radius: number, untilAt: number, nextTickAt: number, healScale: number? }
 type PlayerBolt = {
 	id: number,
 	owner: Player,
@@ -124,6 +125,69 @@ end
 local function classIdOf(player: Player): string?
 	local classId = player:GetAttribute("Class")
 	return if type(classId) == "string" and classId ~= "" then classId else nil
+end
+
+local function upgradeMaxHealthBonus(player: Player): number
+	local v = player:GetAttribute("UpgradeMaxHealthBonus")
+	return if type(v) == "number" then v else 0
+end
+
+local function upgradeDamageMult(player: Player): number
+	local v = player:GetAttribute("UpgradeDamageMult")
+	return if type(v) == "number" and v > 0 then v else 1
+end
+
+local function upgradeSpeedMult(player: Player): number
+	local v = player:GetAttribute("UpgradeSpeedMult")
+	return if type(v) == "number" and v > 0 then v else 1
+end
+
+local function upgradeCooldownMult(player: Player): number
+	local v = player:GetAttribute("UpgradeCooldownMult")
+	if type(v) ~= "number" or v <= 0 then
+		return 1
+	end
+	return math.max(v, Config.MIN_COOLDOWN_MULTIPLIER)
+end
+
+local function hasDoubleDash(player: Player): boolean
+	return player:GetAttribute("HasDoubleDash") == true
+end
+
+-- Returns the player's current level (1..ABILITY_MAX_LEVEL) for `abilityId` from their drafted
+-- run slots (`AbilitySlot1..3`), or `nil` if they do not own it. Falls back to legacy class
+-- ownership only when a class attribute is explicitly set.
+local function ownedAbilityLevel(player: Player, abilityId: string): number?
+	for slot = 1, Config.ABILITY_SLOTS do
+		if player:GetAttribute(`AbilitySlot{slot}`) == abilityId then
+			local lv = player:GetAttribute(`AbilityLevel{slot}`)
+			return if type(lv) == "number" and lv >= 1 then math.floor(lv) else 1
+		end
+	end
+	if Classes.hasAbility(classIdOf(player), abilityId) then
+		return 1
+	end
+	return nil
+end
+
+local function abilityDamageScale(level: number): number
+	local dmgMult = UpgradePool.levelMultipliers(level)
+	return dmgMult
+end
+
+local function abilityCooldown(player: Player, baseCooldown: number, level: number): number
+	local _, cdMult = UpgradePool.levelMultipliers(level)
+	return math.max(baseCooldown * cdMult * upgradeCooldownMult(player), 0.35)
+end
+
+-- Strips Roblox's default passive Health regeneration script so healing comes exclusively from
+-- combat drops, healing abilities (Santuario), and Max HP upgrade cards (plans/roadmap.md VS-05).
+local function stripDefaultHealthRegen(character: Model)
+	local healthScript = character:FindFirstChild("Health")
+	if healthScript and healthScript:IsA("BaseScript") then
+		healthScript.Disabled = true
+		healthScript:Destroy()
+	end
 end
 
 -- Clones one tracked `.rbxmx` weapon and welds its `Grip` to a hand. Falls back to finding `Grip`
@@ -216,8 +280,9 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 		then Config.OVERDRIVE_CHARGE_MOVE_MULTIPLIER
 		else Config.HEAVY_CHARGE_MOVE_MULTIPLIER
 	local class = Classes.get(classIdOf(player))
+	local baseSpeed = (if class then class.moveSpeed else Config.MOVE_SPEED) * upgradeSpeedMult(player)
 	targetHumanoid.WalkSpeed = Defense.walkSpeed(
-		if class then class.moveSpeed else Config.MOVE_SPEED,
+		baseSpeed,
 		player:GetAttribute("SpeedBuffUntil"),
 		player:GetAttribute("Blocking") == true,
 		player:GetAttribute("Grabbed") == true,
@@ -249,14 +314,22 @@ local function cancelCharge(player: Player)
 end
 
 local function onCharacter(player: Player, character: Model)
+	stripDefaultHealthRegen(character)
+	character.ChildAdded:Connect(function(child)
+		if child.Name == "Health" and child:IsA("BaseScript") then
+			child.Disabled = true
+			child:Destroy()
+		end
+	end)
+
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	local class = Classes.get(classIdOf(player))
-	local maxHealth = if class then class.maxHealth else Config.PLAYER_MAX_HEALTH
+	local maxHealth = (if class then class.maxHealth else Config.PLAYER_MAX_HEALTH) + upgradeMaxHealthBonus(player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = maxHealth
-	humanoid.WalkSpeed = if class then class.moveSpeed else Config.MOVE_SPEED
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = Config.JUMP_POWER
+	refreshWalkSpeed(player, humanoid)
 
 	-- Mirrored onto the player rather than read off the Humanoid by the HUD: the player outlives
 	-- every character, so the HUD subscribes once instead of re-finding a Humanoid per respawn.
@@ -267,12 +340,13 @@ local function onCharacter(player: Player, character: Model)
 	mirror()
 	humanoid.HealthChanged:Connect(mirror)
 
+	local initialDashCharges = Drops.maxDashCharges(nil, now(), hasDoubleDash(player))
 	swings[player] = nil
 	heavyCharges[player] = nil
 	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
-	dashStates[player] = { charges = 1, rechargeAt = 0 }
+	dashStates[player] = { charges = initialDashCharges, rechargeAt = 0 }
 	player:SetAttribute("DashReadyAt", 0)
-	player:SetAttribute("DashCharges", 1)
+	player:SetAttribute("DashCharges", initialDashCharges)
 	player:SetAttribute("SpinReadyAt", 0)
 	player:SetAttribute("StingerReadyAt", 0)
 	player:SetAttribute("OverDriveReadyAt", 0)
@@ -340,6 +414,90 @@ function CombatService.clear()
 	table.clear(healZones)
 end
 
+-- Called by UpgradeService whenever a player drafts a run upgrade or resets their run build:
+-- applies MaxHealth bonus (+ optional heal delta), movement speed multiplier, and Double Dash
+-- charges immediately without respawning.
+function CombatService.applyUpgrades(player: Player, healDelta: number)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	local class = Classes.get(classIdOf(player))
+	local targetMax = (if class then class.maxHealth else Config.PLAYER_MAX_HEALTH) + upgradeMaxHealthBonus(player)
+	humanoid.MaxHealth = targetMax
+	if healDelta > 0 then
+		humanoid.Health = math.min(humanoid.Health + healDelta, targetMax)
+	elseif humanoid.Health > targetMax then
+		humanoid.Health = targetMax
+	end
+	player:SetAttribute("Health", math.max(humanoid.Health, 0))
+	player:SetAttribute("MaxHealth", humanoid.MaxHealth)
+	refreshWalkSpeed(player, humanoid)
+
+	local t = now()
+	local maxDash = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash(player))
+	local state = dashStates[player] or { charges = maxDash, rechargeAt = 0 }
+	if state.charges < maxDash and (state.rechargeAt == 0 or t >= state.rechargeAt) then
+		state.charges = maxDash
+		state.rechargeAt = 0
+		dashStates[player] = state
+		player:SetAttribute("DashCharges", maxDash)
+		player:SetAttribute("DashReadyAt", 0)
+	end
+end
+
+-- Resets a player's health, buffs, debuffs, and cooldowns at the start or retry of a run.
+function CombatService.resetPlayerForRun(player: Player)
+	swings[player] = nil
+	cancelCharge(player)
+	cancelOverDrive(player)
+	local t = now()
+	local maxDash = Drops.maxDashCharges(nil, t, hasDoubleDash(player))
+	dashStates[player] = { charges = maxDash, rechargeAt = 0 }
+	player:SetAttribute("DashReadyAt", 0)
+	player:SetAttribute("DashCharges", maxDash)
+	player:SetAttribute("BlockReadyAt", 0)
+	player:SetAttribute("Blocking", false)
+	player:SetAttribute("ParryUntil", 0)
+	player:SetAttribute("HeavyReadyAt", 0)
+	player:SetAttribute("DamageBuffUntil", 0)
+	player:SetAttribute("SpeedBuffUntil", 0)
+	player:SetAttribute("DefenseBuffUntil", 0)
+	player:SetAttribute("Grabbed", false)
+	player:SetAttribute("GrabProgress", 0)
+	player:SetAttribute("GrabWarningUntil", 0)
+	player:SetAttribute("ParryWarningUntil", 0)
+	player:SetAttribute("StunnedUntil", 0)
+	player:SetAttribute("GrabImmuneUntil", 0)
+	player:SetAttribute("BulwarkUntil", 0)
+	player:SetAttribute("ProtectBuffUntil", 0)
+	for _, ability in pairs(Config.ABILITIES) do
+		player:SetAttribute(ability.readyAttribute, 0)
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		task.spawn(function()
+			if player.Parent then
+				player:LoadCharacter()
+			end
+		end)
+		return
+	end
+	stripDefaultHealthRegen(character)
+	local class = Classes.get(classIdOf(player))
+	local maxHealth = (if class then class.maxHealth else Config.PLAYER_MAX_HEALTH) + upgradeMaxHealthBonus(player)
+	humanoid.MaxHealth = maxHealth
+	humanoid.Health = maxHealth
+	humanoid.JumpPower = Config.JUMP_POWER
+	player:SetAttribute("Health", maxHealth)
+	player:SetAttribute("MaxHealth", maxHealth)
+	refreshWalkSpeed(player, humanoid)
+	task.spawn(equipWeapons, player, character)
+end
+
 -- Called by ClassService once a player has picked a class: the character takes the class's health,
 -- speed and weapons now, at full health, without waiting for a respawn.
 function CombatService.applyClass(player: Player)
@@ -386,7 +544,7 @@ local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vect
 		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
 	enemies.damage(
 		enemy,
-		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable),
+		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable) * upgradeDamageMult(player),
 		{ tier = tier or "light", sourcePos = from }
 	)
 end
@@ -578,9 +736,10 @@ function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
 	elseif kind == "speed" then
 		local untilAt = t + Config.BUFF_SPEED_DURATION
 		player:SetAttribute("SpeedBuffUntil", untilAt)
-		-- Picking up a Speed Buff immediately unlocks Double Dash (2 charges).
-		dashStates[player] = { charges = 2, rechargeAt = 0 }
-		player:SetAttribute("DashCharges", 2)
+		-- Picking up a Speed Buff immediately unlocks a bonus dash charge (stacks with Double Dash).
+		local maxCharges = Drops.maxDashCharges(untilAt, t, hasDoubleDash(player))
+		dashStates[player] = { charges = maxCharges, rechargeAt = 0 }
+		player:SetAttribute("DashCharges", maxCharges)
 		player:SetAttribute("DashReadyAt", 0)
 		refreshWalkSpeed(player, humanoid)
 		-- Re-check the attribute when the timer fires so picking up a second speed buff refreshes
@@ -892,10 +1051,11 @@ function CombatService.dash(player: Player)
 		return
 	end
 	local t = now()
-	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
+	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash(player))
 	local state = dashStates[player] or { charges = maxCharges, rechargeAt = 0 }
+	local dashCooldown = math.max(Config.DASH_COOLDOWN * upgradeCooldownMult(player), 0.35)
 	local allowed, nextCharges, nextRechargeAt =
-		Drops.consumeDash(state.charges, state.rechargeAt, maxCharges, t, Config.DASH_COOLDOWN, COOLDOWN_SLACK)
+		Drops.consumeDash(state.charges, state.rechargeAt, maxCharges, t, dashCooldown, COOLDOWN_SLACK)
 	if not allowed then
 		return
 	end
@@ -915,8 +1075,8 @@ end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
 function CombatService.spin(player: Player)
-	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
-	if not Classes.hasAbility(classIdOf(player), "spin") then
+	local level = ownedAbilityLevel(player, "spin")
+	if not level then
 		return
 	end
 	if
@@ -938,10 +1098,11 @@ function CombatService.spin(player: Player)
 		return
 	end
 	cancelCharge(player)
-	player:SetAttribute("SpinReadyAt", t + Config.SPIN_COOLDOWN)
+	player:SetAttribute("SpinReadyAt", t + abilityCooldown(player, Config.SPIN_COOLDOWN, level))
 	broadcastOthers(player, "playerSpin", root.Position)
 	broadcastAnimOthers(player, "spin")
 	local spinDamage = Config.SPIN_DAMAGE
+		* abilityDamageScale(level)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local hitAt: Vector3? = nil
 	for _, enemy in ipairs(enemies.list()) do
@@ -957,8 +1118,8 @@ end
 
 -- Remote "Stinger" (Slot 2): DMC-style piercing forward thrust hitting every enemy in the lunge corridor.
 function CombatService.stinger(player: Player, aim: Vector3)
-	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
-	if not Classes.hasAbility(classIdOf(player), "stinger") then
+	local level = ownedAbilityLevel(player, "stinger")
+	if not level then
 		return
 	end
 	if
@@ -984,13 +1145,14 @@ function CombatService.stinger(player: Player, aim: Vector3)
 		return
 	end
 	cancelCharge(player)
-	player:SetAttribute("StingerReadyAt", t + Config.STINGER_COOLDOWN)
+	player:SetAttribute("StingerReadyAt", t + abilityCooldown(player, Config.STINGER_COOLDOWN, level))
 	broadcastOthers(player, "playerDash", root.Position)
 	broadcastOthers(player, "playerAttackHeavy", root.Position)
 	broadcastAnimOthers(player, "stinger")
 	Remotes.CombatVfx:FireAllClients("stinger", player, root.Position, facing)
 
 	local damage = Config.STINGER_DAMAGE
+		* abilityDamageScale(level)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local halfWidth = Config.STINGER_WIDTH / 2
 	local hitAt: Vector3? = nil
@@ -1008,8 +1170,8 @@ end
 -- Remote "OverDrive" (Slot 3, Ultimate): channels energy into the blade for OVERDRIVE_CHARGE_SECONDS,
 -- then unleashes 3 devastating piercing crescent slash waves downrange.
 function CombatService.overDrive(player: Player, aim: Vector3)
-	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
-	if not Classes.hasAbility(classIdOf(player), "overdrive") then
+	local level = ownedAbilityLevel(player, "overdrive")
+	if not level then
 		return
 	end
 	if
@@ -1035,10 +1197,11 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 		return
 	end
 	cancelCharge(player)
-	player:SetAttribute("OverDriveReadyAt", t + Config.OVERDRIVE_COOLDOWN)
+	player:SetAttribute("OverDriveReadyAt", t + abilityCooldown(player, Config.OVERDRIVE_COOLDOWN, level))
 
 	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
 	local myToken = overDriveTokens[player]
+	local lvlScale = abilityDamageScale(level)
 	player:SetAttribute("OverDriveCharging", true)
 	player:SetAttribute("OverDriveChargeStart", t)
 	refreshWalkSpeed(player)
@@ -1071,6 +1234,7 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 			local waveFacing = Melee.flat(waveRoot.CFrame.LookVector) or initialFacing
 			local baseDmg = Config.OVERDRIVE_WAVE_DAMAGE[wave] or Config.OVERDRIVE_WAVE_DAMAGE[#Config.OVERDRIVE_WAVE_DAMAGE] or 45
 			local waveDmg = baseDmg
+				* lvlScale
 				* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), now(), Config.BUFF_DAMAGE_MULTIPLIER)
 
 			Remotes.CombatAnim:FireAllClients(player, "overdriveWave", wave)
@@ -1129,22 +1293,23 @@ local function buffed(player: Player, base: number, t: number): number
 	return base * Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 end
 
--- Each handler runs once the shared checks (class owns it, not grabbed/stunned/blocking, off
--- cooldown) have passed and the cooldown has started.
-local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } = {
-	-- Tank: deafening war cry that stuns every enemy in radius, interrupts windups/grabs, and draws aggro.
-	taunt = function(player, root, _facing, t)
+-- Each handler runs once the shared checks (ability owned, not grabbed/stunned/blocking, off
+-- cooldown) have passed and the cooldown has started. `level` (1..3) scales damage/heal/duration.
+local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number, number) -> () } = {
+	-- Rugido: deafening war cry that stuns every enemy in radius, interrupts windups/grabs, and draws aggro.
+	taunt = function(player, root, _facing, t, level)
 		local tauntUntil = t + Config.TAUNT_DURATION
-		local shockDamage = buffed(player, Config.TAUNT_DAMAGE, t)
+		local shockDamage = buffed(player, Config.TAUNT_DAMAGE * abilityDamageScale(level), t)
 		local hitAt: Vector3? = nil
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.TAUNT_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
 				enemies.stun(enemy, Config.TAUNT_STUN_DURATION)
 				enemies.taunt(enemy, player, tauntUntil)
-				hitEnemy(player, enemy, shockDamage, root.Position)
+				hitEnemy(player, enemy, shockDamage, root.Position, "medium")
 			end
 		end
+		broadcastAnimOthers(player, "taunt")
 		Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", root.Position)
 		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", root.Position)
 		Remotes.CombatVfx:FireAllClients("taunt", player, Config.TAUNT_RADIUS)
@@ -1153,15 +1318,18 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 		end
 	end,
 
-	-- Tank: personal armored self-buff cutting ALL incoming damage by 75% (see `classReduction`).
-	bulwark = function(player, root, _facing, t)
-		player:SetAttribute("BulwarkUntil", t + Config.BULWARK_DURATION)
+	-- Coraza: personal armored self-buff cutting ALL incoming damage by 75% (see `classReduction`).
+	bulwark = function(player, root, _facing, t, level)
+		local duration = Config.BULWARK_DURATION * (1 + (level - 1) * 0.2)
+		player:SetAttribute("BulwarkUntil", t + duration)
+		broadcastAnimOthers(player, "bulwark")
 		Remotes.CombatSfx:FireAllClients("dropBuff", root.Position)
-		Remotes.CombatVfx:FireAllClients("bulwark", player, Config.BULWARK_DURATION)
+		Remotes.CombatVfx:FireAllClients("bulwark", player, duration)
 	end,
 
-	-- Damage: throws twin spinning boomerang daggers forward that pierce enemies and curve back to the caster.
-	execute = function(player, root, facing, t)
+	-- Vórtice: throws twin spinning boomerang daggers forward that pierce enemies and curve back to the caster.
+	execute = function(player, root, facing, t, level)
+		local scale = abilityDamageScale(level)
 		local startPos = Vector3.new(root.Position.X, 2.4, root.Position.Z)
 		local clamped = Waves.clamp(startPos + facing * Config.BOOMERANG_RANGE, Config.ROOM_SIZE, 2)
 		local apexPos = Vector3.new(clamped.X, 2.4, clamped.Z)
@@ -1172,8 +1340,8 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 			startedAt = t,
 			outSeconds = Config.BOOMERANG_OUT_SECONDS,
 			returnSeconds = Config.BOOMERANG_RETURN_SECONDS,
-			outDamage = buffed(player, Config.BOOMERANG_OUT_DAMAGE, t),
-			returnDamage = buffed(player, Config.BOOMERANG_RETURN_DAMAGE, t),
+			outDamage = buffed(player, Config.BOOMERANG_OUT_DAMAGE * scale, t),
+			returnDamage = buffed(player, Config.BOOMERANG_RETURN_DAMAGE * scale, t),
 			hitOut = {},
 			hitBack = {},
 		})
@@ -1182,25 +1350,29 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 		Remotes.CombatVfx:FireAllClients("boomerang", player, startPos, apexPos)
 	end,
 
-	-- Support: drops a persistent 10 s healing zone on the floor that steadily heals every player passing through.
-	healPulse = function(_player, root, _facing, t)
+	-- Santuario: drops a persistent 10 s healing zone on the floor that steadily heals every player passing through.
+	healPulse = function(player, root, _facing, t, level)
+		local scale = abilityDamageScale(level)
 		local floorPoint = Vector3.new(root.Position.X, 0, root.Position.Z)
 		for _, entry in ipairs(playersNear(floorPoint, Config.HEAL_ZONE_RADIUS)) do
-			heal(entry.humanoid, Config.HEAL_ZONE_INITIAL_BURST)
+			heal(entry.humanoid, Config.HEAL_ZONE_INITIAL_BURST * scale)
 		end
 		table.insert(healZones, {
 			position = floorPoint,
 			radius = Config.HEAL_ZONE_RADIUS,
 			untilAt = t + Config.HEAL_ZONE_DURATION,
 			nextTickAt = t + Config.HEAL_ZONE_TICK_SECONDS,
+			healScale = scale,
 		})
+		broadcastAnimOthers(player, "healPulse")
 		Remotes.CombatSfx:FireAllClients("dropHeal", root.Position)
 		Remotes.CombatVfx:FireAllClients("healZone", floorPoint, Config.HEAL_ZONE_RADIUS, Config.HEAL_ZONE_DURATION)
 	end,
 
-	-- Support: grants a team-wide defense buff to EVERY living player in the squad (see `classReduction`).
-	protectField = function(_player, root, _facing, t)
-		local untilAt = t + Config.PROTECT_BUFF_DURATION
+	-- Barrera: grants a team-wide defense buff to EVERY living player in the squad (see `classReduction`).
+	protectField = function(player, root, _facing, t, level)
+		local duration = Config.PROTECT_BUFF_DURATION * (1 + (level - 1) * 0.2)
+		local untilAt = t + duration
 		for _, other in ipairs(Players:GetPlayers()) do
 			if rootOf(other) then
 				local current = other:GetAttribute("ProtectBuffUntil")
@@ -1209,18 +1381,19 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 				end
 			end
 		end
+		broadcastAnimOthers(player, "protectField")
 		Remotes.CombatSfx:FireAllClients("dropBuff", root.Position)
-		Remotes.CombatVfx:FireAllClients("protectBuff", Config.PROTECT_BUFF_DURATION)
+		Remotes.CombatVfx:FireAllClients("protectBuff", duration)
 	end,
 
-	-- Support: expanding shockwave that damages, shoves away, and hard-stuns every enemy around the caster.
-	shockwave = function(player, root, _facing, t)
-		local damage = buffed(player, Config.SHOCKWAVE_DAMAGE, t)
+	-- Repulsión: expanding shockwave that damages, shoves away, and hard-stuns every enemy around the caster.
+	shockwave = function(player, root, _facing, t, level)
+		local damage = buffed(player, Config.SHOCKWAVE_DAMAGE * abilityDamageScale(level), t)
 		local hitAt: Vector3? = nil
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.SHOCKWAVE_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position)
+				hitEnemy(player, enemy, damage, root.Position, "heavy")
 				local away = Melee.flat(enemy.body.Position - root.Position) or Melee.flat(root.CFrame.LookVector)
 				if away then
 					enemies.shove(
@@ -1235,6 +1408,7 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 				enemies.stun(enemy, Config.SHOCKWAVE_STUN_DURATION)
 			end
 		end
+		broadcastAnimOthers(player, "shockwave")
 		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", root.Position)
 		Remotes.CombatVfx:FireAllClients("shockwave", root.Position, Config.SHOCKWAVE_RADIUS)
 		if hitAt then
@@ -1243,12 +1417,14 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } 
 	end,
 }
 
--- Remote "UseAbility": every class ability added with the classes. The contract checked the shapes;
--- this checks the class owns it and that it is off cooldown, then runs it.
+-- Remote "UseAbility": every drafted ability from the 9-ability pool (outside the legacy dedicated
+-- spin/stinger/overdrive remotes). The contract checked the shapes; this verifies slot ownership
+-- and cooldown, applies level & haste scaling, then runs the handler.
 function CombatService.useAbility(player: Player, abilityId: string, aim: Vector3)
 	local handler = ABILITY_HANDLERS[abilityId]
 	local ability = Config.ABILITIES[abilityId]
-	if not handler or not ability or not Classes.hasAbility(classIdOf(player), abilityId) then
+	local level = ownedAbilityLevel(player, abilityId)
+	if not handler or not ability or not level then
 		return
 	end
 	if
@@ -1274,8 +1450,8 @@ function CombatService.useAbility(player: Player, abilityId: string, aim: Vector
 		return
 	end
 	cancelCharge(player)
-	player:SetAttribute(ability.readyAttribute, t + ability.cooldown)
-	handler(player, root, facing, t)
+	player:SetAttribute(ability.readyAttribute, t + abilityCooldown(player, ability.cooldown, level))
+	handler(player, root, facing, t, level)
 end
 
 -- A staff bolt flinches like a light swing; its combo finisher and the charged orb hit as hard as
@@ -1387,7 +1563,7 @@ local function stepCombat(dt: number)
 			table.remove(healZones, i)
 		elseif t >= zone.nextTickAt then
 			zone.nextTickAt += Config.HEAL_ZONE_TICK_SECONDS
-			local healTick = Config.HEAL_ZONE_HEAL_PER_SECOND * Config.HEAL_ZONE_TICK_SECONDS
+			local healTick = Config.HEAL_ZONE_HEAL_PER_SECOND * Config.HEAL_ZONE_TICK_SECONDS * (zone.healScale or 1)
 			for _, entry in ipairs(playersNear(zone.position, zone.radius)) do
 				heal(entry.humanoid, healTick)
 			end

@@ -6,8 +6,10 @@ thirty-line comment block at the top of a module.
 
 | | |
 |---|---|
-| [classes.md](classes.md) | The three test classes: choosing one, the pause, weapons, passives and their abilities |
+| [classes.md](classes.md) | Legacy test-class reference & the 9 abilities now drafted through the 1-of-3 run upgrade pool |
 | [combat.md](combat.md) | The player's kit, the enemies and the waves — and who decides what |
+| [run.md](run.md) | Single-floor 5-room run loop, North Blast Door transitions, Boss Oh victory/defeat, and Retry |
+| [upgrades.md](upgrades.md) | Zero-pause 1-of-3 run upgrades, queue, 3-slot replacement, stat scaling, and movement passives |
 | [tonemapping.md](tonemapping.md) | Active AgX Punchy post-processing, reference tonemappers (Khronos PBR Neutral, AgX, ACES…) and 1024×32 LUT pipeline |
 | [net-contract.md](net-contract.md) | How a client talks to the server, and why every remote is declared |
 | [ui-architecture.md](ui-architecture.md) | Screens, scaling, stores, hooks — and the rules that are not style choices |

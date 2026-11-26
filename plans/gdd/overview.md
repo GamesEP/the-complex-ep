@@ -50,23 +50,12 @@ planta y volviendo más fuertes después de cada run.
 ## Preguntas abiertas
 
 ### Corto plazo (Corte jugable → Hito 2)
-- **Open:** ataques concretos del jefe **Oh** en [content.md](content.md). Bloquea el cierre del
-  Hito 2 (no bloquea pulir el Corte jugable ni construir salas y mejoras 1-de-3).
-- **Open:** los números de ajuste del combate (velocidad, dash, combo, vida, daño). No bloquean el
-  código: se ajustan jugando en Studio.
-
-- **Decidido y programado:** 3 clases de prueba (Tanque, Daño, Apoyo) elegidas en una pantalla
-  previa ([systems.md](systems.md), sección Clases).
-- **Open:** cómo conviven las clases con las mejoras de 1 de 3 de la run
-  ([pillars.md](pillars.md)). Bloquea Mejoras de run.
+- **Resuelto (VS-01):** Se mantiene intacto el **Pilar 1** (*todos empiezan iguales*): se retiran las clases fijas de prueba; todos inician con la espada básica, estadísticas iguales y 0 habilidades activas, armando su build desde cero con las elecciones 1-de-3 al inicio y al limpiar cada sala (usando el pool completo de 9 habilidades activas, mejoras de stats y pasivas de movimiento).
+- **Resuelto (VS-02):** El Coloso mantiene la combinación embestida → agarre inmediato (esquivable con Dash tras el aturdimiento) y el jefe **Oh** es inmune al hitstun (solo responde a stuns duros al 50% de duración).
+- **Resuelto (VS-12 / VS-21):** Al limpiar una sala se abre la puerta blindada norte para pasar manualmente a la siguiente; en PC las tarjetas 1-de-3 se eligen con **`Q` / `E` / `F`** (además de clic/toque/mando).
+- **Open:** los números de ajuste del combate (velocidad, dash, combo, vida, daño). No bloquean el código: se ajustan jugando en Studio.
 
 ### Hitos posteriores (Run completa, Grupos y v1)
-- **Open:** ataques de My, Gon y fases 1/2 de OhMyGon ([content.md](content.md)). Bloquea Run en
-  solitario.
-- **Open:** reglas del enemigo Coloso ([content.md](content.md)). Bloquea Run en solitario /
-  Grupos.
-- **Open:** `Config.HUB_MAX_PLAYERS`, solicitudes de grupo privado, expulsión/traspaso de líder,
-  reconexión, escalado por abandono y detalles de revivir ([systems.md](systems.md),
-  [loop.md](loop.md), [technical.md](technical.md)). Bloquea el hito de Grupos.
-- **Open:** nombre y cantidades de moneda permanente, ramas del árbol y tipo de duplicador/buffos
-  de Robux ([progression.md](progression.md)). Bloquea el hito de v1.
+- **Open:** ataques de My, Gon y fases 1/2 de OhMyGon ([content.md](content.md)). Bloquea Run en solitario.
+- **Open:** `Config.HUB_MAX_PLAYERS`, solicitudes de grupo privado, expulsión/traspaso de líder, reconexión, escalado por abandono y detalles de revivir ([systems.md](systems.md), [loop.md](loop.md), [technical.md](technical.md)). Bloquea el hito de Grupos.
+- **Open:** nombre y cantidades de moneda permanente, ramas del árbol y tipo de duplicador/buffos de Robux ([progression.md](progression.md)). Bloquea el hito de v1.

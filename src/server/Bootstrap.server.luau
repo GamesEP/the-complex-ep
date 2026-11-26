@@ -30,8 +30,10 @@ local Brain = require(Shared.features.enemies.Brain)
 local Classes = require(Shared.features.classes.Classes)
 local Difficulty = require(Shared.features.enemies.Difficulty)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
+local RunFlow = require(Shared.features.run.RunFlow)
 local Tactics = require(Shared.features.enemies.Tactics)
 local Tonemapper = require(Shared.features.tonemapping.Tonemapper)
+local UpgradePool = require(Shared.features.upgrades.UpgradePool)
 local Waves = require(Shared.features.enemies.Waves)
 
 local Server = script.Parent
@@ -44,6 +46,8 @@ local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
 local FlagService = require(Server.features.flags.FlagService)
 local LogSink = require(Server.features.telemetry.LogSink)
+local RunDirector = require(Server.features.run.RunService)
+local UpgradeService = require(Server.features.upgrades.UpgradeService)
 local WaveDirector = require(Server.features.enemies.WaveDirector)
 local WorldBuilder = require(Server.features.world.WorldBuilder)
 
@@ -65,8 +69,10 @@ if RunService:IsStudio() then
 	Classes.selfTest()
 	Difficulty.selfTest()
 	EnemyAnim.selfTest()
+	RunFlow.selfTest()
 	Tactics.selfTest()
 	Tonemapper.selfTest()
+	UpgradePool.selfTest()
 	Waves.selfTest()
 end
 
@@ -83,38 +89,41 @@ Lighting.ClockTime = Config.LIGHTING_CLOCK_TIME
 
 local world = WorldBuilder.build()
 
--- Before anybody joins: every player starts with `Class = ""` and the board waits on it.
-ClassService.start({
-	applyClass = CombatService.applyClass,
-	world = world,
-	onDifficultyChanged = function()
-		WaveDirector.reset()
-	end,
+-- Pillar 1 (VS-01): everyone starts equal with the base sword and builds their kit from 1-of-3
+-- run upgrades. `RunDirector` owns the 5-room floor loop, Difficulty, StartRun/RetryRun, and pause.
+UpgradeService.start({
+	onUpgradesChanged = CombatService.applyUpgrades,
 })
 -- Each takes the other through its `start` rather than by path (CLAUDE.md): enemies hurt players
 -- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
-CombatService.start({ enemies = EnemyService, isPaused = ClassService.isPaused })
+CombatService.start({ enemies = EnemyService, isPaused = RunDirector.isPaused })
 CombatService.startSupportTick()
-DropService.start({ world = world, onPickup = CombatService.applyDrop, isPaused = ClassService.isPaused })
+DropService.start({ world = world, onPickup = CombatService.applyDrop, isPaused = RunDirector.isPaused })
 EnemyService.start({
 	hurt = CombatService.hurt,
 	world = world,
-	onKill = DropService.maybeSpawn,
+	onKill = function(pos: Vector3)
+		DropService.maybeSpawn(pos)
+		RunDirector.onEnemyKilled()
+	end,
 	canGrab = CombatService.canGrab,
 	setGrabbed = CombatService.setGrabbed,
 	warnGrab = CombatService.warnGrab,
 	warnParry = CombatService.warnParry,
 	stun = CombatService.stun,
-	isPaused = ClassService.isPaused,
+	isPaused = RunDirector.isPaused,
 })
--- After EnemyService, DropService and CombatService, whose state it resets on room wipe.
 WaveDirector.start({
 	world = world,
-	getDifficulty = ClassService.getDifficulty,
-	onReset = function()
-		DropService.clear()
-		CombatService.clear()
-	end,
+	getDifficulty = RunDirector.getDifficulty,
+})
+RunDirector.start({
+	world = world,
+	waveDirector = WaveDirector,
+	combatService = CombatService,
+	dropService = DropService,
+	enemyService = EnemyService,
+	upgradeService = UpgradeService,
 })
 
 -- Staff, in one place, so the flags and the admin-only remotes cannot disagree about who counts.
@@ -164,7 +173,11 @@ Dispatcher.connect("OverDrive", CombatService.overDrive)
 Dispatcher.connect("Block", CombatService.block)
 Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
 Dispatcher.connect("ChooseClass", ClassService.choose)
-Dispatcher.connect("ChooseDifficulty", ClassService.chooseDifficulty)
+Dispatcher.connect("ChooseDifficulty", RunDirector.chooseDifficulty)
+Dispatcher.connect("StartRun", RunDirector.startRun)
+Dispatcher.connect("RetryRun", RunDirector.retryRun)
+Dispatcher.connect("PickUpgrade", UpgradeService.onPickUpgrade)
+Dispatcher.connect("ReplaceAbility", UpgradeService.onReplaceAbility)
 Dispatcher.connect("UseAbility", CombatService.useAbility)
 Dispatcher.connect("Diagnostic", LogSink.onClientReport)
 
@@ -174,6 +187,7 @@ local function onPlayerRemoving(player: Player)
 	-- rather than by grepping for PlayerRemoving.
 	CombatService.forget(player)
 	EnemyService.forget(player)
+	UpgradeService.forget(player)
 end
 
 Players.PlayerRemoving:Connect(onPlayerRemoving)

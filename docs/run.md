@@ -1,0 +1,38 @@
+# Run loop (single-floor Vertical Slice)
+
+How a 5-room run moves from the start screen to Boss Oh, Victory/Defeat, and Retry — and which module owns each piece of state. Design rules live in [`plans/gdd/loop.md`](../plans/gdd/loop.md) and [`plans/gdd/overview.md`](../plans/gdd/overview.md).
+
+## Modules
+
+| Module | Realm | Responsibility |
+|---|---|---|
+| [`Config/Run.luau`](../src/shared/core/Config/Run.luau) | Shared | `ROOMS_PER_FLOOR = 5`, `FLOORS_PER_RUN = 1`, `BLAST_DOOR_TRIGGER_Z = -60`, `BLAST_DOOR_TRIGGER_HALF_X = 12`, and the 5 authored `FLOOR_ROOMS` ending with Boss Oh in Room 5. |
+| [`RunFlow.luau`](../src/shared/features/run/RunFlow.luau) | Shared (pure) | Immutable state machine (`preparing` -> `fighting` -> `transition` -> `victory` / `defeat`), kill counter, summary metrics, and `inDoorZone(pos)`. Tested offline by `make test`. |
+| [`RunService.luau`](../src/server/features/run/RunService.luau) | Server | Owns active `RunFlow` state, Difficulty, `StartRun` / `RetryRun`, generation tokens (stopping stale wave loops), wipe detection, North Blast Door tweens (`ComplexArena.BlastDoor`), and `workspace.World` attributes. |
+| [`WaveDirector.luau`](../src/server/features/enemies/WaveDirector.luau) | Server | Executes the waves for the current room (`runRoom(waves, onRoomCleared)`) and aborts cleanly via generation tokens (`stop()`). |
+| [`ClassSelect.luau`](../src/client/features/classes/ui/ClassSelect.luau) | Client UI | Pre-run Difficulty + Start Run screen (visible only when `World.RunState == "preparing"`). |
+| [`RunResult.luau`](../src/client/features/run/ui/RunResult.luau) | Client UI | End-of-run Victory / Defeat summary plate with `REINTENTAR RUN` firing `RetryRun` (visible when `RunState == "victory" | "defeat"`). |
+| [`ArenaTheme.luau`](../src/client/features/world/ArenaTheme.luau) | Client | Shifts lighting, floor glow, and reactor mood by `Room`, `RunState`, and `Wave` (molten crimson for Boss Oh Room 5, emerald green while the North Blast Door is open or on Victory). |
+
+## Replicated `workspace.World` attributes
+
+- `Floor` (`number`), `Room` (`1..5`), `RoomCount` (`5`), `RoomName` (`string`)
+- `RunState` (`"preparing" | "fighting" | "transition" | "victory" | "defeat"`)
+- `DoorOpen` (`boolean`): `true` when the North Blast Door has slid open after a room clear
+- `Difficulty` (`"easy" | "normal" | "hard" | "deadzone"`)
+- `RunStartedAt`, `RunElapsed`, `RunKills`, `RoomsCleared`
+
+## Room transitions & retry invariants
+
+1. Clearing all waves in Rooms 1–4 transitions `RunState` to `"transition"`, opens `ComplexArena.BlastDoor` (`DoorLeft` / `DoorRight` slide apart `8.4` studs, `DoorStatusBar` turns `#44F098`), plays `doorOpen`, and enqueues a zero-pause 1-of-3 upgrade offer for every player.
+2. Stepping into the open North Blast Door doorway (`Z <= -60`, `|X| <= 12`) clears leftover drops/projectiles, repositions all players to `SPAWN_OFFSET`, closes the door, and launches the next room.
+3. Defeating Boss Oh in Room 5 auto-resolves any pending upgrades, plays `bossOhVictory`, and sets `RunState = "victory"`. If every player dies during combat/transition, `RunState` switches to `"defeat"`.
+4. `RetryRun` increments `runGeneration`, stops active wave loops, clears enemies/drops/projectiles, resets player upgrades and health (`UpgradeService.resetAll`, `CombatService.resetPlayerForRun`), closes the door, and starts a fresh Room 1 with a new starter 1-of-3 offer.
+
+## Remotes
+
+Declared in [`Remotes.luau`](../src/shared/core/Net/Remotes.luau) and validated in [`Contract.luau`](../src/shared/core/Net/Contract.luau):
+
+- `ChooseDifficulty(diffId: string)` — allowed while `RunState == "preparing"`.
+- `StartRun()` — transitions `preparing` -> Room 1 `fighting`.
+- `RetryRun()` — restarts from `victory` or `defeat` back to Room 1 `fighting`.

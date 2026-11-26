@@ -1,8 +1,12 @@
-# Classes
+# Abilities & Legacy Class Definitions
 
-How the three test classes are built: choosing one, what it changes, and the six abilities that
-came with them. The design is [plans/gdd/systems.md](../plans/gdd/systems.md) ("Clases"); it is a
-deliberate, temporary exception to pillar 1 so the gameplay can be tried with distinct roles.
+> **VS-01 update:** Fixed starter classes (`Tanque`, `Daño`, `Apoyo`) were retired to uphold Pillar
+> 1 (*everyone starts equal with the base sword and builds their kit from 1-of-3 run upgrades*).
+> `Config/Classes.luau` still holds the shared catalog of all **9 active abilities** (`Torbellino`,
+> `Rugido`, `Coraza`, `Estocada`, `Vórtice`, `Corte Final`, `Santuario`, `Barrera`, `Repulsión`)
+> that players draft and level up via `UpgradeService` (`docs/upgrades.md`). The start screen
+> (`ClassSelect.luau`) now acts as the **Difficulty & Start Run** screen (`ChooseDifficulty` +
+> `StartRun`).
 
 | | |
 |---|---|
@@ -109,7 +113,5 @@ keyboard and started their cooldowns; a Tank firing `Stinger` or `healPulse` by 
 
 ## Not verified
 
-That taunted enemies actually switch target, that the Muralla stops a shot, that the protect field
-cuts damage, and the exact heal amounts — Roblox's built-in character regeneration (1% of max
-health per second) is added on top and swamps the numbers in a test. The new weapons have not been
-checked in every pose, and the selection screen has not been seen on a phone.
+Multi-player co-op testing of squad-wide `Barrera` and `Santuario` healing ticks across 2–4 live
+clients; solo studio tests verify exact HP deltas with Roblox's default `Health` script disabled.

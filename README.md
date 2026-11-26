@@ -8,41 +8,40 @@ The game design lives in [`plans/gdd/`](plans/gdd/).
 
 ## Current state
 
-The first playable slice — **single-room combat** — is implemented, has grown well past its
-original scope, and passes the offline checks (`make check`). It is ready for playtesting and
-tuning in Roblox Studio; nothing that needs a DataModel is verified automatically. See
-[`plans/gdd/scope.md`](plans/gdd/scope.md) and [`docs/combat.md`](docs/combat.md).
+**Phase 1 — Vertical Slice (1 Floor, 5 Rooms, Zero-Pause 1-of-3 Upgrades & Boss Oh)** is
+implemented on `develop` and passes the offline checks (`make check`). See
+[`plans/gdd/scope.md`](plans/gdd/scope.md), [`plans/roadmap.md`](plans/roadmap.md), and
+[`docs/combat.md`](docs/combat.md).
 
-- **Player kit**: isometric camera, movement/jump, 3-hit combo with forward target sticking and a
-  short lunge, a 2 s charged heavy attack, dash with an invulnerability window (double dash while
-  the speed buff is active), and hold-to-block with a parry window that staggers melee attackers
-  and reflects shots.
-- **Classes**: three test classes picked on a selection screen before the fight (the enemies wait
-  while anyone is choosing) — **Tanque** (greatsword and shield: Giro, Provocación, Muralla),
-  **Daño** (two daggers: Stinger, Ejecución, Over Drive) and **Apoyo** (staff: Pulso curativo,
-  Campo protector, Onda de choque) — each with its own stats and passive
-  ([`docs/classes.md`](docs/classes.md)). Abilities are selected with `1`/`2`/`3` or the D-pad and
-  fired with `E` / `Y` / `R1`.
-- **Enemies & waves**: four kinds driven by pure state machines (`Brain`, `Tactics`) on a spatial
-  grid, as rigged `.rbxmx` models with weapon variants — the **Centinela** (melee: sword with the
-  parry-only *Paso Fantasma* ambush, dual blades spin, axe, mace stun slam), the **Cazador**
-  (ranged: rifle and plasma charged rail-beam, shotgun, minigun tracers, backstep evade leap), the
-  **Detonante** (exploder: oval blast that also hurts enemies) and the **Coloso** (grabber: mash or
-  teammates to break free, plus a bull rush that flings and stuns). Health scales by kind and
-  weapon. Five waves; the room restarts on clear and resets on a wipe.
-- **World & rewards**: the industrial `ComplexArena.rbxmx` room, 30% enemy drops (heal, damage,
-  speed) and a periodic defense pickup, all as `.rbxmx` models.
-- **Feedback**: procedural player and enemy animations, 2D/3D combat sound effects, looped
-  background music, combat VFX, the AgX Punchy tonemapper ([`docs/tonemapping.md`](docs/tonemapping.md))
-  and a React combat HUD (health, buffs, wave and telegraph banners, ability bar).
-- **Core infrastructure**: contract-enforced client→server networking, centralized `Config`,
-  universe-based environments and feature flags, server log telemetry (`LogSink`), and offline
-  Lune test suites.
+- **Player kit (Pillar 1 — equal start, build during the run)**: everyone starts identical with the
+  base sword, isometric camera, movement/jump, 3-hit combo with soft lock-on, tracked wall-safe
+  lunges, progressive enemy hitstun, a 2 s charged heavy attack, dash with i-frames, and
+  hold-to-block with parry (melee stun + projectile reflection).
+- **1-of-3 Zero-Pause Upgrades (`UpgradePool` / `UpgradeService` / `UpgradeChoice`)**: players
+  choose 1 of 3 cards on run start and on every room clear without pausing (using **`Q` / `E` /
+  `F`** on PC, click/tap, or gamepad) — building up to 3 active abilities (leveling up Lv.1–Lv.3 or
+  replacing full slots) from the 9-ability pool (**Torbellino**, **Rugido**, **Coraza**,
+  **Estocada**, **Vórtice**, **Corte Final**, **Santuario**, **Barrera**, **Repulsión**), stat
+  upgrades (`+HP`, `+Daño`, `+Velocidad`, `-Recarga`), and movement passives (**Doble Salto** and
+  **Doble Dash**).
+- **1-Floor Run Loop & Boss Oh (`RunFlow` / `RunService` / `RunResult`)**: 4 difficulty tiers
+  (**Fácil**, **Normal**, **Difícil**, **Zona Muerta**), 5 authored rooms ending with **Boss Oh**
+  in Room 5, manual North Blast Door room transitions, per-room/wave arena color themes, and
+  `RunResult` (Victory / Defeat) with instant Retry.
+- **Enemies**: four rigged `.rbxmx` archetypes (`Brain`, `Tactics`, `SpatialGrid`) — **Centinela**
+  (sword *Paso Fantasma*, dual-blade spin, throwing axe + floor pickup, mace stun slam), **Cazador**
+  (rifle/plasma charged rail-beam, 4-line diverging shotgun fan, non-parriable minigun tracers,
+  backstep evade leap, recoil animations), **Detonante** (oval friendly-fire blast), **Coloso**
+  (grab + bull rush), and **Boss Oh** (cone smash, seismic leap, 360° plasma nova, hitstun-immune).
+- **World, feedback & infrastructure**: `ComplexArena.rbxmx` with solid cover pillars/bunkers and
+  anti-climb hulls, 30% enemy drops, Hazard Arc React/Charm HUD, procedural player & enemy
+  animations, contract-enforced remotes (`Contract.luau`), `Environment`, `Flags`, `LogSink`, and
+  offline Lune test suites.
 
-**Not done yet:** only the background music is uploaded to Roblox (`AssetIds.json`); every sound
-effect still plays through its Studio fallback and needs `make sync-assets` before a publish.
-There are no floors, run upgrades, bosses, hub, parties or persistence yet — those are the later
-milestones in `scope.md`.
+**Not done yet:** only `bgm-complex.ogg` is uploaded to Roblox (`AssetIds.json`); SFX cues use
+Studio fallbacks until `make sync-assets` is run with Open Cloud credentials. Phase 2 (remaining 2
+enemy types, 5 floors, My/Gon/OhMyGon, Hub/Parties/Co-op Revive) and Phase 3 (permanent
+progression/DataStore) follow in [`plans/roadmap.md`](plans/roadmap.md).
 
 ## Stack & toolchain
 

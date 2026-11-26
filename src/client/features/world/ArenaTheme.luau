@@ -60,14 +60,25 @@ local function collectAccents(arena: Instance): Accents
 end
 
 local function resolveTheme(world: Instance): (string, Config.WaveTheme)
+	local runState = world:GetAttribute("RunState")
 	local roomState = world:GetAttribute("RoomState")
-	if roomState == "cleared" then
+	if runState == "victory" or runState == "transition" or roomState == "cleared" then
 		return "cleared", Config.CLEARED_THEME
+	end
+	local themes = Config.WAVE_THEMES
+	local count = #themes
+	local rawRoom = world:GetAttribute("Room")
+	local roomCount = world:GetAttribute("RoomCount")
+	if type(rawRoom) == "number" and rawRoom >= 1 then
+		-- Boss room (Room 5) always shifts dramatically into Theme 6 (molten reactor crimson/gold).
+		if type(roomCount) == "number" and rawRoom >= roomCount and themes[6] then
+			return "boss_room", themes[6]
+		end
+		local idx = ((math.floor(rawRoom) - 1) % math.max(count, 1)) + 1
+		return `room_{idx}`, themes[idx] or themes[1]
 	end
 	local rawWave = world:GetAttribute("Wave")
 	local wave = if type(rawWave) == "number" and rawWave >= 1 then math.floor(rawWave) else 1
-	local themes = Config.WAVE_THEMES
-	local count = #themes
 	local idx = ((wave - 1) % math.max(count, 1)) + 1
 	return `wave_{idx}`, themes[idx] or themes[1]
 end
@@ -163,7 +174,9 @@ local function watchWorld(world: Instance)
 			end
 		end
 		world:GetAttributeChangedSignal("Wave"):Connect(refresh)
+		world:GetAttributeChangedSignal("Room"):Connect(refresh)
 		world:GetAttributeChangedSignal("RoomState"):Connect(refresh)
+		world:GetAttributeChangedSignal("RunState"):Connect(refresh)
 	end)
 end
 

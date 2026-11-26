@@ -72,17 +72,19 @@ run o al limpiar una sala). Nunca pausa el juego ni bloquea el movimiento ni los
 
 **Muestra:**
 - Un **banner compacto en la parte superior** con 3 tarjetas cortas en horizontal: cada tarjeta
-  muestra icono, nombre corto, efecto en pocas palabras (ej. `+20% daño`, `Doble dash`, `Giratorio
-  Nv.2`) y el atajo de selección (`1` / `2` / `3` en PC, cruceta/botón en mando).
+  muestra icono, nombre corto, efecto en pocas palabras (ej. `+20% daño`, `Doble dash`, `Torbellino
+  Nv.2`) y el atajo de selección (**`Q` / `E` / `F`** en PC, clic/toque directo o cruceta/botón en
+  mando). Mientras el banner está visible, `Q` / `E` / `F` eligen tarjeta sin activar Dash,
+  Habilidad ni Bloqueo (`Shift` y ratón siguen activos para pelear sin cortes).
 - Un indicador de cola (`+N`) junto al banner cuando hay más elecciones pendientes detrás de la
   actual.
 - Si el jugador elige reemplazar una habilidad activa con los 3 huecos llenos, el banner pasa
   momentáneamente a mostrar los 3 huecos actuales para elegir cuál sustituir (con los mismos
-  atajos `1` / `2` / `3` o toque).
+  atajos `Q` / `E` / `F`, clic o toque).
 
 **El jugador puede:**
-- Elegir una de las 3 opciones al instante con `1` / `2` / `3` (PC), cruceta/botón (mando) o
-  tocando directamente la tarjeta (móvil), mientras sigue corriendo, esquivando y atacando.
+- Elegir una de las 3 opciones al instante con **`Q` / `E` / `F`** (PC), clic, cruceta/botón
+  (mando) o tocando directamente la tarjeta (móvil), mientras sigue corriendo, esquivando y atacando.
 - Ignorar el banner temporalmente y seguir peleando: la elección permanece en cola hasta que el
   jugador la resuelva o pase de planta (donde las pendientes se resuelven al azar).
 
@@ -115,27 +117,23 @@ run o al limpiar una sala). Nunca pausa el juego ni bloquea el movimiento ni los
 
 ---
 
-## ClassSelect
+## StartRun (antes `ClassSelect`)
 
 `client/features/classes/ui/`
 
-**En pantalla cuando:** el jugador acaba de entrar (o reaparece en una sala nueva) y todavía no ha
-elegido clase. Mientras está abierta, los enemigos están quietos.
+**En pantalla cuando:** el jugador acaba de entrar y la run todavía está en `preparing`. Mientras
+está abierta, los enemigos esperan.
 
 **Muestra:**
-- Selector de dificultad en la franja superior (`Fácil`, `Normal`, `Difícil` y `Zona Muerta`), con
-  el resumen de multiplicadores activos (`Cantidad`, `Daño`, `Velocidad`, `Vida`) sincronizado por
-  servidor (`ChooseDifficulty` -> `World.Difficulty`).
-- Las 3 clases (Tanque, Daño, Apoyo) como tarjetas debajo, cada una con su arma, sus estadísticas en
-  pocas cifras, sus 3 habilidades y su pasiva.
+- Selector de dificultad (`Fácil`, `Normal`, `Difícil` y `Zona Muerta`) con el resumen de
+  multiplicadores activos (`Cantidad`, `Daño`, `Velocidad`, `Vida`) sincronizado por servidor
+  (`ChooseDifficulty` -> `World.Difficulty`).
+- Resumen del kit base compartido (Pilar 1: espada base, 100 HP, 3 huecos de habilidades que se
+  arman con tarjetas 1-de-3 durante la run) y botón principal **INICIAR RUN**.
 
 **El jugador puede:**
-- Cambiar la dificultad de la sala mientras las oleadas están en pausa, elegir una clase con clic,
-  toque o mando, y empezar a pelear.
-
-**En pantalla pequeña (móvil):**
-- Las 3 tarjetas pasan de estar en fila a apiladas en columna, con desplazamiento vertical.
-  Todavía no se ha visto en un teléfono.
+- Elegir la dificultad y pulsar **INICIAR RUN** con clic, toque o mando para arrancar la Sala 1 y
+  recibir al instante su oferta inicial 1-de-3 sin pausar.
 
 ---
 

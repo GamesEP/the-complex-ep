@@ -1,13 +1,11 @@
 --[[
-	The room's waves: spawn one, wait until it is dead, spawn the next. When the last is cleared the
-	room is clean, and a few seconds later it starts again — the combat slice is for fighting the
-	same room over and over (plans/gdd/scope.md). If every player is dead, the room resets.
+	Executes the waves of the current room handed to it by `RunService`: spawns each wave in
+	order, waits until `EnemyService.count() == 0`, then invokes `onRoomCleared`.
 
-	What the HUD shows is written as attributes on the World folder: `Wave`, `WaveCount`,
-	`EnemiesLeft`, `RoomState` ("waiting" | "fighting" | "cleared").
+	Publishes `Wave`, `WaveCount`, `EnemiesLeft`, and `RoomState` ("waiting" | "fighting" |
+	"cleared") as attributes on `workspace.World` for `CombatHud` and `ArenaTheme`.
 ]]
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -19,34 +17,19 @@ local EnemyService = require(script.Parent.EnemyService)
 
 local WaveDirector = {}
 
--- How often the director looks at the board. Waves change on a scale of seconds; checking every
--- frame would only cost more.
 local POLL_SECONDS = 0.2
 -- Spawns sit this far inside the walls (clear of perimeter crates, cryo tanks, and consoles).
 local SPAWN_INSET = 13
 
 local world: Instance = nil :: any
-local onReset: (() -> ())? = nil
 local getDifficulty: (() -> string)? = nil
 
--- Bumped by every reset. A loop holding an older generation stops at its next check, so a
--- reset can never leave the old loop spawning into the new room.
+-- Bumped by every `stop()` / `runRoom()`: any older loop sees a stale generation and exits cleanly.
 local generation = 0
 
-local function anyoneAlive(): boolean
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 then
-			return true
-		end
-	end
-	return false
-end
-
-local function spawnWave(index: number)
+local function spawnWave(waveSpec: { [string]: number })
 	local diffId = if getDifficulty then getDifficulty() else Config.DEFAULT_DIFFICULTY
-	local scaled = Difficulty.scaleWave(Config.WAVES[index], diffId)
+	local scaled = Difficulty.scaleWave(waveSpec, diffId)
 	local kinds = Waves.expand(scaled)
 	for i, kind in ipairs(kinds) do
 		local rawPos: Vector3
@@ -61,30 +44,39 @@ local function spawnWave(index: number)
 	end
 end
 
-local function run(mine: number)
-	local function current(): boolean
-		return generation == mine
-	end
-
-	while current() do
+function WaveDirector.stop()
+	generation += 1
+	if world then
 		world:SetAttribute("RoomState", "waiting")
 		world:SetAttribute("EnemiesLeft", 0)
-		while current() and not anyoneAlive() do
-			task.wait(POLL_SECONDS)
+	end
+end
+
+function WaveDirector.runRoom(waves: { { [string]: number } }, onRoomCleared: () -> ())
+	generation += 1
+	local mine = generation
+
+	task.spawn(function()
+		local function current(): boolean
+			return generation == mine
 		end
 
-		for index = 1, #Config.WAVES do
+		world:SetAttribute("WaveCount", #waves)
+		for index, waveSpec in ipairs(waves) do
 			if not current() then
 				return
 			end
 			world:SetAttribute("RoomState", "fighting")
 			world:SetAttribute("Wave", index)
-			spawnWave(index)
+			spawnWave(waveSpec)
+			world:SetAttribute("EnemiesLeft", EnemyService.count())
 			repeat
 				task.wait(POLL_SECONDS)
-				world:SetAttribute("EnemiesLeft", EnemyService.count())
+				if current() then
+					world:SetAttribute("EnemiesLeft", EnemyService.count())
+				end
 			until not current() or EnemyService.count() == 0
-			if index < #Config.WAVES and current() then
+			if index < #waves and current() then
 				task.wait(Config.WAVE_GAP_SECONDS)
 			end
 		end
@@ -93,51 +85,21 @@ local function run(mine: number)
 			return
 		end
 		world:SetAttribute("RoomState", "cleared")
-		task.wait(Config.ROOM_RESTART_SECONDS)
-	end
-end
-
--- Everybody died: clear the board and start from wave 1 once somebody is back.
-function WaveDirector.reset()
-	generation += 1
-	EnemyService.clear()
-	if onReset then
-		onReset()
-	end
-	world:SetAttribute("Wave", 1)
-	task.spawn(run, generation)
-end
-
-local function watchCharacter(character: Model)
-	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	humanoid.Died:Connect(function()
-		if not anyoneAlive() then
-			WaveDirector.reset()
-		end
+		world:SetAttribute("EnemiesLeft", 0)
+		onRoomCleared()
 	end)
-end
-
-local function watch(player: Player)
-	player.CharacterAdded:Connect(watchCharacter)
-	if player.Character then
-		task.spawn(watchCharacter, player.Character)
-	end
 end
 
 function WaveDirector.start(dependencies: {
 	world: Instance,
-	onReset: (() -> ())?,
 	getDifficulty: (() -> string)?,
 })
 	world = dependencies.world
-	onReset = dependencies.onReset
 	getDifficulty = dependencies.getDifficulty
-	world:SetAttribute("WaveCount", #Config.WAVES)
-	Players.PlayerAdded:Connect(watch)
-	for _, player in ipairs(Players:GetPlayers()) do
-		watch(player)
-	end
-	WaveDirector.reset()
+	world:SetAttribute("Wave", 1)
+	world:SetAttribute("WaveCount", 1)
+	world:SetAttribute("EnemiesLeft", 0)
+	world:SetAttribute("RoomState", "waiting")
 end
 
 return WaveDirector

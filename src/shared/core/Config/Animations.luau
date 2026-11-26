@@ -79,6 +79,46 @@ Config.ANIMATIONS = {
 		blendIn = 0.08,
 		blendOut = 0.36,
 	},
+	-- Rugido war-cry roar: chest-out stance flinging both arms wide.
+	taunt = {
+		duration = 0.56,
+		cancelAt = 0.32,
+		priority = 4,
+		blendIn = 0.12,
+		blendOut = 0.35,
+	},
+	-- Coraza personal armor brace: crossed forearms locking an energy shell around the body.
+	bulwark = {
+		duration = 0.48,
+		cancelAt = 0.26,
+		priority = 4,
+		blendIn = 0.12,
+		blendOut = 0.36,
+	},
+	-- Santuario ground plant: drops down to plant a sanctuary ring into the arena floor.
+	healPulse = {
+		duration = 0.54,
+		cancelAt = 0.30,
+		priority = 4,
+		blendIn = 0.12,
+		blendOut = 0.35,
+	},
+	-- Barrera squad shield projection: sweeps both arms outward to raise the team barrier.
+	protectField = {
+		duration = 0.52,
+		cancelAt = 0.28,
+		priority = 4,
+		blendIn = 0.12,
+		blendOut = 0.35,
+	},
+	-- Repulsión radial blast: coiled crouch erupting into a wide shockwave push.
+	shockwave = {
+		duration = 0.58,
+		cancelAt = 0.32,
+		priority = 4,
+		blendIn = 0.10,
+		blendOut = 0.36,
+	},
 	-- Short athletic landing squash when touching down from a jump.
 	land = {
 		duration = 0.22,

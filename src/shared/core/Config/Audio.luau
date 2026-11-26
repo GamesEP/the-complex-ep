@@ -196,6 +196,50 @@ Config.SFX = {
 		maxDistance = 80,
 		maxDuration = 0.45,
 	},
+	-- Mid-air Double Jump burst.
+	doubleJump = {
+		file = "player-dash.ogg",
+		fallbackId = 130555831799989,
+		volume = 0.55,
+		pitch = 1.55,
+		pitchSpread = 0.05,
+		maxDistance = 55,
+	},
+	-- Upgrade card pick confirmation chime.
+	upgradePick = {
+		file = "drop-buff.ogg",
+		fallbackId = 100288208393628,
+		volume = 0.65,
+		pitch = 1.28,
+		pitchSpread = 0.03,
+		maxDistance = 60,
+	},
+	-- North Blast Door hydraulic unlock chime when a room is cleared.
+	doorOpen = {
+		file = "drop-heal.ogg",
+		fallbackId = 7381723941,
+		volume = 0.75,
+		pitch = 0.92,
+		pitchSpread = 0.02,
+		maxDistance = 120,
+	},
+	-- Boss Oh entrance & victory stingers.
+	bossOhEntry = {
+		file = "enemy-grabber-grab.ogg",
+		fallbackId = 9116701240,
+		volume = 0.9,
+		pitch = 0.62,
+		pitchSpread = 0.02,
+		maxDistance = 140,
+	},
+	bossOhVictory = {
+		file = "drop-buff.ogg",
+		fallbackId = 100288208393628,
+		volume = 0.85,
+		pitch = 1.0,
+		pitchSpread = 0.02,
+		maxDistance = 140,
+	},
 } :: { [string]: SfxSpec }
 
 -- Fallback lifetime for a temporary 3D sound anchor when `Sound.Ended` never fires (e.g. a muted

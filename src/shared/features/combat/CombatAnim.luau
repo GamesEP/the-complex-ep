@@ -427,9 +427,118 @@ local function evaluateStaffHeavy(u: number): { [string]: CFrame }
 	}
 end
 
+-- Rugido: war-cry roar leaning back and flinging both arms wide.
+local function evaluateTaunt(u: number): { [string]: CFrame }
+	local burst = easeOutCubic(math.min(u / 0.32, 1))
+	local settle = if u > 0.62 then easeInOutQuad((u - 0.62) / 0.38) else 0
+	local p = burst * (1 - 0.45 * settle)
+	return {
+		Root = CFrame.new(0, -0.18 * p, 0) * CFrame.Angles(0.18 * p, 0, 0),
+		Waist = CFrame.Angles(0.32 * p, 0, 0),
+		Neck = CFrame.Angles(0.36 * p, 0, 0),
+		RightShoulder = CFrame.Angles(0.55 * p, -0.45 * p, 1.45 * p),
+		RightElbow = CFrame.Angles(0.65 * p, 0, 0),
+		LeftShoulder = CFrame.Angles(0.55 * p, 0.45 * p, -1.45 * p),
+		LeftElbow = CFrame.Angles(0.65 * p, 0, 0),
+	}
+end
+
+-- Coraza: locks both arms crossed in front of the chest while planting into a deep armor brace.
+local function evaluateBulwark(u: number): { [string]: CFrame }
+	local burst = easeOutCubic(math.min(u / 0.28, 1))
+	local settle = if u > 0.64 then easeInOutQuad((u - 0.64) / 0.36) else 0
+	local p = burst * (1 - 0.4 * settle)
+	return {
+		Root = CFrame.new(0, -0.32 * p, 0) * CFrame.Angles(-0.14 * p, 0, 0),
+		Waist = CFrame.Angles(-0.18 * p, 0, 0),
+		Neck = CFrame.Angles(0.16 * p, 0, 0),
+		RightShoulder = CFrame.Angles(1.35 * p, 0.55 * p, -0.55 * p),
+		RightElbow = CFrame.Angles(1.25 * p, 0, 0),
+		LeftShoulder = CFrame.Angles(1.35 * p, -0.55 * p, 0.55 * p),
+		LeftElbow = CFrame.Angles(1.25 * p, 0, 0),
+		RightHip = CFrame.Angles(0.45 * p, 0, 0.14 * p),
+		RightKnee = CFrame.Angles(-0.75 * p, 0, 0),
+		LeftHip = CFrame.Angles(0.45 * p, 0, -0.14 * p),
+		LeftKnee = CFrame.Angles(-0.75 * p, 0, 0),
+	}
+end
+
+-- Santuario: brief rise then crisp downward plant into the arena floor.
+local function evaluateHealPulse(u: number): { [string]: CFrame }
+	local split = 0.28
+	if u < split then
+		local p = easeInOutQuad(u / split)
+		return {
+			Root = CFrame.new(0, 0.14 * p, 0),
+			Waist = CFrame.Angles(0.18 * p, 0, 0),
+			RightShoulder = CFrame.Angles(2.05 * p, 0, 0.35 * p),
+			RightElbow = CFrame.Angles(0.45 * p, 0, 0),
+			LeftShoulder = CFrame.Angles(1.85 * p, 0, -0.35 * p),
+			LeftElbow = CFrame.Angles(0.45 * p, 0, 0),
+		}
+	end
+	local p = easeOutCubic(math.min((u - split) / 0.36, 1))
+	return {
+		Root = CFrame.new(0, lerpNumber(0.14, -0.45, p), 0) * CFrame.Angles(-0.28 * p, 0, 0),
+		Waist = CFrame.Angles(lerpNumber(0.18, -0.45, p), 0, 0),
+		Neck = CFrame.Angles(0.28 * p, 0, 0),
+		RightShoulder = CFrame.Angles(lerpNumber(2.05, 0.65, p), 0, lerpNumber(0.35, 0.12, p)),
+		RightElbow = CFrame.Angles(0.25, 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(1.85, 0.85, p), 0, lerpNumber(-0.35, -0.45, p)),
+		LeftElbow = CFrame.Angles(0.35, 0, 0),
+		RightHip = CFrame.Angles(0.55 * p, 0, 0),
+		RightKnee = CFrame.Angles(-0.95 * p, 0, 0),
+		LeftHip = CFrame.Angles(0.45 * p, 0, 0),
+		LeftKnee = CFrame.Angles(-0.85 * p, 0, 0),
+	}
+end
+
+-- Barrera: sweeps both arms upward and outward to project the squad barrier dome.
+local function evaluateProtectField(u: number): { [string]: CFrame }
+	local burst = easeOutCubic(math.min(u / 0.35, 1))
+	local settle = if u > 0.68 then easeInOutQuad((u - 0.68) / 0.32) else 0
+	local p = burst * (1 - 0.35 * settle)
+	return {
+		Root = CFrame.new(0, 0.12 * p, 0),
+		Waist = CFrame.Angles(0.14 * p, 0, 0),
+		Neck = CFrame.Angles(-0.10 * p, 0, 0),
+		RightShoulder = CFrame.Angles(1.55 * p, -0.25 * p, 0.95 * p),
+		RightElbow = CFrame.Angles(0.35 * p, 0, 0),
+		LeftShoulder = CFrame.Angles(1.55 * p, 0.25 * p, -0.95 * p),
+		LeftElbow = CFrame.Angles(0.35 * p, 0, 0),
+	}
+end
+
+-- Repulsión: quick crouch coil followed by an explosive radial two-arm shockwave release.
+local function evaluateShockwave(u: number): { [string]: CFrame }
+	local split = 0.24
+	if u < split then
+		local p = easeInOutQuad(u / split)
+		return {
+			Root = CFrame.new(0, -0.42 * p, 0) * CFrame.Angles(-0.22 * p, 0, 0),
+			Waist = CFrame.Angles(-0.26 * p, 0, 0),
+			RightShoulder = CFrame.Angles(1.25 * p, 0.45 * p, -0.45 * p),
+			RightElbow = CFrame.Angles(1.15 * p, 0, 0),
+			LeftShoulder = CFrame.Angles(1.25 * p, -0.45 * p, 0.45 * p),
+			LeftElbow = CFrame.Angles(1.15 * p, 0, 0),
+		}
+	end
+	local p = easeOutCubic(math.min((u - split) / 0.36, 1))
+	return {
+		Root = CFrame.new(0, lerpNumber(-0.42, 0.16, p), 0) * CFrame.Angles(lerpNumber(-0.22, 0.20, p), 0, 0),
+		Waist = CFrame.Angles(lerpNumber(-0.26, 0.24, p), 0, 0),
+		Neck = CFrame.Angles(-0.18 * p, 0, 0),
+		RightShoulder = CFrame.Angles(lerpNumber(1.25, 0.85, p), lerpNumber(0.45, -0.55, p), lerpNumber(-0.45, 1.55, p)),
+		RightElbow = CFrame.Angles(lerpNumber(1.15, 0.18, p), 0, 0),
+		LeftShoulder = CFrame.Angles(lerpNumber(1.25, 0.85, p), lerpNumber(-0.45, 0.55, p), lerpNumber(0.45, -1.55, p)),
+		LeftElbow = CFrame.Angles(lerpNumber(1.15, 0.18, p), 0, 0),
+	}
+end
+
 -- Evaluates an active one-shot action (`attack`, `heavyAttack`, `dash`, `spin`, `stinger`,
--- `overdriveWave`, `parry`, `land`) at `elapsed` seconds. Optional `classId` picks staff-specific
--- casts for Support while melee roles share weapon-swing poses.
+-- `overdriveWave`, `parry`, `taunt`, `bulwark`, `healPulse`, `protectField`, `shockwave`, `land`)
+-- at `elapsed` seconds. Optional `classId` picks staff-specific casts for Support while melee roles
+-- share weapon-swing poses.
 function CombatAnim.evaluate(action: string, step: number?, elapsed: number, classId: string?): Pose
 	local key = CombatAnim.specKey(action, step)
 	local spec = Config.ANIMATIONS[key]
@@ -454,6 +563,16 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number, cla
 		joints = evaluateOverDriveWave(step or 1, u)
 	elseif action == "parry" then
 		joints = evaluateParry(u)
+	elseif action == "taunt" then
+		joints = evaluateTaunt(u)
+	elseif action == "bulwark" then
+		joints = evaluateBulwark(u)
+	elseif action == "healPulse" then
+		joints = evaluateHealPulse(u)
+	elseif action == "protectField" then
+		joints = evaluateProtectField(u)
+	elseif action == "shockwave" then
+		joints = evaluateShockwave(u)
 	elseif action == "land" then
 		joints = evaluateLand(u)
 	else
@@ -720,13 +839,32 @@ function CombatAnim.selfTest()
 	assert(odW1.joints.Waist ~= odW2.joints.Waist, "overdrive waves 1 and 2 alternate sweep direction")
 
 	-- Every required action spec exists with valid positive duration and recovery cancelAt.
-	for _, key in ipairs({ "attack", "attackHeavy", "heavyAttack", "dash", "spin", "stinger", "overdriveWave", "parry", "land" }) do
+	for _, key in ipairs({
+		"attack",
+		"attackHeavy",
+		"heavyAttack",
+		"dash",
+		"spin",
+		"stinger",
+		"overdriveWave",
+		"parry",
+		"taunt",
+		"bulwark",
+		"healPulse",
+		"protectField",
+		"shockwave",
+		"land",
+	}) do
 		local spec = Config.ANIMATIONS[key]
 		assert(spec ~= nil and spec.duration > 0, `Config.ANIMATIONS.{key} must exist with positive duration`)
 		assert(
 			type(spec.cancelAt) == "number" and spec.cancelAt >= 0 and spec.cancelAt <= spec.duration,
 			`Config.ANIMATIONS.{key}.cancelAt must lie in [0, duration]`
 		)
+	end
+	for _, key in ipairs({ "taunt", "bulwark", "healPulse", "protectField", "shockwave" }) do
+		local pose = CombatAnim.evaluate(key, nil, Config.ANIMATIONS[key].duration * 0.4)
+		assert(pose.active and pose.joints.RightShoulder ~= nil, `{key} animates distinct upper-body pose`)
 	end
 end
 

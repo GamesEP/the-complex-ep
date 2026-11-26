@@ -36,11 +36,15 @@ return {
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
 	-- feel responsive without opening an unbounded channel.
 	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
-	-- Class & difficulty selection on the start screen.
+	-- Start screen difficulty, run start/retry, and legacy ChooseClass hook.
 	ChooseClass = { rate = 2, args = { Validate.string } },
 	ChooseDifficulty = { rate = 4, args = { Validate.string } },
-	-- Every class ability added with the classes. Which id the player's class owns, and its
-	-- cooldown, are CombatService's to decide.
+	StartRun = { rate = 2 },
+	RetryRun = { rate = 2 },
+	-- Zero-pause 1-of-3 upgrade picks (offerId, cardIndex [, slotIndex]).
+	PickUpgrade = { rate = 6, args = { Validate.number, Validate.number } },
+	ReplaceAbility = { rate = 6, args = { Validate.number, Validate.number, Validate.number } },
+	-- Every active ability added to the 9-ability upgrade pool.
 	UseAbility = { rate = Config.ACTION_RATE, args = { Validate.string, Validate.vector3 } },
 
 	-- A client saying what broke on it. Metered hard and shape-checked twice — once here as a

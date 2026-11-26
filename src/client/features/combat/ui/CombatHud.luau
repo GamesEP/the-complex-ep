@@ -24,8 +24,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
-local Classes = require(Shared.features.classes.Classes)
 local Difficulty = require(Shared.features.enemies.Difficulty)
+local UpgradePool = require(Shared.features.upgrades.UpgradePool)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -40,7 +40,22 @@ local ui = require(Client.ui.theme.Widgets)
 local AbilityStore = require(script.Parent.Parent.stores.AbilityStore)
 local CombatInput = require(script.Parent.Parent.CombatInput)
 
-local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState", "Difficulty", "BossName", "BossHealth", "BossMaxHealth" }
+local ROOM_ATTRIBUTES = {
+	"Floor",
+	"Room",
+	"RoomCount",
+	"RoomName",
+	"RunState",
+	"DoorOpen",
+	"Wave",
+	"WaveCount",
+	"EnemiesLeft",
+	"RoomState",
+	"Difficulty",
+	"BossName",
+	"BossHealth",
+	"BossMaxHealth",
+}
 
 -- 0 just used, 1 ready, from a ready-at time in server seconds and the cooldown's length.
 local function charge(readyAt: any, cooldown: number, now: number): number
@@ -69,19 +84,34 @@ end
 
 local function roomLabel(room: { [string]: any }, compact: boolean): (string, Color3)
 	local diff = Difficulty.get(room.Difficulty)
-	if room.RoomState == "cleared" then
-		return if compact then "SALA LIMPIA" else `SEC-01  //  {diff.shortName}  //  SALA LIMPIA`, ui.VITAL
+	local floorIdx = if type(room.Floor) == "number" then math.floor(room.Floor) else 1
+	local roomIdx = if type(room.Room) == "number" then math.floor(room.Room) else 1
+	local roomCount = if type(room.RoomCount) == "number" then math.floor(room.RoomCount) else Config.ROOMS_PER_FLOOR
+	local runState = room.RunState
+
+	if runState == "victory" then
+		return if compact then "SECTOR DESPEJADO" else `P{floorIdx}  //  {diff.shortName}  //  SECTOR DESPEJADO`, ui.VITAL
 	end
-	if room.RoomState ~= "fighting" then
-		return if compact then "PREPARANDO..." else `SEC-01  //  {diff.shortName}  //  PREPARANDO SECTOR`, ui.MUTED
+	if runState == "defeat" then
+		return if compact then "DERROTA" else `P{floorIdx}  //  {diff.shortName}  //  CAÍDA EN COMBATE`, ui.STRIKE
+	end
+	if runState == "transition" or room.DoorOpen == true then
+		local nextRoom = math.min(roomIdx + 1, roomCount)
+		if compact then
+			return `PUERTA NORTE  ·  SALA {nextRoom}/{roomCount}`, ui.VITAL
+		end
+		return `SALA {roomIdx}/{roomCount} LIMPIA  //  CRUZA LA PUERTA NORTE → SALA {nextRoom}/{roomCount}`, ui.VITAL
+	end
+	if runState ~= "fighting" and room.RoomState ~= "fighting" then
+		return if compact then "PREPARANDO..." else `P{floorIdx} · SALA {roomIdx}/{roomCount}  //  {diff.shortName}  //  PREPARANDO`, ui.MUTED
 	end
 	local wave = room.Wave or 1
 	local waveCount = room.WaveCount or 1
 	local left = room.EnemiesLeft or 0
 	if compact then
-		return `{diff.shortName}  |  O{wave}/{waveCount}  |  {left}`, diff.color
+		return `S{roomIdx}/{roomCount} | O{wave}/{waveCount} | {left}`, diff.color
 	end
-	return `SEC-01  //  {diff.shortName}  //  OLEADA {wave}/{waveCount}  |  {left} HOSTILES`, diff.color
+	return `P{floorIdx} · SALA {roomIdx}/{roomCount}  //  {diff.shortName}  //  OLEADA {wave}/{waveCount}  |  {left} HOSTILES`, diff.color
 end
 
 local ICON_READY = Color3.fromRGB(255, 255, 255)
@@ -713,13 +743,25 @@ local function CombatHud(props)
 	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
 	local room = hooks.useAttributes(props.world, ROOM_ATTRIBUTES)
 	local activeSlot = hooks.useAtom(AbilityStore.slot)
-	-- Which ability is in each slot depends on the class; nil before one is chosen.
-	local classIdValue = hooks.useAttribute(player, "Class")
-	local classId = if type(classIdValue) == "string" and classIdValue ~= "" then classIdValue else nil
+	local hasDoubleJump = hooks.useAttribute(player, "HasDoubleJump") == true
+	local hasDoubleDash = hooks.useAttribute(player, "HasDoubleDash") == true
+
+	-- Active ability slots and levels come from drafted run upgrades (`AbilitySlot1..3`).
+	local rawSlot1 = hooks.useAttribute(player, "AbilitySlot1")
+	local rawSlot2 = hooks.useAttribute(player, "AbilitySlot2")
+	local rawSlot3 = hooks.useAttribute(player, "AbilitySlot3")
+	local rawLv1 = hooks.useAttribute(player, "AbilityLevel1")
+	local rawLv2 = hooks.useAttribute(player, "AbilityLevel2")
+	local rawLv3 = hooks.useAttribute(player, "AbilityLevel3")
 	local slotAbility = {
-		Classes.abilityAt(classId, 1),
-		Classes.abilityAt(classId, 2),
-		Classes.abilityAt(classId, 3),
+		if type(rawSlot1) == "string" and rawSlot1 ~= "" then rawSlot1 else nil,
+		if type(rawSlot2) == "string" and rawSlot2 ~= "" then rawSlot2 else nil,
+		if type(rawSlot3) == "string" and rawSlot3 ~= "" then rawSlot3 else nil,
+	}
+	local slotLevel = {
+		if type(rawLv1) == "number" then math.floor(rawLv1) else 0,
+		if type(rawLv2) == "number" then math.floor(rawLv2) else 0,
+		if type(rawLv3) == "number" then math.floor(rawLv3) else 0,
 	}
 
 	-- Per frame, so bindings: React writes progress fills and countdown strings without
@@ -750,16 +792,20 @@ local function CombatHud(props)
 		local now = workspace:GetServerTimeNow()
 		local dashReadyAt = player:GetAttribute("DashReadyAt")
 		local blockReadyAt = player:GetAttribute("BlockReadyAt")
-		-- The three ability bindings below keep their pre-class names, but they track *slots*
-		-- 1, 2 and 3 of whatever class the player has (docs/classes.md).
-		local currentClass = player:GetAttribute("Class")
+		local cdMultAttr = player:GetAttribute("UpgradeCooldownMult")
+		local cdMult = if type(cdMultAttr) == "number" and cdMultAttr > 0
+			then math.max(cdMultAttr, Config.MIN_COOLDOWN_MULTIPLIER)
+			else 1
 		local function slotTimes(slot: number): (number?, number)
-			local abilityId = Classes.abilityAt(if type(currentClass) == "string" then currentClass else nil, slot)
-			local ability = abilityId and Config.ABILITIES[abilityId]
+			local abilityId = player:GetAttribute(`AbilitySlot{slot}`)
+			local ability = if type(abilityId) == "string" and abilityId ~= "" then Config.ABILITIES[abilityId] else nil
 			if not ability then
 				return nil, 1
 			end
-			return player:GetAttribute(ability.readyAttribute), ability.cooldown
+			local lvAttr = player:GetAttribute(`AbilityLevel{slot}`)
+			local lv = if type(lvAttr) == "number" and lvAttr >= 1 then math.floor(lvAttr) else 1
+			local _, lvCdMult = UpgradePool.levelMultipliers(lv)
+			return player:GetAttribute(ability.readyAttribute), math.max(ability.cooldown * lvCdMult * cdMult, 0.35)
 		end
 		local spinReadyAt, spinCooldown = slotTimes(1)
 		local stingerReadyAt, stingerCooldown = slotTimes(2)
@@ -771,7 +817,9 @@ local function CombatHud(props)
 		local protectBuffUntil = player:GetAttribute("ProtectBuffUntil")
 
 		local dashChargesAttr = player:GetAttribute("DashCharges")
-		local maxDash = Drops.maxDashCharges(speedBuffUntil, now)
+		local doubleDash = player:GetAttribute("HasDoubleDash") == true
+		local maxDash = Drops.maxDashCharges(speedBuffUntil, now, doubleDash)
+		local dashCooldown = math.max(Config.DASH_COOLDOWN * cdMult, 0.35)
 		local dashSecs = remainingSeconds(dashReadyAt, now)
 		local availableDash = if dashSecs <= 0.05
 			then maxDash
@@ -781,7 +829,7 @@ local function CombatHud(props)
 			setDashCharge(1)
 			setDashSubLabel(if maxDash >= 2 then `x{availableDash}` else "RDY")
 		else
-			setDashCharge(charge(dashReadyAt, Config.DASH_COOLDOWN, now))
+			setDashCharge(charge(dashReadyAt, dashCooldown, now))
 			setDashSubLabel(string.format("%.1fs", dashSecs))
 		end
 		setBlockCharge(charge(blockReadyAt, Config.BLOCK_COOLDOWN, now))
@@ -976,9 +1024,75 @@ local function CombatHud(props)
 					ticks = 3,
 				}),
 			}),
+			PassivesRow = if hasDoubleJump or hasDoubleDash
+				then React.createElement("Frame", {
+					Name = "PassivesRow",
+					LayoutOrder = 2,
+					Size = UDim2.new(1, 0, 0, 20),
+					BackgroundTransparency = 1,
+				}, {
+					Row = React.createElement("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						Padding = UDim.new(0, 6),
+						SortOrder = Enum.SortOrder.LayoutOrder,
+					}),
+					DoubleJumpBadge = if hasDoubleJump
+						then React.createElement("Frame", {
+							LayoutOrder = 1,
+							Size = UDim2.fromOffset(0, 20),
+							AutomaticSize = Enum.AutomaticSize.X,
+							BackgroundColor3 = ui.PANEL,
+							BackgroundTransparency = 0.08,
+							BorderSizePixel = 0,
+						}, {
+							Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+							Stroke = React.createElement(ui.Outline, { color = ui.KINETIC, thickness = 1 }),
+							Pad = React.createElement("UIPadding", {
+								PaddingLeft = UDim.new(0, 6),
+								PaddingRight = UDim.new(0, 6),
+							}),
+							Label = React.createElement("TextLabel", {
+								Size = UDim2.fromOffset(0, 20),
+								AutomaticSize = Enum.AutomaticSize.X,
+								BackgroundTransparency = 1,
+								Font = ui.MONO_FONT,
+								TextSize = 10,
+								TextColor3 = ui.KINETIC,
+								Text = "2× SALTO",
+							}),
+						})
+						else nil,
+					DoubleDashBadge = if hasDoubleDash
+						then React.createElement("Frame", {
+							LayoutOrder = 2,
+							Size = UDim2.fromOffset(0, 20),
+							AutomaticSize = Enum.AutomaticSize.X,
+							BackgroundColor3 = ui.PANEL,
+							BackgroundTransparency = 0.08,
+							BorderSizePixel = 0,
+						}, {
+							Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+							Stroke = React.createElement(ui.Outline, { color = ui.BUFF_SPEED, thickness = 1 }),
+							Pad = React.createElement("UIPadding", {
+								PaddingLeft = UDim.new(0, 6),
+								PaddingRight = UDim.new(0, 6),
+							}),
+							Label = React.createElement("TextLabel", {
+								Size = UDim2.fromOffset(0, 20),
+								AutomaticSize = Enum.AutomaticSize.X,
+								BackgroundTransparency = 1,
+								Font = ui.MONO_FONT,
+								TextSize = 10,
+								TextColor3 = ui.BUFF_SPEED,
+								Text = "2× DASH",
+							}),
+						})
+						else nil,
+				})
+				else nil,
 			DamageBuff = React.createElement(BuffChip, {
 				name = "DamageBuff",
-				order = 2,
+				order = 3,
 				color = ui.BUFF_DAMAGE,
 				fill = fillOf(damageBuff),
 				remaining = buffTimer(damageBuffRemain),
@@ -1143,7 +1257,7 @@ local function CombatHud(props)
 						TextSize = 12,
 						TextColor3 = ui.HEAVY,
 						TextXAlignment = Enum.TextXAlignment.Left,
-						Text = if Classes.get(classId) then Classes.get(classId).heavyName else "ATAQUE PESADO",
+						Text = "ATAQUE PESADO",
 					}),
 					Timer = React.createElement("TextLabel", {
 						AnchorPoint = Vector2.new(1, 0),
@@ -1312,7 +1426,7 @@ local function CombatHud(props)
 				onPress = CombatInput.beginBlock,
 				onRelease = CombatInput.endBlock,
 			}),
-			-- 3 switchable active ability actuators driven by the player's class and ability color.
+			-- 3 switchable active ability actuators driven by the player's drafted run slots.
 			SpinAbility = slotAbility[1] and React.createElement(ui.Actuator, {
 				name = "SpinAbility",
 				size = skillSize,
@@ -1325,7 +1439,9 @@ local function CombatHud(props)
 				subLabel = abilityTimer(spinRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,
-				keycap = if activeSlot == 1 then "1·E" else "1",
+				keycap = if slotLevel[1] >= 2
+					then (if activeSlot == 1 then `1·E·N{slotLevel[1]}` else `1·N{slotLevel[1]}`)
+					else (if activeSlot == 1 then "1·E" else "1"),
 				hideKeycap = touch,
 				interactive = true,
 				onPress = if touch
@@ -1346,7 +1462,9 @@ local function CombatHud(props)
 				subLabel = abilityTimer(stingerRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,
-				keycap = if activeSlot == 2 then "2·E" else "2",
+				keycap = if slotLevel[2] >= 2
+					then (if activeSlot == 2 then `2·E·N{slotLevel[2]}` else `2·N{slotLevel[2]}`)
+					else (if activeSlot == 2 then "2·E" else "2"),
 				hideKeycap = touch,
 				interactive = true,
 				onPress = if touch
@@ -1367,7 +1485,9 @@ local function CombatHud(props)
 				subLabel = abilityTimer(overDriveRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,
-				keycap = if activeSlot == 3 then "3·E" else "3",
+				keycap = if slotLevel[3] >= 2
+					then (if activeSlot == 3 then `3·E·N{slotLevel[3]}` else `3·N{slotLevel[3]}`)
+					else (if activeSlot == 3 then "3·E" else "3"),
 				hideKeycap = touch,
 				interactive = true,
 				onPress = if touch

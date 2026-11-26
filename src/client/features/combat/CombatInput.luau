@@ -15,6 +15,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
@@ -23,6 +24,7 @@ local CombatAnim = require(Shared.features.combat.CombatAnim)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
+local UpgradePool = require(Shared.features.upgrades.UpgradePool)
 local Waves = require(Shared.features.enemies.Waves)
 
 local Effects = require(script.Parent.Effects)
@@ -239,19 +241,42 @@ local function classId(): string?
 	return if type(current) == "string" and current ~= "" then current else nil
 end
 
--- Matches ClassService.isPaused(): blocks combat inputs while this player or any teammate is still
--- on the class selection screen so nobody attacks frozen enemies or casts before picking a class.
+local function hasDoubleDash(): boolean
+	return player:GetAttribute("HasDoubleDash") == true
+end
+
+local function cooldownMult(): number
+	local v = player:GetAttribute("UpgradeCooldownMult")
+	if type(v) ~= "number" or v <= 0 then
+		return 1
+	end
+	return math.max(v, Config.MIN_COOLDOWN_MULTIPLIER)
+end
+
+local function abilitySlotInfo(slot: number): (string?, number)
+	local attr = player:GetAttribute(`AbilitySlot{slot}`)
+	if type(attr) == "string" and attr ~= "" then
+		local lv = player:GetAttribute(`AbilityLevel{slot}`)
+		return attr, if type(lv) == "number" and lv >= 1 then math.floor(lv) else 1
+	end
+	local legacy = Classes.abilityAt(classId(), slot)
+	return legacy, if legacy then 1 else 0
+end
+
+local function effectiveCooldown(baseCooldown: number, level: number): number
+	local _, lvCd = UpgradePool.levelMultipliers(math.max(level, 1))
+	return math.max(baseCooldown * lvCd * cooldownMult(), 0.35)
+end
+
+-- Matches RunService.isPaused(): blocks combat inputs while on the pre-run screen or end-of-run
+-- result screen, while allowing full combat & traversal during `"fighting"` and `"transition"`.
 local function isChoosingClass(): boolean
-	if not classId() then
-		return true
+	local world = workspace:FindFirstChild("World")
+	local runState = world and world:GetAttribute("RunState")
+	if type(runState) == "string" then
+		return runState ~= "fighting" and runState ~= "transition"
 	end
-	for _, other in ipairs(Players:GetPlayers()) do
-		local c = other:GetAttribute("Class")
-		if type(c) ~= "string" or c == "" then
-			return true
-		end
-	end
-	return false
+	return true
 end
 
 -- True when a desktop mouse click lands on an active GuiButton (e.g. ability actuator or menu
@@ -687,9 +712,10 @@ local function dash()
 		return
 	end
 	local t = now()
-	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
+	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash())
+	local dashCooldown = math.max(Config.DASH_COOLDOWN * cooldownMult(), 0.35)
 	local allowed, nextCharges, nextRechargeAt =
-		Drops.consumeDash(dashCharges, dashRechargeAt, maxCharges, t, Config.DASH_COOLDOWN, 0)
+		Drops.consumeDash(dashCharges, dashRechargeAt, maxCharges, t, dashCooldown, 0)
 	if not allowed then
 		return
 	end
@@ -760,7 +786,8 @@ local function spin()
 	if aim then
 		root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 	end
-	spinReadyAt = now() + Config.SPIN_COOLDOWN
+	local _, slotLevel = abilitySlotInfo(AbilityStore.current())
+	spinReadyAt = now() + effectiveCooldown(Config.SPIN_COOLDOWN, slotLevel)
 
 	local function fireSpin()
 		local spinClock = os.clock()
@@ -822,7 +849,8 @@ local function stinger()
 	clearLunge()
 	lockedTarget = targetBody
 	lastEngageAt = if targetBody then clock + Config.STINGER_DURATION else -math.huge
-	stingerReadyAt = now() + Config.STINGER_COOLDOWN
+	local _, slotLevel = abilitySlotInfo(AbilityStore.current())
+	stingerReadyAt = now() + effectiveCooldown(Config.STINGER_COOLDOWN, slotLevel)
 	dashEndsAt = clock + Config.STINGER_DURATION
 	recordAction("stinger", nil, clock)
 
@@ -883,7 +911,8 @@ local function overDrive()
 	clearLunge(true)
 	lockedTarget = targetBody
 	lastEngageAt = if targetBody then clock else -math.huge
-	overDriveReadyAt = now() + Config.OVERDRIVE_COOLDOWN
+	local _, slotLevel = abilitySlotInfo(AbilityStore.current())
+	overDriveReadyAt = now() + effectiveCooldown(Config.OVERDRIVE_COOLDOWN, slotLevel)
 
 	local waveSpec = Config.ANIMATIONS.overdriveWave
 	local finalWaveAt = clock + Config.OVERDRIVE_CHARGE_SECONDS + Config.OVERDRIVE_WAVE_INTERVAL * (Config.OVERDRIVE_WAVES - 1)
@@ -930,7 +959,8 @@ local function castClassAbility(abilityId: string)
 	cancelHeavyCharge(true)
 	lockedTarget = targetBody
 	lastEngageAt = if targetBody then clock else -math.huge
-	classAbilityReadyAt[abilityId] = now() + ability.cooldown
+	local _, slotLevel = abilitySlotInfo(AbilityStore.current())
+	classAbilityReadyAt[abilityId] = now() + effectiveCooldown(ability.cooldown, slotLevel)
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 	Effects.classAbilityLocal(abilityId)
 	Remotes.UseAbility:FireServer(abilityId, aim)
@@ -940,13 +970,12 @@ local function selectAbilitySlot(slot: number)
 	AbilityStore.select(slot)
 end
 
--- The selected slot's ability for this player's class. No class yet (still on the selection
--- screen) means no ability.
+-- The selected slot's ability from the player's drafted run slots (`AbilitySlot1..3`).
 local function useActiveAbility()
 	if isChoosingClass() then
 		return
 	end
-	local abilityId = Classes.abilityAt(classId(), AbilityStore.current())
+	local abilityId = abilitySlotInfo(AbilityStore.current())
 	if abilityId == "spin" then
 		spin()
 	elseif abilityId == "stinger" then
@@ -1165,14 +1194,81 @@ function CombatInput.start()
 		end
 	end)
 
-	-- Grant the bonus Double Dash charge immediately when picking up a Speed Buff drop.
-	player:GetAttributeChangedSignal("SpeedBuffUntil"):Connect(function()
+	-- Grant bonus dash charges immediately when picking up a Speed Buff drop or Double Dash passive.
+	local function syncBonusDashCharges()
 		local t = now()
-		local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
-		if maxCharges >= 2 and dashCharges < 2 then
-			dashCharges = 2
+		local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash())
+		if maxCharges >= 2 and dashCharges < maxCharges then
+			dashCharges = maxCharges
 			dashRechargeAt = 0
 		end
+	end
+	player:GetAttributeChangedSignal("SpeedBuffUntil"):Connect(syncBonusDashCharges)
+	player:GetAttributeChangedSignal("HasDoubleDash"):Connect(syncBonusDashCharges)
+
+	-- Double Jump passive (plans/roadmap.md VS-19): one crisp mid-air jump per ground touch on
+	-- Space, mobile Jump button, and gamepad ButtonA via UserInputService.JumpRequest.
+	local airJumpUsed = false
+	local lastGroundJumpAt = -math.huge
+	local jumpStateConn: RBXScriptConnection? = nil
+
+	local function trackCharacterJump(character: Model)
+		if jumpStateConn then
+			jumpStateConn:Disconnect()
+			jumpStateConn = nil
+		end
+		airJumpUsed = false
+		lastGroundJumpAt = -math.huge
+		local humanoid = character:WaitForChild("Humanoid", 5)
+		if not humanoid or not humanoid:IsA("Humanoid") then
+			return
+		end
+		jumpStateConn = humanoid.StateChanged:Connect(function(_old, newState)
+			if newState == Enum.HumanoidStateType.Jumping then
+				if not airJumpUsed then
+					lastGroundJumpAt = os.clock()
+				end
+			elseif
+				newState == Enum.HumanoidStateType.Landed
+				or newState == Enum.HumanoidStateType.Running
+				or newState == Enum.HumanoidStateType.RunningNoPhysics
+				or newState == Enum.HumanoidStateType.Climbing
+				or newState == Enum.HumanoidStateType.Swimming
+				or newState == Enum.HumanoidStateType.Seated
+			then
+				airJumpUsed = false
+			end
+		end)
+	end
+
+	if player.Character then
+		task.spawn(trackCharacterJump, player.Character)
+	end
+
+	UserInputService.JumpRequest:Connect(function()
+		if
+			player:GetAttribute("HasDoubleJump") ~= true
+			or airJumpUsed
+			or isChoosingClass()
+			or player:GetAttribute("Grabbed") == true
+			or isStunned()
+		then
+			return
+		end
+		local root, humanoid = body()
+		if not root or not humanoid then
+			return
+		end
+		local state = humanoid:GetState()
+		local airborne = state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping
+		if not airborne or os.clock() - lastGroundJumpAt < 0.14 then
+			return
+		end
+		airJumpUsed = true
+		local vel = root.AssemblyLinearVelocity
+		root.AssemblyLinearVelocity = Vector3.new(vel.X, Config.DOUBLE_JUMP_POWER, vel.Z)
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		Effects.doubleJump(root)
 	end)
 
 	-- Per-frame wall-stop guard for active dashes/lunges + hard arena bounds safety clamp so
@@ -1341,7 +1437,8 @@ function CombatInput.start()
 	end)
 
 	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
-	player.CharacterAdded:Connect(function()
+	player.CharacterAdded:Connect(function(character)
+		task.spawn(trackCharacterJump, character)
 		cancelHeavyCharge(false)
 		lungeToken += 1
 		clearLunge()
@@ -1355,7 +1452,7 @@ function CombatInput.start()
 		lastEngageAt = -math.huge
 		comboStep = 0
 		lastSwingAt = -math.huge
-		dashCharges = 1
+		dashCharges = Drops.maxDashCharges(nil, now(), hasDoubleDash())
 		dashRechargeAt = 0
 		lastDashAt = -math.huge
 		spinReadyAt = 0

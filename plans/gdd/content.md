@@ -83,10 +83,10 @@ decisión del grupo, no un golpe suelto. Valores de partida, a ajustar jugando:
 Cada variante de arma puede tener su propia vida (`health` en su entrada de
 `Config.ENEMY_KINDS`); si no la define, usa la de su tipo.
 
-**Open:** después de una embestida que acierta, el Coloso puede quedar a distancia de agarre
-y agarrar justo cuando termina su recuperación. El aturdimiento (`1,3 s`) acaba antes, así que se
-puede esquivar con Dash, pero la combinación embestida + agarre es fuerte. Decidir si se quiere o
-si la embestida debe bloquear el agarre durante unos segundos. Bloquea el ajuste del Coloso.
+**Decidido (VS-02):** se mantiene la combinación embestida → agarre del Coloso sin enfriamiento
+extra de agarre (el aturdimiento de `1,3 s` acaba antes de que agarre, así que un Dash a tiempo
+escapa limpiamente), y el jefe **Oh** es completamente inmune al hitstun normal (solo responde a
+stuns duros al 50% de duración).
 
 Los números de cada tipo (vida, velocidad, daño, alcance, tiempos) están en
 `Config.ENEMY_KINDS`, y las oleadas de la sala de prueba en `Config.WAVES` (6 oleadas; el Coloso

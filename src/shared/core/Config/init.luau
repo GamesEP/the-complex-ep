@@ -24,8 +24,10 @@ local PARTS = {
 	"Environments",
 	"Flags",
 	"Net",
+	"Run",
 	"Screen",
 	"Tonemapping",
+	"Upgrades",
 	"World",
 }
 

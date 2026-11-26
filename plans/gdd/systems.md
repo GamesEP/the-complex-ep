@@ -78,47 +78,18 @@ servidor de run.
 
 ---
 
-## Clases
+## Inicio de run y Dificultad (sin clases)
 
-`server/features/classes/`
+`server/features/run/`
 
-**Qué hace:** da a cada jugador una clase fija, elegida antes de empezar, que define cómo pelea.
-
-**Reglas decididas:**
-
-- Hay 3 clases: **Tanque**, **Daño** y **Apoyo**.
-- Una clase cambia cuatro cosas: las **estadísticas**, el **set de 3 habilidades**, el **arma** (con
-  su propio modelo) y una **pasiva de clase** fija.
-- La clase se elige en un **hub de selección** antes de empezar la sala (ver `ClassSelect` en
-  [ui.md](ui.md)). Mientras el jugador está eligiendo, **todos los enemigos quedan quietos**: no se
-  mueven ni atacan hasta que elige.
-- Es una medida para probar el gameplay. Cuando exista el lobby del hito de Grupos, la clase se
-  elegirá ahí.
-
-**Cada clase (aprobado; los números son valores de partida para ajustar jugando):**
-
-| | Tanque | Daño | Apoyo |
-|---|---|---|---|
-| Vida | 160 | 85 | 100 |
-| Velocidad | 22 | 28 | 25 |
-| Daño | ×0,85 | ×1,25 | ×0,9 |
-| Arma | Mazo con púas y escudo (cuerpo a cuerpo) | Dos dagas (cuerpo a cuerpo) | Báculo de energía (**a distancia**, proyectiles de energía) |
-| Ataque pesado (2 s) | **Impacto Sísmico:** golpe sísmico circular con el mazo que aturde y empuja | **Desgarro:** doble tajo rápido en X con dagas | **Orbe de Plasma:** orbe a distancia que explota en área y aturde |
-| Habilidad 1 | **Torbellino:** ataque giratorio 360° alrededor del Tanque | **Estocada:** embestida perforante rápida en línea recta | **Santuario:** deja un área activa durante **10 s** que cura progresivamente en buena cantidad a quien pase por ella |
-| Habilidad 2 | **Rugido:** grito sónico que **aturde** a todos los enemigos en su radio y atrae su atención | **Vórtice:** lanza las dagas hacia delante atravesando enemigos y vuelven en curva hacia el jugador golpeando de regreso | **Barrera:** aumenta la defensa de **todos los jugadores** vivos del equipo (`-45 %` daño) |
-| Habilidad 3 | **Coraza:** buff personal que reduce **todos los golpes recibidos en un 75 %** durante unos segundos | **Corte Final:** carga y suelta 3 ondas cortantes perforantes a distancia | **Repulsión:** empuja, daña y **aturde** a los enemigos alrededor |
-| Pasiva | Recibe un 20 % menos de daño | +25 % de daño a enemigos aturdidos o por la espalda | Regenera vida poco a poco a los aliados cercanos |
-
-Valores exactos (recargas, radios, daños) en `Config/Classes.luau`. Cómo está hecho:
-[docs/classes.md](../../docs/classes.md).
-
-- Por ahora la clase se elige **una vez por sesión** y se conserva al reaparecer.
-
-**Open:** ¿la clase se puede cambiar a mitad de la sala, o solo en el hub? (Por ahora, solo una
-vez.) No bloquea probar las clases.
-
-**Habla con el cliente mediante:** la clase elegida como atributo del jugador; la elección, como
-un remoto declarado en el contrato.
+**Decidido (VS-01):** siguiendo el Pilar 1 (*todos empiezan iguales*), las 3 clases fijas de prueba
+quedan retiradas del arranque. Antes de empezar la run, la pantalla inicial permite elegir la
+**Dificultad** (`Fácil`, `Normal`, `Difícil` o `Zona Muerta`) y pulsar **Iniciar Run**. Todos los
+jugadores arrancan con la misma espada (`TestSword`), estadísticas base (`100` HP, velocidad `26`)
+y **0 habilidades equipadas**; al instante reciben su primera oferta **1-de-3** sin pausar para
+empezar a construir su build a partir del pool común de **9 habilidades activas** (`Torbellino`,
+`Rugido`, `Coraza`, `Estocada`, `Vórtice`, `Corte Final`, `Santuario`, `Barrera`, `Repulsión`),
+mejoras de estadísticas y pasivas de movimiento (`Doble Salto`, `Doble Dash`).
 
 ---
 

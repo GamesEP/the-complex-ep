@@ -1,14 +1,13 @@
 --[[
-	The start screen (plans/gdd/ui.md, "ClassSelect"): difficulty selector (Fácil, Normal, Difícil,
-	Zona Muerta) paired with the three test class cards (Tanque, Daño, Apoyo). While any player is
-	still on it the enemies wait (ClassService).
+	The start screen (plans/gdd/ui.md, plans/roadmap.md VS-01 / VS-13):
+	Difficulty selector (Fácil, Normal, Difícil, Zona Muerta) paired with the universal Pillar 1
+	loadout summary and a bold INICIAR RUN button. Everyone starts identical with the base sword
+	and drafts their build from 1-of-3 upgrades during the run.
 
-	Everything it shows comes from Config.DIFFICULTIES, Config.CLASSES and Config.ABILITIES, and
-	both difficulty (`World.Difficulty`) and class (`Player.Class`) are driven by replicated
-	attributes written by the server.
+	Visible only while `World.RunState == "preparing"`.
 ]]
 
-local Players = game:GetService("Players")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -26,19 +25,6 @@ local Scaled = require(Client.ui.DesignScale)
 local hooks = require(Client.ui.hooks)
 local ui = require(Client.ui.theme.Widgets)
 
-local CARD_GAP = 16
-local MAX_CARD_WIDTH = 260
-
-local function Line(props)
-	return React.createElement(ui.Title, {
-		text = props.text,
-		font = props.font or ui.BODY_FONT,
-		textSize = props.textSize or 14,
-		color = props.color or ui.TEXT,
-		order = props.order,
-	})
-end
-
 local function DifficultyBar(props)
 	local currentId = props.currentId
 	local currentDef = Difficulty.get(currentId)
@@ -50,7 +36,7 @@ local function DifficultyBar(props)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	}
-	local btnWidth = if props.compact then 92 else 132
+	local btnWidth = if props.compact then 90 else 132
 	for idx, diffId in ipairs(Config.DIFFICULTY_ORDER) do
 		local def = Config.DIFFICULTIES[diffId]
 		if def then
@@ -58,7 +44,7 @@ local function DifficultyBar(props)
 			buttons[diffId] = React.createElement("TextButton", {
 				Name = `Diff_{diffId}`,
 				LayoutOrder = idx,
-				Size = UDim2.fromOffset(btnWidth, 34),
+				Size = UDim2.fromOffset(btnWidth, 36),
 				BackgroundColor3 = if selected then def.color else ui.STEEL,
 				BorderSizePixel = 0,
 				AutoButtonColor = false,
@@ -92,13 +78,13 @@ local function DifficultyBar(props)
 		name = "DifficultySelector",
 		order = 3,
 		size = UDim2.new(0, math.min(props.maxWidth, 620), 0, 0),
-		padding = 10,
+		padding = 12,
 		accentColor = currentDef.color,
 		accent = "left",
 		strokeColor = currentDef.color,
 	}, {
 		List = React.createElement("UIListLayout", {
-			Padding = UDim.new(0, 6),
+			Padding = UDim.new(0, 8),
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
@@ -109,11 +95,11 @@ local function DifficultyBar(props)
 			Font = ui.MONO_FONT,
 			TextSize = 12,
 			TextColor3 = ui.MUTED,
-			Text = "DIFICULTAD DEL SECTOR (6 OLEADAS · JEFE: OH)",
+			Text = `DIFICULTAD DEL SECTOR ({Config.ROOMS_PER_FLOOR} SALAS · JEFE: OH)`,
 		}),
 		Row = React.createElement("Frame", {
 			LayoutOrder = 2,
-			Size = UDim2.new(1, 0, 0, 36),
+			Size = UDim2.new(1, 0, 0, 38),
 			BackgroundTransparency = 1,
 		}, buttons),
 		Summary = React.createElement("TextLabel", {
@@ -130,117 +116,41 @@ local function DifficultyBar(props)
 	})
 end
 
-local function Card(props)
-	local class = props.class
-	local abilityNames = {}
-	for _, abilityId in ipairs(class.abilities) do
-		local ability = Config.ABILITIES[abilityId]
-		table.insert(abilityNames, if ability then ability.name else abilityId)
-	end
-	local damagePercent = math.round(class.damageMultiplier * 100)
-
-	return React.createElement(ui.Panel, {
-		name = props.classId,
-		width = props.width,
-		padding = 14,
-		order = props.order,
-	}, {
-		List = React.createElement("UIListLayout", {
-			Padding = UDim.new(0, 6),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-		Name = React.createElement(Line, {
-			text = class.displayName,
-			font = ui.TITLE_FONT,
-			textSize = 24,
-			color = class.color,
-			order = 1,
-		}),
-		Description = React.createElement(Line, { text = class.description, color = ui.MUTED, order = 2 }),
-		Stats = React.createElement(Line, {
-			text = `Vida {class.maxHealth}  ·  Velocidad {class.moveSpeed}  ·  Daño {damagePercent} %`,
-			textSize = 13,
-			order = 3,
-		}),
-		Weapon = React.createElement(Line, { text = `Arma: {class.weaponName}`, textSize = 13, order = 4 }),
-		Abilities = React.createElement(Line, {
-			text = `Habilidades: {table.concat(abilityNames, ", ")}`,
-			textSize = 13,
-			order = 5,
-		}),
-		Passive = React.createElement(Line, {
-			text = `Pasiva: {class.passive}`,
-			textSize = 13,
-			color = ui.HIGHLIGHT,
-			order = 6,
-		}),
-		Choose = React.createElement(ui.Button, {
-			text = "Elegir",
-			order = 7,
-			active = props.pending,
-			onActivated = props.onChoose,
-		}),
-	})
-end
-
-local function ClassSelect(props)
-	local player = Players.LocalPlayer
+local function StartRunScreen(props)
 	local metrics = Scaled.useLayout()
-	local current = hooks.useAttribute(player, "Class")
+	local runState = hooks.useAttribute(props.world, "RunState")
 	local diffAttr = hooks.useAttribute(props.world, "Difficulty")
 	local currentDifficulty = if Difficulty.isValid(diffAttr) then diffAttr else Config.DEFAULT_DIFFICULTY
-	-- Which card was pressed, so a second press does not fire again while the server answers.
-	local pending, setPending = React.useState(nil :: string?)
+	local currentDef = Difficulty.get(currentDifficulty)
+	local pending, setPending = React.useState(false)
 
-	if type(current) == "string" and current ~= "" then
+	React.useEffect(function()
+		if runState ~= "preparing" then
+			setPending(false)
+		end
+	end, { runState })
+
+	if runState ~= nil and runState ~= "preparing" then
 		return nil
 	end
 
-	local count = #Config.CLASS_ORDER
 	local available = metrics.room.X - 2 * ui.MARGIN
-	-- Side by side while three fit at a readable width; stacked on a narrow (phone) screen.
-	local stacked = metrics.compact or available < count * 200 + (count - 1) * CARD_GAP
-	local cardWidth = if stacked
-		then math.min(MAX_CARD_WIDTH * 1.4, available)
-		else math.min(MAX_CARD_WIDTH, (available - (count - 1) * CARD_GAP) / count)
+	local cardWidth = math.min(available, 620)
 
-	local cards = {
-		List = React.createElement("UIListLayout", {
-			FillDirection = if stacked then Enum.FillDirection.Vertical else Enum.FillDirection.Horizontal,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			Padding = UDim.new(0, CARD_GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	}
-	for index, classId in ipairs(Config.CLASS_ORDER) do
-		local class = Config.CLASSES[classId]
-		if class then
-			cards[classId] = React.createElement(Card, {
-				classId = classId,
-				class = class,
-				width = cardWidth,
-				order = index,
-				pending = pending == classId,
-				onChoose = function()
-					if pending then
-						return
-					end
-					setPending(classId)
-					Remotes.ChooseClass:FireServer(classId)
-				end,
-			})
+	local function startRun()
+		if pending then
+			return
 		end
+		setPending(true)
+		Remotes.StartRun:FireServer()
 	end
 
 	return React.createElement(Scaled.Frame, nil, {
-		-- A button, not a frame, so it sinks the input behind it while the screen is open
-		-- (CLAUDE.md: a Frame does not sink input).
+		-- Input-sinking backdrop while the pre-run screen is open.
 		Backdrop = React.createElement("TextButton", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = ui.INK,
-			-- Dark enough that the HUD underneath (the wave counter sits right behind the
-			-- heading) does not read through it.
-			BackgroundTransparency = 0.12,
+			BackgroundTransparency = 0.14,
 			BorderSizePixel = 0,
 			AutoButtonColor = false,
 			Text = "",
@@ -258,39 +168,97 @@ local function ClassSelect(props)
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		}, {
 			List = React.createElement("UIListLayout", {
-				Padding = UDim.new(0, 12),
+				Padding = UDim.new(0, 14),
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
 			Heading = React.createElement("TextLabel", {
 				LayoutOrder = 1,
-				Size = UDim2.new(1, 0, 0, 32),
+				Size = UDim2.new(1, 0, 0, 34),
 				BackgroundTransparency = 1,
 				Font = ui.TITLE_FONT,
-				TextSize = 28,
+				TextSize = if metrics.compact then 24 else 30,
 				TextColor3 = ui.TEXT,
-				Text = "Prepara tu incursión",
+				Text = "EL COMPLEJO  //  SECTOR 01",
 			}),
 			Subheading = React.createElement("TextLabel", {
 				LayoutOrder = 2,
-				Size = UDim2.new(1, 0, 0, 18),
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
 				Font = ui.BODY_FONT,
 				TextSize = 14,
 				TextColor3 = ui.MUTED,
-				Text = "Elige la dificultad y tu rol. Los enemigos esperan a que empieces.",
+				TextWrapped = true,
+				Text = "Todos inician iguales con la Espada Base. Al entrar elegirás tu primera habilidad y mejorarás tu build tras cada sala.",
 			}),
 			Difficulty = React.createElement(DifficultyBar, {
 				currentId = currentDifficulty,
 				compact = metrics.compact,
 				maxWidth = available,
 			}),
-			Cards = React.createElement("Frame", {
-				LayoutOrder = 4,
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundTransparency = 1,
-			}, cards),
+			Loadout = React.createElement(ui.Panel, {
+				name = "BaseLoadout",
+				order = 4,
+				size = UDim2.new(0, cardWidth, 0, 0),
+				padding = 14,
+				accentColor = ui.HAZARD,
+				accent = "left",
+			}, {
+				Stack = React.createElement("UIListLayout", {
+					Padding = UDim.new(0, 6),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+				Title = React.createElement("TextLabel", {
+					LayoutOrder = 1,
+					Size = UDim2.new(1, 0, 0, 18),
+					BackgroundTransparency = 1,
+					Font = ui.MONO_FONT,
+					TextSize = 12,
+					TextColor3 = ui.HAZARD,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Text = "EQUIPO INICIAL UNIVERSAL  //  PISO 1 (5 SALAS)",
+				}),
+				Stats = React.createElement("TextLabel", {
+					LayoutOrder = 2,
+					Size = UDim2.new(1, 0, 0, 0),
+					AutomaticSize = Enum.AutomaticSize.Y,
+					BackgroundTransparency = 1,
+					Font = ui.BODY_FONT,
+					TextSize = 14,
+					TextColor3 = ui.TEXT,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextWrapped = true,
+					Text = `Vida {Config.PLAYER_MAX_HEALTH}  ·  Velocidad {Config.MOVE_SPEED}  ·  Espada Base (Combo 3 golpes + Ataque Pesado)  ·  Dash  ·  Bloqueo / Parry`,
+				}),
+				Progression = React.createElement("TextLabel", {
+					LayoutOrder = 3,
+					Size = UDim2.new(1, 0, 0, 0),
+					AutomaticSize = Enum.AutomaticSize.Y,
+					BackgroundTransparency = 1,
+					Font = ui.MONO_FONT,
+					TextSize = 12,
+					TextColor3 = ui.MUTED,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextWrapped = true,
+					Text = "Sin regeneración pasiva: cúrate con drops, Santuario o mejoras de Vida. Limpia cada sala y cruza la Puerta Norte hasta derrotar al Jefe Oh.",
+				}),
+			}),
+			StartButton = React.createElement("TextButton", {
+				Name = "StartRunButton",
+				LayoutOrder = 5,
+				Size = UDim2.fromOffset(math.min(cardWidth, 320), 48),
+				BackgroundColor3 = currentDef.color,
+				BorderSizePixel = 0,
+				Font = ui.DISPLAY_FONT,
+				TextSize = 18,
+				TextColor3 = ui.INK,
+				Text = if pending then "INICIANDO..." else "INICIAR RUN",
+				[React.Event.Activated] = startRun,
+			}, {
+				Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+				Stroke = React.createElement(ui.Outline, { color = ui.TEXT, thickness = 1.5 }),
+			}),
 		}),
 	})
 end
@@ -299,9 +267,21 @@ local screen = {}
 
 function screen.start()
 	local world = workspace:WaitForChild("World")
-	-- Above every other screen: while it is open nothing else should take a press.
+
+	ContextActionService:BindActionAtPriority("StartRunConfirm", function(_, inputState: Enum.UserInputState)
+		local rs = world:GetAttribute("RunState")
+		if rs ~= nil and rs ~= "preparing" then
+			return Enum.ContextActionResult.Pass
+		end
+		if inputState == Enum.UserInputState.Begin then
+			Remotes.StartRun:FireServer()
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value + 60, Enum.KeyCode.Return, Enum.KeyCode.ButtonA)
+
+	-- Above every other screen while open.
 	return UI.mount("ClassSelect", function()
-		return React.createElement(ClassSelect, { world = world })
+		return React.createElement(StartRunScreen, { world = world })
 	end, { displayOrder = 50 })
 end
 

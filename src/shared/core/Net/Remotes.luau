@@ -37,12 +37,17 @@ return {
 	Block = remote("Block"),
 	GrabEscape = remote("GrabEscape"),
 
-	-- The test classes (plans/gdd/systems.md, "Clases"). `ChooseClass(id)` from the selection
-	-- screen; `ChooseDifficulty(id)` sets the room's difficulty before combat starts;
-	-- `UseAbility(id, aim)` for every class ability added with them.
+	-- Run start, retry, difficulty, and active ability dispatch.
 	ChooseClass = remote("ChooseClass"),
 	ChooseDifficulty = remote("ChooseDifficulty"),
+	StartRun = remote("StartRun"),
+	RetryRun = remote("RetryRun"),
 	UseAbility = remote("UseAbility"),
+	-- Zero-pause 1-of-3 run upgrades: client picks card 1..3 (or replaces slot 1..3); server
+	-- pushes active offer + queue depth to the owning player via `UpgradeOffer`.
+	PickUpgrade = remote("PickUpgrade"),
+	ReplaceAbility = remote("ReplaceAbility"),
+	UpgradeOffer = remote("UpgradeOffer"),
 
 	-- Server -> client combat sound cues (enemy attacks, explosions, hit confirms, co-op swings).
 	-- No Contract entry: the contract governs what a client is allowed to send, not server

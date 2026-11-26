@@ -96,12 +96,14 @@ function Drops.buffRemaining(buffUntil: any, duration: number, now: number): num
 	return math.clamp((buffUntil - now) / duration, 0, 1)
 end
 
--- Maximum Dash charges: 2 while the Speed Buff is active, 1 normally.
-function Drops.maxDashCharges(speedBuffUntil: any, now: number): number
+-- Maximum Dash charges: base 1 (2 with permanent-for-run `HasDoubleDash` passive), plus +1
+-- while the temporary Speed Buff drop is active.
+function Drops.maxDashCharges(speedBuffUntil: any, now: number, hasDoubleDash: boolean?): number
+	local base = if hasDoubleDash == true then 2 else 1
 	if type(speedBuffUntil) == "number" and now < speedBuffUntil then
-		return 2
+		return base + 1
 	end
-	return 1
+	return base
 end
 
 -- Refills elapsed Dash charges up to `maxCharges` and attempts to consume 1 charge.

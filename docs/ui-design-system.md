@@ -37,7 +37,7 @@ The values live in `src/client/ui/theme/Palette.luau` and the shared primitives 
 | `ABILITY_2` | `#2CE5B8` | `44, 229, 184` | Active ability slot 2 |
 | `ABILITY_3` | `#B97CFF` | `185, 124, 255` | Active ability slot 3 |
 | `GUARD` | `#CFD8E3` | `207, 216, 227` | Block / Parry idle ring (flashes `HAZARD` while blocking) |
-| `HEAVY` | `#FF9F2E` | `255, 159, 46` | 3-second Heavy Attack charge ring and bar |
+| `HEAVY` | `#FF9F2E` | `255, 159, 46` | 2-second Heavy Attack charge ring and bar |
 | `GRAB` | `#FF2E93` | `255, 46, 147` | Grabber escape mash bar & trapped Attack pulse |
 | `BUFF_DAMAGE` | `#FF693C` | `255, 105, 60` | Temporary damage drop buff |
 | `BUFF_SPEED` | `#38D4FF` | `56, 212, 255` | Temporary speed drop buff |
@@ -79,9 +79,9 @@ Every screen mounts inside `Scaled.Frame` with `IgnoreGuiInset = true` (see
 | Zone | Desktop & Console | Mobile (`metrics.touch`) |
 |---|---|---|
 | **Top-left** | `Vitals` plate (`UNIT 01` + HP bar with quarter ticks), timed drop buff chips stacked directly below (semantic stripe + draining bar + right-aligned `MONO_FONT` countdown in seconds), future co-op squad strips | Compact `Vitals` plate (`176` units wide) + compact timed buff chips with live countdown below (keeps bottom-left free for thumbstick) |
-| **Top-center** | `SectorBar` pill (`SEC-01 // OLEADA W/N \| X HOSTILES`) + future zero-pause 3-ticket `UpgradeChoice` strip + `+N` queue badge (enemy Grabber / Paso Fantasma telegraphs are diegetic overhead `!` triangles) | Compact `SectorBar` (`O2/5 \| 8`) + single-row tap-sized `UpgradeChoice` tickets staying in upper ~20% of screen |
-| **Bottom-center** | Future Boss HP bar (`UNIT // OH`, zero collision with top `UpgradeChoice`); active `HeavyCharge`, `StunBanner` (`¡ATURDIDO!`), and `GrabEscape` urgent plates | Same, raised cleanly above bottom margin between the left thumbstick and right touch arc |
-| **Bottom-right** | Compact machined **Hazard Arc** (`ATK`, `DSH`, `BLK` + 3 switchable ability actuators with custom emblems: `1 Giro`, `2 Stinger`, `3 Over Drive`, highlighting active slot `E` via `AbilityStore`) | Full thumb-sized interactive `TextButton` radial arc wrapping cleanly around Roblox's built-in bottom-right Jump button (`Config.TOUCH_BUTTON + Config.TOUCH_MARGIN` clearance); tapping any of the 3 ability actuators casts directly |
+| **Top-center** | `SectorBar` pill (`P1 · SALA R/5 // DIFF // OLEADA W/N \| X HOSTILES`) + active zero-pause 3-ticket `UpgradeChoice` strip + `+N` queue badge (`Q` / `E` / `F` keys; enemy telegraphs are diegetic overhead `!` triangles) | Compact `SectorBar` (`S1/5 · O2/2 \| 8`) + single-row tap-sized `UpgradeChoice` tickets staying in upper ~20% of screen |
+| **Bottom-center** | Active Boss HP bar (`UNIT // OH — TITÁN DEL SECTOR`, zero collision with top `UpgradeChoice`); active `HeavyCharge`, `StunBanner` (`¡ATURDIDO!`), and `GrabEscape` urgent plates stacked cleanly above it | Same, raised cleanly above bottom margin between the left thumbstick and right touch arc |
+| **Bottom-right** | Compact machined **Hazard Arc** (`ATK`, `DSH`, `BLK` + up to 3 switchable ability actuators with pure-white high-contrast emblems for any owned abilities, highlighting active slot `E` via `AbilityStore`, plus discreet `2x SALTO` / `2x DASH` passive badges) | Full thumb-sized interactive `TextButton` radial arc wrapping cleanly around Roblox's built-in bottom-right Jump button (`Config.TOUCH_BUTTON + Config.TOUCH_MARGIN` clearance); tapping any ability actuator casts directly |
 | **Bottom-left** | Non-production `BuildStamp` only (`displayOrder = 50`) | Roblox virtual thumbstick (no gameplay HUD panels enter `Layout.band()`) |
 
 ---
@@ -91,8 +91,8 @@ Every screen mounts inside `Scaled.Frame` with `IgnoreGuiInset = true` (see
 All upcoming screens in [plans/gdd/ui.md](../plans/gdd/ui.md) follow the same shape/colour rules:
 
 - **`UpgradeChoice`:** 3 horizontal `ui.Panel` tickets (`accent = "top"`) coloured by category
-  (`HAZARD` stats, `KINETIC` movement passives, `ABILITY_1/2/3` actives) with crisp `2px` square
-  keycaps (`1` / `2` / `3`) and a `+N` queue chip. When replacing one of 3 full active slots, the
+  (`HAZARD` stats, `KINETIC` movement passives, ability color for actives) with crisp `2px` square
+  keycaps (`Q` / `E` / `F`) and a `+N` queue chip. When replacing one of 3 full active slots, the
   3 tickets mirror the exact ring colours of the bottom-right active actuators.
 - **`RunResult` & Wipe Revive (10 Robux):** Centered architectural dossier plate (`#181B1F`,
   `HAZARD` / `STRIKE` top bar, `MONO_FONT` summary metrics) paired with a high-contrast primary

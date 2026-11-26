@@ -70,8 +70,8 @@ Lo que se publica:
 
 | | |
 |---|---|
-| Corte jugable | Un jugador limpia una sala contra 2-3 tipos de enemigo en PC, móvil y mando. |
-| Una planta | 5 salas seguidas en orden fijo con elección de 1 de 3 y el jefe Oh en la sala 5 (en la run completa de 5 plantas, la Planta 1 es sin jefe y Oh va en la Planta 2; aquí se incluye a Oh para validar salas + jefe juntos). |
+| Corte jugable | Un jugador limpia una sala contra 2-3 tipos de enemigo en PC, móvil y mando. *(Completado)* |
+| Una planta | 5 salas seguidas en orden fijo con elección de 1 de 3 sin pausa y el jefe Oh en la sala 5 (`RunFlow`, `RunService`, `UpgradePool`, `UpgradeService`, `UpgradeChoice`, `RunResult`). *(Implementado y verificado en `make check` + Studio; pendiente playtest manual en móvil/mando y subida de SFX a Open Cloud)* |
 | Run en solitario | 5 plantas, las tres partes del jefe y OhMyGon. Se gana y se pierde. |
 | Grupos | Hub, lista, grupos y la run en servidor privado para 1 a 4 jugadores, con revivir. |
 | v1 | Progresión permanente, guardado y productos de Robux. |

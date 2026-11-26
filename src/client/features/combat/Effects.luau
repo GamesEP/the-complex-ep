@@ -237,6 +237,40 @@ function Effects.dash(root: BasePart)
 	PlayerAnimator.playLocal("dash")
 end
 
+-- Crisp air-ring burst + upward breeze echo when the player triggers the Double Jump passive.
+function Effects.doubleJump(root: BasePart)
+	local origin = root.Position - Vector3.new(0, 2.2, 0)
+	local ring = ghost(
+		Vector3.new(0.18, 2.2, 2.2),
+		CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(130, 225, 255),
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.22
+	TweenService:Create(
+		ring,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.10, 7.6, 7.6), CFrame = CFrame.new(origin - Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, 0, math.rad(90)), Transparency = 1 }
+	):Play()
+	Debris:AddItem(ring, 0.32)
+
+	local inner = ghost(
+		Vector3.new(0.14, 1.4, 1.4),
+		CFrame.new(origin + Vector3.new(0, 0.15, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(230, 250, 255),
+		Enum.PartType.Cylinder
+	)
+	inner.Transparency = 0.15
+	TweenService:Create(
+		inner,
+		TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.08, 4.8, 4.8), Transparency = 1 }
+	):Play()
+	Debris:AddItem(inner, 0.26)
+
+	SoundPlayer.play("doubleJump")
+end
+
 -- Role-tinted energy ring (and arcane orb for Support) while charging Heavy Attack.
 function Effects.startCharge(root: BasePart, classId: string?)
 	Effects.stopCharge()
@@ -904,6 +938,14 @@ end
 function Effects.classAbilityLocal(abilityId: string)
 	if abilityId == "execute" then
 		PlayerAnimator.playLocal("attack", Config.COMBO_HITS)
+	elseif
+		abilityId == "taunt"
+		or abilityId == "bulwark"
+		or abilityId == "healPulse"
+		or abilityId == "protectField"
+		or abilityId == "shockwave"
+	then
+		PlayerAnimator.playLocal(abilityId)
 	end
 end
 

@@ -242,7 +242,9 @@ and `lune run scripts/generate-models.luau`, mounted at `ReplicatedStorage.Model
 model anchors only `Body` and rigs limbs via `Group`-tagged `Motor6D` pivots so `EnemyService`
 updates `Body.CFrame` while `EnemyAnimator` drives walk/strafe/sprint, weapon-specific melee
 strikes, dual-blade DPS tornado spin (`spinPose` + danger disc), ranged gun recoil (single orb,
-double-burst orb, or 6-round minigun tracer lines), exploder fuse shake, muscular grabber
+double-burst orb, or 6-round minigun tracer lines), rifle charged rail-beam (`beamChargePose` +
+targeting laser guide + `beamFire` plasma blast checked via `Hitbox.inBeam`), ranged parabolic
+backstep evade leaps (`evadeJumpPose`, >=5 s cooldown), exploder fuse shake, muscular grabber
 windup/lunge/hold, and client death collapses at 60 FPS without Humanoids.
 
 - **Arena (`ComplexArena.rbxmx`):** industrial sci-fi sector room (140×140 studs, floor top at

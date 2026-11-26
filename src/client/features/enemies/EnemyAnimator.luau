@@ -11,8 +11,10 @@
 	so target-locking (`CombatInput`) never latches onto a collapsing enemy. See docs/combat.md.
 ]]
 
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
@@ -42,6 +44,8 @@ type Rig = {
 	strikeStartedAt: number,
 	fireStartedAt: number,
 	spinRing: Part?,
+	beamGuide: Part?,
+	beamOrb: Part?,
 }
 
 type DeathAnim = {
@@ -144,6 +148,14 @@ local function detachEnemy(inst: Instance)
 			rig.spinRing:Destroy()
 			rig.spinRing = nil
 		end
+		if rig.beamGuide then
+			rig.beamGuide:Destroy()
+			rig.beamGuide = nil
+		end
+		if rig.beamOrb then
+			rig.beamOrb:Destroy()
+			rig.beamOrb = nil
+		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
 		end
@@ -179,6 +191,8 @@ local function attachEnemy(inst: Instance)
 			strikeStartedAt = -math.huge,
 			fireStartedAt = -math.huge,
 			spinRing = nil,
+			beamGuide = nil,
+			beamOrb = nil,
 		}
 		for _, child in ipairs(body:GetChildren()) do
 			registerMotor(inst, body, rig, child)
@@ -200,6 +214,81 @@ local function attachEnemy(inst: Instance)
 		)
 		rigs[inst] = rig
 	end)
+end
+
+-- Renders the devastating rail-beam discharge (bright core + wide outer plasma sheath + muzzle flash).
+local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: number)
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	if flat.Magnitude < 1e-3 or length <= 0 then
+		return
+	end
+	local unit = flat.Unit
+	local mid = origin + unit * (length * 0.5)
+	local orient = CFrame.lookAt(mid, mid + unit)
+	local parent = getCorpseFolder()
+
+	local core = Instance.new("Part")
+	core.Name = "RailBeamCore"
+	core.Shape = Enum.PartType.Block
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.CanTouch = false
+	core.CastShadow = false
+	core.Material = Enum.Material.Neon
+	core.Color = Color3.fromRGB(235, 252, 255)
+	core.Transparency = 0
+	core.Size = Vector3.new(2.0, 2.0, length)
+	core.CFrame = orient
+	core.Parent = parent
+	TweenService:Create(
+		core,
+		TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.15, 0.15, length), Transparency = 1 }
+	):Play()
+	Debris:AddItem(core, 0.46)
+
+	local outer = Instance.new("Part")
+	outer.Name = "RailBeamHalo"
+	outer.Shape = Enum.PartType.Block
+	outer.Anchored = true
+	outer.CanCollide = false
+	outer.CanQuery = false
+	outer.CanTouch = false
+	outer.CastShadow = false
+	outer.Material = Enum.Material.Neon
+	outer.Color = Color3.fromRGB(55, 215, 255)
+	outer.Transparency = 0.28
+	outer.Size = Vector3.new(4.6, 3.8, length)
+	outer.CFrame = orient
+	outer.Parent = parent
+	TweenService:Create(
+		outer,
+		TweenInfo.new(0.44, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(6.4, 5.2, length), Transparency = 1 }
+	):Play()
+	Debris:AddItem(outer, 0.48)
+
+	local flash = Instance.new("Part")
+	flash.Name = "RailBeamMuzzle"
+	flash.Shape = Enum.PartType.Ball
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CanQuery = false
+	flash.CanTouch = false
+	flash.CastShadow = false
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(160, 240, 255)
+	flash.Transparency = 0.1
+	flash.Size = Vector3.one * 3.5
+	flash.Position = origin + unit * 2
+	flash.Parent = parent
+	TweenService:Create(
+		flash,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.one * 7.5, Transparency = 1 }
+	):Play()
+	Debris:AddItem(flash, 0.32)
 end
 
 local function spawnDeathCollapse(modelName: string, cframe: CFrame)
@@ -278,6 +367,10 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "spin" then
 			targetPose = EnemyAnim.spinPose(clock)
+		elseif phase == "evade" then
+			targetPose = EnemyAnim.evadeJumpPose(phaseProgress)
+		elseif phase == "beamCharge" then
+			targetPose = EnemyAnim.beamChargePose(clock, phaseProgress)
 		elseif phase == "lunge" then
 			targetPose = EnemyAnim.grabLungePose()
 		elseif phase == "fuse" then
@@ -294,6 +387,72 @@ local function onRenderStepped(dt: number)
 			end
 		else
 			targetPose = EnemyAnim.walkPose(rig.walkPhase, rig.speedFactor, rig.weapon, rig.kind)
+		end
+
+		-- Client-only targeting laser line + growing muzzle charge orb while overcharging rail-beam.
+		if phase == "beamCharge" then
+			local dirAttr = model:GetAttribute("BeamDir")
+			if typeof(dirAttr) == "Vector3" and dirAttr.Magnitude > 1e-3 then
+				local guide = rig.beamGuide
+				if not guide or not guide.Parent then
+					local line = Instance.new("Part")
+					line.Name = "EnemyBeamGuide"
+					line.Shape = Enum.PartType.Block
+					line.Anchored = true
+					line.CanCollide = false
+					line.CanQuery = false
+					line.CanTouch = false
+					line.CastShadow = false
+					line.Material = Enum.Material.Neon
+					line.Parent = getCorpseFolder()
+					rig.beamGuide = line
+					guide = line
+				end
+				local orb = rig.beamOrb
+				if not orb or not orb.Parent then
+					local ball = Instance.new("Part")
+					ball.Name = "EnemyBeamChargeOrb"
+					ball.Shape = Enum.PartType.Ball
+					ball.Anchored = true
+					ball.CanCollide = false
+					ball.CanQuery = false
+					ball.CanTouch = false
+					ball.CastShadow = false
+					ball.Material = Enum.Material.Neon
+					ball.Parent = getCorpseFolder()
+					rig.beamOrb = ball
+					orb = ball
+				end
+				local unit = Vector3.new(dirAttr.X, 0, dirAttr.Z).Unit
+				local rangeAttr = model:GetAttribute("BeamRange")
+				local range = if type(rangeAttr) == "number" and rangeAttr > 0 then rangeAttr else 65
+				local origin = Vector3.new(pos.X, 2.4, pos.Z)
+				local locked = model:GetAttribute("BeamLocked") == true
+				if guide then
+					local mid = origin + unit * (range * 0.5)
+					local thickness = if locked then 0.46 + 0.18 * math.abs(math.sin(clock * 36)) else 0.24 + phaseProgress * 0.22
+					guide.Size = Vector3.new(thickness, thickness, range)
+					guide.CFrame = CFrame.lookAt(mid, mid + unit)
+					guide.Color = if locked then Color3.fromRGB(255, 70, 70) else Color3.fromRGB(90, 235, 255)
+					guide.Transparency = if locked then 0.08 else 0.35 - phaseProgress * 0.22
+				end
+				if orb then
+					local sz = 0.7 + phaseProgress * 1.9 + 0.25 * math.sin(clock * 28)
+					orb.Size = Vector3.one * sz
+					orb.Position = origin + unit * 3.8
+					orb.Color = if locked then Color3.fromRGB(255, 120, 120) else Color3.fromRGB(160, 245, 255)
+					orb.Transparency = 0.12
+				end
+			end
+		else
+			if rig.beamGuide then
+				rig.beamGuide:Destroy()
+				rig.beamGuide = nil
+			end
+			if rig.beamOrb then
+				rig.beamOrb:Destroy()
+				rig.beamOrb = nil
+			end
 		end
 
 		-- Client-only crimson-magenta danger disc while a dual-blade enemy executes its DPS spin.
@@ -379,7 +538,7 @@ function EnemyAnimator.start()
 		end)
 	end)
 
-	Remotes.EnemyAnim.OnClientEvent:Connect(function(eventKind: string, arg1: any, _arg2: any, arg3: any)
+	Remotes.EnemyAnim.OnClientEvent:Connect(function(eventKind: string, arg1: any, arg2: any, arg3: any, arg4: any)
 		if eventKind == "strike" then
 			if typeof(arg1) == "Instance" and arg1:IsA("Model") then
 				local rig = rigs[arg1]
@@ -393,6 +552,16 @@ function EnemyAnimator.start()
 				if rig then
 					rig.fireStartedAt = os.clock()
 				end
+			end
+		elseif eventKind == "beamFire" then
+			if typeof(arg1) == "Instance" and arg1:IsA("Model") then
+				local rig = rigs[arg1]
+				if rig then
+					rig.fireStartedAt = os.clock()
+				end
+			end
+			if typeof(arg2) == "Vector3" and typeof(arg3) == "Vector3" and type(arg4) == "number" then
+				spawnBeamBlast(arg2, arg3, arg4)
 			end
 		elseif eventKind == "death" then
 			if type(arg1) == "string" and typeof(arg3) == "CFrame" then

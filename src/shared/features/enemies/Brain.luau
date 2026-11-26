@@ -11,10 +11,11 @@
 local Brain = {}
 
 -- chase: moving into position. windup: about to strike, spin, or grab, frozen and telegraphing.
--- spin: dual-blade melee whirling continuously for high DPS. lunge: grabber charging forward.
--- recover: just acted, frozen. fuse: the exploder is about to go off. spent: the exploder went off.
--- holding: the grabber is currently immobilising a player.
-export type Phase = "chase" | "windup" | "spin" | "lunge" | "recover" | "fuse" | "spent" | "holding"
+-- spin: dual-blade melee whirling continuously for high DPS. beamCharge: rifle ranged unit
+-- charging a devastating beam. evade: ranged unit leaping backward when a player closes in.
+-- lunge: grabber charging forward. recover: just acted, frozen. fuse: the exploder is about to
+-- go off. spent: the exploder went off. holding: the grabber is currently immobilising a player.
+export type Phase = "chase" | "windup" | "spin" | "beamCharge" | "evade" | "lunge" | "recover" | "fuse" | "spent" | "holding"
 
 export type State = {
 	phase: Phase,
@@ -23,11 +24,13 @@ export type State = {
 	nextSpinAt: number?,
 	nextSpinTickAt: number?,
 	pendingSpin: boolean?,
+	nextBeamAt: number?,
+	nextEvadeAt: number?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin",
-	action: ("strike" | "spinTick" | "fire" | "explode" | "grab" | "grabLunge" | "grabCheck")?,
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "evade",
+	action: ("strike" | "spinTick" | "fire" | "beamStart" | "beamFire" | "evade" | "explode" | "grab" | "grabLunge" | "grabCheck")?,
 }
 
 -- The fields of a kind this module reads. Config.ENEMY_KINDS entries carry more.
@@ -44,6 +47,14 @@ export type Kind = {
 	spinDuration: number?,
 	spinTickEvery: number?,
 	spinCooldown: number?,
+	canBeam: boolean?,
+	beamCharge: number?,
+	beamCooldown: number?,
+	beamRange: number?,
+	beamRecover: number?,
+	evadeTrigger: number?,
+	evadeDuration: number?,
+	evadeCooldown: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -63,6 +74,8 @@ function Brain.initial(now: number): State
 		nextSpinAt = now + 2.0,
 		nextSpinTickAt = 0,
 		pendingSpin = false,
+		nextBeamAt = now + 1.8,
+		nextEvadeAt = 0,
 	}
 end
 
@@ -72,7 +85,9 @@ local function with(
 	endsAt: number,
 	nextSpinAt: number?,
 	nextSpinTickAt: number?,
-	pendingSpin: boolean?
+	pendingSpin: boolean?,
+	nextBeamAt: number?,
+	nextEvadeAt: number?
 ): State
 	return {
 		phase = phase,
@@ -81,6 +96,8 @@ local function with(
 		nextSpinAt = if nextSpinAt ~= nil then nextSpinAt else state.nextSpinAt,
 		nextSpinTickAt = if nextSpinTickAt ~= nil then nextSpinTickAt else state.nextSpinTickAt,
 		pendingSpin = if pendingSpin ~= nil then pendingSpin else false,
+		nextBeamAt = if nextBeamAt ~= nil then nextBeamAt else state.nextBeamAt,
+		nextEvadeAt = if nextEvadeAt ~= nil then nextEvadeAt else state.nextEvadeAt,
 	}
 end
 
@@ -129,6 +146,51 @@ local function melee(kind: Kind, state: State, distance: number, now: number, ca
 end
 
 local function ranged(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
+	if state.phase == "evade" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "evade" }
+	end
+	if state.phase == "beamCharge" then
+		if now >= state.endsAt then
+			local beamCooldown = kind.beamCooldown or 7.5
+			local beamRecover = kind.beamRecover or 1.05
+			return with(state, "recover", now + beamRecover, nil, nil, false, now + beamCooldown),
+				{ move = "hold", action = "beamFire" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	-- Emergency backstep leap when a player closes too tightly (minimum 5 s cooldown).
+	local evadeTrigger = kind.evadeTrigger or 0
+	local evadeDuration = kind.evadeDuration or 0
+	if evadeTrigger > 0 and evadeDuration > 0 and distance <= evadeTrigger and now >= (state.nextEvadeAt or 0) then
+		local evadeCooldown = math.max(kind.evadeCooldown or 5.5, 5.0)
+		return with(state, "evade", now + evadeDuration, nil, nil, false, nil, now + evadeCooldown),
+			{ move = "evade", action = "evade" }
+	end
+
+	-- Rifle / plasma specialists periodically overcharge a devastating rail-beam from range.
+	-- Not blocked by orb-volley stagger (`canAttack`) because the 1.4 s laser telegraph already
+	-- gives the player clear reaction time.
+	local beamRange = kind.beamRange or ((kind.keepAway or 28) * Brain.FIRE_REACH)
+	if
+		kind.canBeam == true
+		and now >= (state.nextBeamAt or 0)
+		and distance <= beamRange
+		and distance > evadeTrigger
+	then
+		local chargeTime = kind.beamCharge or 1.4
+		return with(state, "beamCharge", now + chargeTime), { move = "hold", action = "beamStart" }
+	end
+
 	local keepAway = kind.keepAway or 0
 	local move: "toward" | "away" | "hold" = "hold"
 	if distance < keepAway * Brain.TOO_CLOSE then
@@ -137,7 +199,16 @@ local function ranged(kind: Kind, state: State, distance: number, now: number, c
 		move = "toward"
 	end
 	if canAttack and now >= state.nextFireAt and distance <= keepAway * Brain.FIRE_REACH then
-		local fired = { phase = state.phase, endsAt = state.endsAt, nextFireAt = now + (kind.fireEvery or 1) }
+		local fired = {
+			phase = state.phase,
+			endsAt = state.endsAt,
+			nextFireAt = now + (kind.fireEvery or 1),
+			nextSpinAt = state.nextSpinAt,
+			nextSpinTickAt = state.nextSpinTickAt,
+			pendingSpin = state.pendingSpin,
+			nextBeamAt = state.nextBeamAt,
+			nextEvadeAt = state.nextEvadeAt,
+		}
 		return fired, { move = move, action = "fire" }
 	end
 	return state, { move = move }
@@ -330,6 +401,40 @@ function Brain.selfTest()
 	-- Ranged enemy respects volley stagger gate (`canAttack = false`) without firing.
 	local rHold, rHoldIntent = Brain.step("ranged", { keepAway = 28, fireEvery = 1.6 }, Brain.initial(0), 25, 2, false)
 	assert(is(rHoldIntent.action, nil) and rHold.nextFireAt == 1, "ranged waits for stagger turn before firing")
+
+	-- Ranged evade backstep leap with >= 5 s cooldown.
+	local evadeRanged: Kind = { keepAway = 28, fireEvery = 1.6, evadeTrigger = 11, evadeDuration = 0.34, evadeCooldown = 5.5 }
+	local re: any = Brain.initial(0)
+	re, intent = Brain.step("ranged", evadeRanged, re, 9, 1)
+	assert(is(re.phase, "evade") and is(intent.action, "evade") and is(intent.move, "evade"), "ranged leaps back when player gets too close")
+	re, intent = Brain.step("ranged", evadeRanged, re, 15, 1.2)
+	assert(is(re.phase, "evade") and is(intent.move, "evade"), "ranged stays in evade across jump duration")
+	re, intent = Brain.step("ranged", evadeRanged, re, 15, 1.4)
+	assert(is(re.phase, "chase"), "ranged finishes evade leap cleanly")
+	-- Trying to trigger evade again after only 3 s (< 5 s cooldown) must NOT evade.
+	re, intent = Brain.step("ranged", evadeRanged, re, 8, 4.0)
+	assert(not is(re.phase, "evade") and is(intent.move, "away"), "ranged respects >= 5 s evade cooldown")
+	re, intent = Brain.step("ranged", evadeRanged, re, 8, 6.6)
+	assert(is(re.phase, "evade") and is(intent.action, "evade"), "ranged can evade again after cooldown")
+
+	-- Rifle charged rail-beam: charges -> fires beam -> enters recover -> waits cooldown.
+	local beamRifle: Kind = {
+		keepAway = 28,
+		fireEvery = 1.6,
+		canBeam = true,
+		beamCharge = 1.4,
+		beamCooldown = 7.5,
+		beamRange = 55,
+		beamRecover = 1.05,
+		evadeTrigger = 11,
+	}
+	local rb: any = Brain.initial(0)
+	rb, intent = Brain.step("ranged", beamRifle, rb, 30, 3.2)
+	assert(is(rb.phase, "beamCharge") and is(intent.action, "beamStart") and is(intent.move, "hold"), "rifle starts charging beam")
+	rb, intent = Brain.step("ranged", beamRifle, rb, 30, 4.0)
+	assert(is(rb.phase, "beamCharge") and is(intent.action, nil), "rifle holds during charge")
+	rb, intent = Brain.step("ranged", beamRifle, rb, 30, 4.7)
+	assert(is(rb.phase, "recover") and is(intent.action, "beamFire"), "rifle unleashes devastating beam after charge")
 
 	local rangedKind: Kind = { keepAway = 28, fireEvery = 1.6 }
 	local r: any = Brain.initial(0)

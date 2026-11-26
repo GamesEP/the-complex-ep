@@ -25,6 +25,39 @@ function Hitbox.inEllipsoid(origin: Vector3, target: Vector3, horizontalRadius: 
 	return horiz + vert <= 1 + 1e-6
 end
 
+-- True when `target` lies inside a horizontal energy beam starting at `origin`, extending along
+-- flat `direction` for `length` studs, with elliptical cross-section (`horizontalRadius` x `verticalRadius`).
+function Hitbox.inBeam(
+	origin: Vector3,
+	direction: Vector3,
+	length: number,
+	target: Vector3,
+	horizontalRadius: number,
+	verticalRadius: number
+): boolean
+	if length <= 0 or horizontalRadius <= 0 or verticalRadius <= 0 then
+		return false
+	end
+	local flatDir = Vector3.new(direction.X, 0, direction.Z)
+	if flatDir.Magnitude < 1e-3 then
+		return false
+	end
+	local unit = flatDir.Unit
+	local rx = target.X - origin.X
+	local rz = target.Z - origin.Z
+	local along = rx * unit.X + rz * unit.Z
+	if along < 0 or along > length then
+		return false
+	end
+	local perpX = rx - unit.X * along
+	local perpZ = rz - unit.Z * along
+	local perpSq = perpX * perpX + perpZ * perpZ
+	local dy = target.Y - origin.Y
+	local horiz = perpSq / (horizontalRadius * horizontalRadius)
+	local vert = (dy * dy) / (verticalRadius * verticalRadius)
+	return horiz + vert <= 1 + 1e-6
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -60,6 +93,16 @@ function Hitbox.selfTest()
 	assert(Hitbox.inEllipsoid(Vector3.zero, Vector3.new(0, 7, 0), 10, 7), "exact vertical apex counts as hit")
 	assert(not Hitbox.inEllipsoid(Vector3.zero, Vector3.zero, 0, 7), "zero horizontal radius never hits")
 	assert(not Hitbox.inEllipsoid(Vector3.zero, Vector3.zero, 10, -1), "negative vertical radius never hits")
+
+	-- Charged rail-beam volume (origin Y=2.4, length=55 along -Z, radius=2.4, height=3.2).
+	local beamOrigin = Vector3.new(0, 2.4, 0)
+	local beamDir = Vector3.new(0, 0, -1)
+	assert(Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 3, -25), 2.4, 3.2), "player on beam centerline is hit")
+	assert(Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(2.0, 3, -40), 2.4, 3.2), "player inside beam width is hit")
+	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(4.0, 3, -25), 2.4, 3.2), "sidestepped player dodges beam")
+	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 3, 5), 2.4, 3.2), "behind shooter is never hit")
+	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 3, -60), 2.4, 3.2), "beyond beam range is never hit")
+	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 6.5, -25), 2.4, 3.2), "high jump clears beam")
 end
 
 return Hitbox

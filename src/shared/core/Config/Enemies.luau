@@ -16,7 +16,7 @@ export type EnemyVariant = {
 	spinRadius: number?,
 	spinCooldown: number?,
 	spinMoveFactor: number?,
-	-- Ranged burst / tracer-line fire overrides.
+	-- Ranged burst / tracer-line / charged rail-beam fire overrides.
 	burstCount: number?,
 	burstInterval: number?,
 	burstSpreadDeg: number?,
@@ -24,6 +24,15 @@ export type EnemyVariant = {
 	projectileStyle: ("orb" | "tracer")?,
 	projectileSpeed: number?,
 	projectileDamage: number?,
+	canBeam: boolean?,
+	beamCharge: number?,
+	beamLockTime: number?,
+	beamCooldown: number?,
+	beamDamage: number?,
+	beamRange: number?,
+	beamRadius: number?,
+	beamHeight: number?,
+	beamRecover: number?,
 }
 
 export type EnemyKind = {
@@ -48,6 +57,11 @@ export type EnemyKind = {
 	fireEvery: number?,
 	projectileSpeed: number?,
 	projectileLife: number?,
+	evadeTrigger: number?,
+	evadeDuration: number?,
+	evadeDistance: number?,
+	evadeArcHeight: number?,
+	evadeCooldown: number?,
 	-- exploder
 	trigger: number?,
 	fuse: number?,
@@ -87,13 +101,29 @@ Config.ENEMY_KINDS = {
 		recover = 0.8,
 		damage = 10,
 	},
-	-- Holds its distance and shoots across 4 weapon variants: standard plasma rifle, double-burst
-	-- shotgun & plasma cannon (2 shots per attack), and an occasional heavy minigun firing rapid
-	-- ballistic tracer lines.
+	-- Holds its distance and shoots across 4 weapon variants: rifle (can overcharge a devastating
+	-- rail-beam), double-burst shotgun & plasma cannon (2 shots per attack), and an occasional
+	-- heavy minigun firing rapid ballistic tracer lines. All ranged units backstep-leap away when
+	-- a player closes within `evadeTrigger` (at least 5 s cooldown).
 	ranged = {
 		model = "EnemyRanged",
 		variants = {
-			{ model = "EnemyRanged", weapon = "rifle", weight = 3, burstCount = 1, projectileStyle = "orb" },
+			{
+				model = "EnemyRanged",
+				weapon = "rifle",
+				weight = 4,
+				burstCount = 1,
+				projectileStyle = "orb",
+				canBeam = true,
+				beamCharge = 1.4,
+				beamLockTime = 0.4,
+				beamCooldown = 5.5,
+				beamDamage = 32,
+				beamRange = 65,
+				beamRadius = 2.6,
+				beamHeight = 3.4,
+				beamRecover = 1.0,
+			},
 			{
 				model = "EnemyRangedShotgun",
 				weapon = "shotgun",
@@ -111,6 +141,15 @@ Config.ENEMY_KINDS = {
 				burstInterval = 0.18,
 				burstSpreadDeg = 2,
 				projectileStyle = "orb",
+				canBeam = true,
+				beamCharge = 1.5,
+				beamLockTime = 0.4,
+				beamCooldown = 6.5,
+				beamDamage = 28,
+				beamRange = 50,
+				beamRadius = 2.6,
+				beamHeight = 3.4,
+				beamRecover = 1.1,
 			},
 			{
 				model = "EnemyRangedMinigun",
@@ -134,6 +173,11 @@ Config.ENEMY_KINDS = {
 		projectileSpeed = 45,
 		projectileLife = 2.5,
 		damage = 8,
+		evadeTrigger = 11,
+		evadeDuration = 0.34,
+		evadeDistance = 20,
+		evadeArcHeight = 5.5,
+		evadeCooldown = 5.5,
 	},
 	-- The dangerous one: fast, fragile, and lethal if ignored — carries strapped C4 and TNT sticks.
 	-- Its blast is a flattened oval (`blastHeight < blastRadius`) so jumping near the outer rim

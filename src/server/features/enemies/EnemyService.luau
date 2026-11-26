@@ -60,6 +60,12 @@ export type Enemy = {
 	lungeDirection: Vector3?,
 	burstLeft: number,
 	nextBurstAt: number,
+	beamDirection: Vector3?,
+	beamLocked: boolean,
+	evadeOrigin: Vector3?,
+	evadeTarget: Vector3?,
+	evadeStartedAt: number,
+	evadeDuration: number,
 }
 
 type Projectile = {
@@ -463,19 +469,29 @@ local function stepEnemy(
 	local body = enemy.body
 	local position = body.Position
 	if not target then
-		-- Cancel any in-progress windup/spin/lunge/fuse/burst so an ignored enemy cannot fire an
-		-- instant buffered strike, spin, grab, burst, or blast the frame the player breaks free.
+		-- Cancel any in-progress windup/spin/beamCharge/evade/lunge/fuse/burst so an ignored
+		-- enemy cannot fire a buffered attack or hover mid-air when all players are grabbed.
 		enemy.burstLeft = 0
 		if
 			enemy.state.phase == "windup"
 			or enemy.state.phase == "spin"
+			or enemy.state.phase == "beamCharge"
+			or enemy.state.phase == "evade"
 			or enemy.state.phase == "lunge"
 			or enemy.state.phase == "fuse"
 		then
 			enemy.state = Brain.initial(t)
 			enemy.lungeDirection = nil
+			enemy.beamDirection = nil
+			enemy.beamLocked = false
+			enemy.model:SetAttribute("BeamDir", nil)
+			enemy.model:SetAttribute("BeamLocked", false)
 			setTelegraph(enemy, false)
 			syncPhase(enemy, t)
+		end
+		local baseY = enemy.spec.size.Y / 2
+		if math.abs(position.Y - baseY) > 0.05 then
+			position = Vector3.new(position.X, baseY, position.Z)
 		end
 		-- Keep prowling around the room while steering clear of grabbed players instead of
 		-- freezing like statues when playing solo (or when every teammate is grabbed).
@@ -527,9 +543,20 @@ local function stepEnemy(
 	if state.phase ~= before then
 		setTelegraph(
 			enemy,
-			state.phase == "windup" or state.phase == "spin" or state.phase == "lunge" or state.phase == "fuse"
+			state.phase == "windup"
+				or state.phase == "spin"
+				or state.phase == "beamCharge"
+				or state.phase == "lunge"
+				or state.phase == "fuse"
 		)
 		syncPhase(enemy, t)
+		if before == "evade" then
+			-- Ensure ground elevation snaps cleanly to exact floor height on landing.
+			local baseY = enemy.spec.size.Y / 2
+			if math.abs(position.Y - baseY) > 0.01 then
+				position = Vector3.new(position.X, baseY, position.Z)
+			end
+		end
 		if state.phase == "windup" then
 			if enemy.kind == "grabber" then
 				Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
@@ -541,6 +568,8 @@ local function stepEnemy(
 			end
 		elseif state.phase == "spin" then
 			Remotes.CombatSfx:FireAllClients("playerSpin", position)
+		elseif state.phase == "beamCharge" then
+			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
 		elseif state.phase == "fuse" then
 			Remotes.CombatSfx:FireAllClients("enemyExploderFuse", position)
 		end
@@ -622,6 +651,73 @@ local function stepEnemy(
 				return
 			end
 		end
+	elseif intent.action == "beamStart" then
+		local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local dir = if toTarget.Magnitude > 1e-3 then toTarget.Unit else Vector3.new(0, 0, -1)
+		enemy.beamDirection = dir
+		enemy.beamLocked = false
+		enemy.model:SetAttribute("BeamDir", dir)
+		enemy.model:SetAttribute("BeamLocked", false)
+		enemy.model:SetAttribute("BeamRange", enemy.spec.beamRange or 55)
+	elseif intent.action == "beamFire" then
+		local dir = enemy.beamDirection
+		if not dir or dir.Magnitude < 1e-3 then
+			local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+			dir = if toTarget.Magnitude > 1e-3 then toTarget.Unit else Vector3.new(0, 0, -1)
+		end
+		local beamOrigin = Vector3.new(position.X, 2.4, position.Z)
+		local beamRange = enemy.spec.beamRange or 55
+		local beamRadius = enemy.spec.beamRadius or 2.4
+		local beamHeight = enemy.spec.beamHeight or 3.2
+		local beamDamage = enemy.spec.beamDamage or 32
+
+		enemy.beamDirection = nil
+		enemy.beamLocked = false
+		enemy.model:SetAttribute("BeamDir", nil)
+		enemy.model:SetAttribute("BeamLocked", false)
+		lastRangedShotAt[target.player] = t
+
+		Remotes.EnemyAnim:FireAllClients("beamFire", enemy.model, beamOrigin, dir, beamRange)
+		Remotes.CombatSfx:FireAllClients("playerHeavyAttack", position)
+		for _, candidate in ipairs(list) do
+			if Hitbox.inBeam(beamOrigin, dir, beamRange, candidate.root.Position, beamRadius, beamHeight) then
+				hurt(candidate.player, beamDamage, { canBlock = true, canParry = false })
+			end
+		end
+	elseif intent.action == "evade" then
+		-- Fast backstep leap away from a close player. If backed into a wall/corner, pick the
+		-- clearest lateral escape path along the room edge so the unit never leaps into a wall.
+		enemy.burstLeft = 0
+		local away = Vector3.new(position.X - target.root.Position.X, 0, position.Z - target.root.Position.Z)
+		local awayUnit = if away.Magnitude > 1e-3 then away.Unit else Vector3.new(0, 0, 1)
+		local side = Vector3.new(-awayUnit.Z * enemy.orbitSign, 0, awayUnit.X * enemy.orbitSign)
+		local leapDist = enemy.spec.evadeDistance or 20
+		local baseY = enemy.spec.size.Y / 2
+
+		local candidates = {
+			(awayUnit + side * 0.28).Unit,
+			(awayUnit - side * 0.28).Unit,
+			(side + awayUnit * 0.2).Unit,
+			(-side + awayUnit * 0.2).Unit,
+		}
+		local bestLanding = Waves.clamp(position + candidates[1] * leapDist, Config.ROOM_SIZE, WALL_MARGIN)
+		local bestClearance = Vector3.new(bestLanding.X - position.X, 0, bestLanding.Z - position.Z).Magnitude
+		if bestClearance < leapDist * 0.55 then
+			for i = 2, #candidates do
+				local landing = Waves.clamp(position + candidates[i] * leapDist, Config.ROOM_SIZE, WALL_MARGIN)
+				local clearance = Vector3.new(landing.X - position.X, 0, landing.Z - position.Z).Magnitude
+				if clearance > bestClearance then
+					bestClearance = clearance
+					bestLanding = landing
+				end
+			end
+		end
+
+		enemy.evadeOrigin = Vector3.new(position.X, baseY, position.Z)
+		enemy.evadeTarget = Vector3.new(bestLanding.X, baseY, bestLanding.Z)
+		enemy.evadeStartedAt = t
+		enemy.evadeDuration = enemy.spec.evadeDuration or 0.34
+		Remotes.CombatSfx:FireAllClients("playerDash", position)
 	elseif intent.action == "fire" then
 		lastRangedShotAt[target.player] = t
 		local burstCount = enemy.spec.burstCount or 1
@@ -646,7 +742,42 @@ local function stepEnemy(
 	local direction = Vector3.zero
 	local speedScale = 1
 	local isLunging = intent.move == "lunge"
-	if isLunging then
+	if intent.move == "evade" and enemy.evadeOrigin and enemy.evadeTarget then
+		-- Parabolic backstep leap: fast horizontal ease-out + real aerial jump arc, facing the player.
+		local dur = math.max(enemy.evadeDuration, 0.05)
+		local u = math.clamp((t - enemy.evadeStartedAt) / dur, 0, 1)
+		local ease = 1 - (1 - u) * (1 - u)
+		local arcHeight = enemy.spec.evadeArcHeight or 5.5
+		local baseY = enemy.spec.size.Y / 2
+		local leapPos = Vector3.new(
+			enemy.evadeOrigin.X + (enemy.evadeTarget.X - enemy.evadeOrigin.X) * ease,
+			baseY + 4 * arcHeight * u * (1 - u),
+			enemy.evadeOrigin.Z + (enemy.evadeTarget.Z - enemy.evadeOrigin.Z) * ease
+		)
+		local look = Vector3.new(target.root.Position.X, leapPos.Y, target.root.Position.Z)
+		local nextCFrame = if (look - leapPos).Magnitude > 1e-3 then CFrame.lookAt(leapPos, look) else CFrame.new(leapPos)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, leapPos.X, leapPos.Z)
+		return
+	elseif enemy.state.phase == "beamCharge" then
+		-- Track the player during early charge, then lock aim for the final `beamLockTime` so the
+		-- player can react with a lateral Dash or jump.
+		local lockWindow = enemy.spec.beamLockTime or 0.4
+		if not enemy.beamLocked then
+			if state.endsAt - t <= lockWindow then
+				enemy.beamLocked = true
+				enemy.model:SetAttribute("BeamLocked", true)
+			elseif toward.Magnitude > 1e-3 then
+				enemy.beamDirection = toward.Unit
+				enemy.model:SetAttribute("BeamDir", enemy.beamDirection)
+			end
+		end
+		local aimDir = enemy.beamDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
+		local baseY = enemy.spec.size.Y / 2
+		local standPos = Vector3.new(position.X, baseY, position.Z)
+		moveEnemy(enemy, CFrame.lookAt(standPos, standPos + aimDir))
+		return
+	elseif isLunging then
 		local chargeDir = enemy.lungeDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
 		local lungeSpeed = enemy.spec.lungeSpeed or (enemy.spec.speed * 3.5)
 		local moved = Waves.clamp(position + chargeDir * lungeSpeed * dt, Config.ROOM_SIZE, WALL_MARGIN)
@@ -1128,6 +1259,12 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		lungeDirection = nil,
 		burstLeft = 0,
 		nextBurstAt = 0,
+		beamDirection = nil,
+		beamLocked = false,
+		evadeOrigin = nil,
+		evadeTarget = nil,
+		evadeStartedAt = 0,
+		evadeDuration = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder

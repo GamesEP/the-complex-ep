@@ -263,6 +263,37 @@ function EnemyAnim.spinPose(clock: number): LimbPose
 	}
 end
 
+-- Rifle maximum-power beam charge stance: braced wide footing with rifle held dead level while
+-- trembling faster as energy approaches full charge.
+function EnemyAnim.beamChargePose(clock: number, progress: number): LimbPose
+	local p = clamp01(progress)
+	local vib = math.sin(clock * (24 + p * 30)) * (0.015 + p * 0.045)
+	return {
+		torso = CFrame.new(0, -0.1 * p, 0.14 * p) * CFrame.Angles(0.08 * p, -0.18 + vib, vib * 0.5),
+		head = CFrame.new(0, -0.08 * p, 0.1 * p) * CFrame.Angles(-0.04 * p, 0.18 - vib, 0),
+		leftLeg = CFrame.Angles(0.28 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(-0.34 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(0.18 * p + vib, 0.24 * p, 0),
+		rightArm = CFrame.Angles(0.12 * p - vib, -0.08 * p, vib),
+	}
+end
+
+-- Acrobat backstep evade leap for ranged units escaping a close player: pushes off backward,
+-- tucks knees mid-air while keeping the weapon trained ahead, then braces for landing.
+function EnemyAnim.evadeJumpPose(progress: number): LimbPose
+	local u = clamp01(progress)
+	local air = math.sin(math.pi * u)
+	local leanBack = 0.36 * air
+	return {
+		torso = CFrame.new(0, 0.12 * air, 0) * CFrame.Angles(leanBack, -0.14 * air, 0),
+		head = CFrame.Angles(-leanBack * 0.65, 0.14 * air, 0),
+		leftLeg = CFrame.Angles(0.85 * air, 0, -0.12 * air),
+		rightLeg = CFrame.Angles(0.55 * air, 0, 0.12 * air),
+		leftArm = CFrame.Angles(-0.25 * air, 0.2 * air, -0.35 * air),
+		rightArm = CFrame.Angles(-0.18 * air, -0.1 * air, 0.22 * air),
+	}
+end
+
 -- Ranged weapon recoil pose (`progress` in [0, 1]): crisp barrel kick upward & backward on fire.
 function EnemyAnim.firePose(progress: number, weapon: string?): LimbPose
 	local u = clamp01(progress)
@@ -385,10 +416,14 @@ function EnemyAnim.selfTest()
 	assert(root1.Position.Z > root0.Position.Z + 1, "death collapse knocks body backward")
 	assert(limbs1.rightArm ~= CFrame.identity and fade0 == 0 and fade1 == 1, "death splays limbs and fades out")
 
-	-- Dual-blade tornado spin, ranged recoil, exploder fuse, and grabber windup/lunge/hold animations.
+	-- Dual-blade tornado spin, ranged beam charge, evade leap, recoil, exploder fuse, and grabber poses.
 	local spA = EnemyAnim.spinPose(0)
 	local spB = EnemyAnim.spinPose(0.1)
 	assert(spA.rightArm ~= spB.rightArm and spA.leftArm ~= spB.leftArm, "dual spin whirls both arms continuously")
+	local bm = EnemyAnim.beamChargePose(1.2, 0.9)
+	assert(bm.leftLeg ~= CFrame.identity and bm.torso.Position.Z > 0.05, "beam charge braces torso and legs")
+	local ev = EnemyAnim.evadeJumpPose(0.5)
+	assert(ev.leftLeg ~= CFrame.identity and ev.torso ~= CFrame.identity, "evade jump tucks legs and leans back mid-air")
 	local rKick = EnemyAnim.firePose(0.25, "shotgun")
 	assert(rKick.rightArm ~= CFrame.identity and rKick.torso.Position.Z > 0.05, "ranged fire kicks weapon and torso back")
 	local fPose = EnemyAnim.fusePose(1.5, 0.8)

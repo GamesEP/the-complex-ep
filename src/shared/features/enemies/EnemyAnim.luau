@@ -383,6 +383,35 @@ function EnemyAnim.grabLungePose(): LimbPose
 	}
 end
 
+-- Grabber rush windup (`progress` in [0, 1]): drops low and lowers its right shoulder like a bull,
+-- one foot scraping the floor. Deliberately unlike the grab windup (which coils the arms back to
+-- reach), so the two attacks — answered differently — are told apart at a glance.
+function EnemyAnim.rushWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local scrape = math.sin(clock * 14) * 0.35 * p
+	return {
+		torso = CFrame.new(0, -0.42 * p, 0.08 * p) * CFrame.Angles(-0.32 * p, 0.3 * p, 0),
+		head = CFrame.new(0, -0.15 * p, -0.1 * p) * CFrame.Angles(0.3 * p, -0.2 * p, 0),
+		leftLeg = CFrame.Angles(0.45 * p, 0, -0.1 * p),
+		rightLeg = CFrame.Angles(-0.35 * p + scrape, 0, 0.1 * p),
+		leftArm = CFrame.Angles(0.35 * p, 0.2 * p, -0.3 * p),
+		rightArm = CFrame.Angles(0.55 * p, -0.25 * p, 0.2 * p),
+	}
+end
+
+-- Grabber rush: shoulder-first charge, arms tucked and legs driving on a fast stride.
+function EnemyAnim.rushPose(clock: number): LimbPose
+	local stride = math.sin(clock * 22)
+	return {
+		torso = CFrame.new(0, -0.3, -0.25) * CFrame.Angles(-0.5, 0.35, 0),
+		head = CFrame.new(0, -0.12, -0.2) * CFrame.Angles(0.38, -0.25, 0),
+		leftLeg = CFrame.Angles(0.75 * stride, 0, 0),
+		rightLeg = CFrame.Angles(-0.75 * stride, 0, 0),
+		leftArm = CFrame.Angles(0.45, 0.35, -0.2),
+		rightArm = CFrame.Angles(0.85, -0.3, 0.15),
+	}
+end
+
 -- Continuous squeezing pose while the muscular grabber holds a trapped player in its front claws.
 function EnemyAnim.grabHoldPose(clock: number): LimbPose
 	local squeeze = 0.5 + 0.5 * math.sin(clock * 8.5)
@@ -479,6 +508,11 @@ function EnemyAnim.selfTest()
 	local gHoldA = EnemyAnim.grabHoldPose(0)
 	local gHoldB = EnemyAnim.grabHoldPose(0.2)
 	assert(gWind.leftArm ~= gLunge.leftArm and gLunge.torso.Position.Z < -0.1, "grabber lunge leans forward reaching out")
+	local rWind = EnemyAnim.rushWindupPose(1, 0)
+	assert(rWind.torso.Position.Y < -0.3, "rush windup drops low")
+	assert(rWind.torso ~= gWind.torso and rWind.leftArm ~= gWind.leftArm, "rush windup reads differently from the grab windup")
+	assert(EnemyAnim.rushPose(0).torso.Position.Z < -0.1, "the rush leans into the charge")
+	assert(EnemyAnim.rushPose(0).leftLeg ~= EnemyAnim.rushPose(0.07).leftLeg, "the rush legs keep striding")
 	assert(gHoldA.leftArm ~= gHoldB.leftArm, "grabber hold pulses squeezing arms continuously")
 
 	for _, name in ipairs(GROUPS) do

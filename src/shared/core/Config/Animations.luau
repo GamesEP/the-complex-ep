@@ -54,7 +54,7 @@ Config.ANIMATIONS = {
 		blendIn = 0.08,
 		blendOut = 0.28,
 	},
-	-- Charged 3-second heavy attack: massive full-body lunge and crushing cleave.
+	-- Charged heavy attack: massive full-body lunge and crushing cleave.
 	heavyAttack = {
 		duration = 0.52,
 		priority = 4,

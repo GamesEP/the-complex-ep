@@ -15,6 +15,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
+local Classes = require(Shared.features.classes.Classes)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -32,12 +33,6 @@ local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState" }
 
 local HEALTH_COLOR = Color3.fromRGB(220, 44, 54)
 local HEALTH_HIGHLIGHT = Color3.fromRGB(255, 110, 115)
-local SPIN_COLOR = Color3.fromRGB(255, 200, 90)
-local SPIN_DIM_COLOR = Color3.fromRGB(130, 115, 85)
-local STINGER_COLOR = Color3.fromRGB(255, 105, 65)
-local STINGER_DIM_COLOR = Color3.fromRGB(135, 85, 72)
-local OVERDRIVE_COLOR = Color3.fromRGB(225, 85, 255)
-local OVERDRIVE_DIM_COLOR = Color3.fromRGB(120, 75, 138)
 local SLOT_STROKE_DIM = Color3.fromRGB(72, 78, 96)
 local SLOT_STROKE_SELECTED = Color3.fromRGB(255, 255, 255)
 local DAMAGE_BUFF_COLOR = Color3.fromRGB(255, 105, 60)
@@ -187,6 +182,25 @@ local function buildAbilityEmblem(kind: string, tileSize: number, accentColor: a
 				BorderSizePixel = 0,
 			}, {
 				Circle = React.createElement("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			}),
+		}
+	end
+
+	-- Abilities that came with the classes have no bespoke emblem yet: their glyph, large.
+	local classAbility = Config.ABILITIES[kind]
+	if classAbility and classAbility.glyph then
+		return {
+			Glyph = React.createElement("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				Font = ui.TITLE_FONT,
+				TextSize = math.round(tileSize * 0.52),
+				TextColor3 = accentColor,
+				TextStrokeTransparency = 0.4,
+				Text = classAbility.glyph,
+				ZIndex = 3,
 			}),
 		}
 	end
@@ -472,14 +486,18 @@ local function CombatHud(props)
 	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
 	local room = hooks.useAttributes(props.world, ROOM_ATTRIBUTES)
 	local activeSlot = hooks.useAtom(AbilityStore.slot)
+	local classIdValue = hooks.useAttribute(player, "Class")
+	local classId = if type(classIdValue) == "string" and classIdValue ~= "" then classIdValue else nil
 
 	-- Per frame, so bindings: React writes the bars and icon fills without re-rendering the screen.
-	local spinCharge, setSpinCharge = React.useBinding(1)
-	local spinRemaining, setSpinRemaining = React.useBinding(0)
-	local stingerCharge, setStingerCharge = React.useBinding(1)
-	local stingerRemaining, setStingerRemaining = React.useBinding(0)
-	local overDriveCharge, setOverDriveCharge = React.useBinding(1)
-	local overDriveRemaining, setOverDriveRemaining = React.useBinding(0)
+	-- One pair per slot, written explicitly rather than in a loop (CLAUDE.md: a hook call in a
+	-- loop is one waiting to be skipped). The slots show whatever the class has in them.
+	local slot1Charge, setSlot1Charge = React.useBinding(1)
+	local slot1Remaining, setSlot1Remaining = React.useBinding(0)
+	local slot2Charge, setSlot2Charge = React.useBinding(1)
+	local slot2Remaining, setSlot2Remaining = React.useBinding(0)
+	local slot3Charge, setSlot3Charge = React.useBinding(1)
+	local slot3Remaining, setSlot3Remaining = React.useBinding(0)
 	local damageBuff, setDamageBuff = React.useBinding(0)
 	local speedBuff, setSpeedBuff = React.useBinding(0)
 	local defenseBuff, setDefenseBuff = React.useBinding(0)
@@ -487,17 +505,21 @@ local function CombatHud(props)
 	local stunRemaining, setStunRemaining = React.useBinding(0)
 	hooks.useSignal(RunService.Heartbeat, function()
 		local now = workspace:GetServerTimeNow()
-		local spinReadyAt = player:GetAttribute("SpinReadyAt")
-		setSpinCharge(charge(spinReadyAt, Config.SPIN_COOLDOWN, now))
-		setSpinRemaining(remainingSeconds(spinReadyAt, now))
-
-		local stingerReadyAt = player:GetAttribute("StingerReadyAt")
-		setStingerCharge(charge(stingerReadyAt, Config.STINGER_COOLDOWN, now))
-		setStingerRemaining(remainingSeconds(stingerReadyAt, now))
-
-		local overDriveReadyAt = player:GetAttribute("OverDriveReadyAt")
-		setOverDriveCharge(charge(overDriveReadyAt, Config.OVERDRIVE_COOLDOWN, now))
-		setOverDriveRemaining(remainingSeconds(overDriveReadyAt, now))
+		local currentClass = player:GetAttribute("Class")
+		local setters = {
+			{ setSlot1Charge, setSlot1Remaining },
+			{ setSlot2Charge, setSlot2Remaining },
+			{ setSlot3Charge, setSlot3Remaining },
+		}
+		for slot, pair in ipairs(setters) do
+			local abilityId = Classes.abilityAt(if type(currentClass) == "string" then currentClass else nil, slot)
+			local ability = abilityId and Config.ABILITIES[abilityId]
+			if ability then
+				local readyAt = player:GetAttribute(ability.readyAttribute)
+				pair[1](charge(readyAt, ability.cooldown, now))
+				pair[2](remainingSeconds(readyAt, now))
+			end
+		end
 
 		setDamageBuff(Drops.buffRemaining(player:GetAttribute("DamageBuffUntil"), Config.BUFF_DAMAGE_DURATION, now))
 		setSpeedBuff(Drops.buffRemaining(player:GetAttribute("SpeedBuffUntil"), Config.BUFF_SPEED_DURATION, now))
@@ -530,6 +552,28 @@ local function CombatHud(props)
 	local width = math.min(250, metrics.room.X - 2 * ui.MARGIN)
 	-- Leave breathing room above the bottom-left environment watermark (and touch thumbstick band).
 	local bottomOffset = ui.MARGIN + 64 + Layout.band()
+
+	-- One tile per slot, filled from the class's kit; empty before a class is chosen.
+	local function slotIcon(slot: number, chargeBinding: any, remainingBinding: any)
+		local abilityId = Classes.abilityAt(classId, slot)
+		local ability = abilityId and Config.ABILITIES[abilityId]
+		if not abilityId or not ability then
+			return nil
+		end
+		return React.createElement(AbilitySlotIcon, {
+			name = `Ability{slot}`,
+			slotIndex = slot,
+			kind = abilityId,
+			label = ability.name,
+			color = ability.color,
+			dimColor = ability.color:Lerp(Color3.new(0, 0, 0), 0.5),
+			charge = chargeBinding,
+			remaining = remainingBinding,
+			selected = activeSlot == slot,
+			compact = metrics.compact,
+			touch = metrics.touch,
+		})
+	end
 
 	return React.createElement(Scaled.Frame, nil, {
 		Kit = React.createElement(ui.Panel, {
@@ -594,45 +638,9 @@ local function CombatHud(props)
 				Padding = UDim.new(0, if metrics.compact then 8 else 12),
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
-			SpinAbility = React.createElement(AbilitySlotIcon, {
-				name = "SpinAbility",
-				slotIndex = 1,
-				kind = "spin",
-				label = "Giro",
-				color = SPIN_COLOR,
-				dimColor = SPIN_DIM_COLOR,
-				charge = spinCharge,
-				remaining = spinRemaining,
-				selected = activeSlot == 1,
-				compact = metrics.compact,
-				touch = metrics.touch,
-			}),
-			StingerAbility = React.createElement(AbilitySlotIcon, {
-				name = "StingerAbility",
-				slotIndex = 2,
-				kind = "stinger",
-				label = "Stinger",
-				color = STINGER_COLOR,
-				dimColor = STINGER_DIM_COLOR,
-				charge = stingerCharge,
-				remaining = stingerRemaining,
-				selected = activeSlot == 2,
-				compact = metrics.compact,
-				touch = metrics.touch,
-			}),
-			OverDriveAbility = React.createElement(AbilitySlotIcon, {
-				name = "OverDriveAbility",
-				slotIndex = 3,
-				kind = "overdrive",
-				label = "Over Drive",
-				color = OVERDRIVE_COLOR,
-				dimColor = OVERDRIVE_DIM_COLOR,
-				charge = overDriveCharge,
-				remaining = overDriveRemaining,
-				selected = activeSlot == 3,
-				compact = metrics.compact,
-				touch = metrics.touch,
-			}),
+			Slot1 = slotIcon(1, slot1Charge, slot1Remaining),
+			Slot2 = slotIcon(2, slot2Charge, slot2Remaining),
+			Slot3 = slotIcon(3, slot3Charge, slot3Remaining),
 		}),
 		Room = React.createElement("TextLabel", {
 			Name = "Room",

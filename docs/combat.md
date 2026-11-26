@@ -44,7 +44,7 @@ Each action is predicted on the client and confirmed by the server:
 | Action | Client, at once | Server, on the remote |
 |---|---|---|
 | Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, plays swing anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
-| Heavy Attack (hold Attack 3 s) | Tap still swings immediately; holding past `HEAVY_CHARGE_DELAY` starts charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (3 s) lunges, draws shockwave, plays `heavyAttack` anim/SFX, fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), damages every enemy in the wide `HEAVY_ATTACK_ARC` |
+| Heavy Attack (hold Attack 2 s) | Tap still swings immediately; holding past `HEAVY_CHARGE_DELAY` starts charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (2 s) lunges, draws shockwave, plays `heavyAttack` anim/SFX, fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), damages every enemy in the wide `HEAVY_ATTACK_ARC` |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
 | Spin (`1` + `E`) | Draws the ring, fires `Spin()` | Checks `SpinReadyAt`, damages everything in `SPIN_RADIUS` |
 | Stinger (`2` + `E`) | Applies high-speed forward thrust `LinearVelocity`, draws lance streak & anim, fires `Stinger(aim)` | Checks `StingerReadyAt`, pierces every enemy along `Melee.inCorridor` (`STINGER_DISTANCE` × `STINGER_WIDTH`) |
@@ -74,6 +74,17 @@ every source — a melee strike, an explosion, a projectile — without any of t
 disappearing on them.
 
 ## Enemies
+
+Each kind has a player-facing name in `Config.ENEMY_KINDS[kind].displayName`; the table key is the
+internal id used by `Brain`, `Tactics`, `Config.WAVES` and the asset names, and is deliberately not
+renamed. Read the name from Config anywhere it reaches a screen — never write it into UI code.
+
+| Internal id | Name | Role |
+|---|---|---|
+| `melee` | Centinela | Melee line, four weapon variants |
+| `ranged` | Cazador | Ranged, four weapon variants |
+| `exploder` | Detonante | Fast suicide runner |
+| `grabber` | Coloso | Juggernaut that grabs and rushes |
 
 **Anchored parts, not rigs.** An enemy is a Model with one anchored part (`Body`), moved by the
 server every Heartbeat. A Humanoid rig per enemy brings physics, pathfinding and a network owner
@@ -131,6 +142,25 @@ when no free target exists (solo or full-party grab) they keep prowling the room
 freezing, and any active enemy windup resets cleanly. Grabbers enter `Config.WAVES` starting on
 wave 4 of 5.
 
+**Grabber rush (embestida).** When the target is beyond grab reach but inside
+`rushMinRange..rushMaxRange` and `nextRushAt` has passed, `Brain` puts the grabber into
+`rushWindup` (red telegraph, `AlertIcon`, `EnemyAnim.rushWindupPose`), then `rush`: `EnemyService`
+locks the heading at `rushLaunch` and drives the body at `rushSpeed` for `rushDuration`,
+checking `Hitbox.inEllipsoid` after each frame's step so the charge cannot tunnel past anyone.
+Each player is hit at most once per rush (`enemy.rushHit`); a wall ends the rush early through
+`Brain.endRush`. A hit goes through `CombatService.hurt` (`canBlock = true, canParry = false`, so
+Dash i-frames dodge it), then `CombatService.stun` and a **`Remotes.Knockback`** to that one
+client. The knockback is applied by `client/features/combat/Knockback`, not the server: the client
+owns its character's physics, so a velocity set on the server would be overwritten by the next
+client physics update. It holds a horizontal `LinearVelocity` for `rushKnockbackSeconds` and kicks
+`rushKnockbackUp` upward; a block halves the fling and scales the stun to 45%. The cooldown is
+counted from the start of the windup. Measured in Studio from 25 studs: 0.72 s windup, contact
+0.33 s into the charge, 1.27 s stun, player flung 19.5 studs.
+
+**Health per variant.** A variant entry may set `health`; `EnemyService.spawn` already merges every
+variant field except `model`, `weapon` and `weight` over its kind, so it overrides the kind's
+value. The ladder and the reasoning are in `plans/gdd/content.md`.
+
 ## Waves
 
 `WaveDirector` spawns `Config.WAVES` in order, each round a ring inside the walls, and waits until
@@ -157,7 +187,7 @@ the camera — so WASD, the thumbstick and the gamepad stick all mean "up the sc
 
 | Action | Keyboard / mouse | Gamepad | Touch |
 |---|---|---|---|
-| Attack (tap) / Heavy Attack (hold 3 s) | Left click | X, R2 | "Atacar" button |
+| Attack (tap) / Heavy Attack (hold 2 s) | Left click | X, R2 | "Atacar" button |
 | Dash | Left Shift, Q | B, L2 | "Dash" button |
 | Spin | E | Y, R1 | "Giro" button |
 | Block / Parry (hold) | Right click, F | L1 | "Bloquear" button |
@@ -271,7 +301,13 @@ FPS without Humanoids.
 
 - **Test sword:** `CombatService` clones `ReplicatedStorage.Models.TestSword` on `CharacterAdded`
   and `CharacterAppearanceLoaded`, welding its `PrimaryPart` (`Grip`) to `RightHand`
-  (`RightGripAttachment`) with a `WeldConstraint`.
+  (`RightGripAttachment`) with a `WeldConstraint`, pitched forward by `Config.SWORD_GRIP_PITCH`
+  (70°). That attachment's `-Z` runs *down* the forearm, so the old 25° pitch with the full-size
+  blade planted the tip ~2 studs under the floor whenever the arm relaxed. The model is generated
+  at `SWORD_SCALE = 0.8` (`scripts/generate-models.luau`); measured in Studio, the tip now stays
+  above the floor at rest, walking and through the combo. **`CombatAnim.blockPose` is solved
+  against that pitch** — the guard holds the blade level across the chest only while the mount
+  angle is unchanged, so re-solve the guard if the pitch moves.
 - **Enemy drops (30% chance):** `EnemyService` invokes `DropService.maybeSpawn` on player kills
   (`heal`, `damage`, `speed` via `Config.DROP_WEIGHTS`).
 - **Periodic defense buff (50% reduction):** while `RoomState == "fighting"`, `DropService` spawns

@@ -17,6 +17,8 @@ local Brain = {}
 -- beamCharge: rifle ranged unit charging a devastating beam. evade: ranged unit leaping backward.
 -- lunge: grabber charging forward. recover: just acted, frozen. fuse: the exploder is about to
 -- go off. spent: the exploder went off. holding: the grabber is currently immobilising a player.
+-- rushWindup / rush: the grabber lowering its shoulder, then bull-charging in a straight line to
+-- knock players away (its answer to a player who keeps out of grab reach).
 export type Phase =
 	"chase"
 	| "windup"
@@ -30,6 +32,8 @@ export type Phase =
 	| "fuse"
 	| "spent"
 	| "holding"
+	| "rushWindup"
+	| "rush"
 
 export type State = {
 	phase: Phase,
@@ -45,10 +49,11 @@ export type State = {
 	pendingPhantomStep: boolean?,
 	phantomStepFinisher: boolean?,
 	nextSlamAt: number?,
+	nextRushAt: number?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "evade",
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "evade" | "rush",
 	action: (
 		"strike"
 		| "spinTick"
@@ -62,6 +67,8 @@ export type Intent = {
 		| "grab"
 		| "grabLunge"
 		| "grabCheck"
+		| "rushLaunch"
+		| "rushCheck"
 	)?,
 }
 
@@ -97,6 +104,13 @@ export type Kind = {
 	evadeTrigger: number?,
 	evadeDuration: number?,
 	evadeCooldown: number?,
+	canRush: boolean?,
+	rushMinRange: number?,
+	rushMaxRange: number?,
+	rushWindup: number?,
+	rushDuration: number?,
+	rushCooldown: number?,
+	rushRecover: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -123,6 +137,9 @@ function Brain.initial(now: number): State
 		pendingPhantomStep = false,
 		phantomStepFinisher = false,
 		nextSlamAt = now + 1.8,
+		-- Later than the other abilities: a wave should open with the grabber walking in, not
+		-- with every grabber charging the moment it spawns.
+		nextRushAt = now + 2.5,
 	}
 end
 
@@ -139,7 +156,8 @@ local function with(
 	phantomStepLeft: number?,
 	pendingPhantomStep: boolean?,
 	phantomStepFinisher: boolean?,
-	nextSlamAt: number?
+	nextSlamAt: number?,
+	nextRushAt: number?
 ): State
 	return {
 		phase = phase,
@@ -155,6 +173,7 @@ local function with(
 		pendingPhantomStep = if pendingPhantomStep ~= nil then pendingPhantomStep else false,
 		phantomStepFinisher = if phantomStepFinisher ~= nil then phantomStepFinisher else false,
 		nextSlamAt = if nextSlamAt ~= nil then nextSlamAt else state.nextSlamAt,
+		nextRushAt = if nextRushAt ~= nil then nextRushAt else state.nextRushAt,
 	}
 end
 
@@ -338,6 +357,18 @@ local function grabber(kind: Kind, state: State, distance: number, now: number, 
 	if state.phase == "holding" then
 		return state, { move = "hold" }
 	end
+	if state.phase == "rushWindup" then
+		if now >= state.endsAt then
+			return with(state, "rush", now + (kind.rushDuration or 0)), { move = "rush", action = "rushLaunch" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "rush" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.rushRecover or kind.recover or 0)), { move = "hold" }
+		end
+		return state, { move = "rush", action = "rushCheck" }
+	end
 	local reach = kind.reach or 0
 	if state.phase == "windup" then
 		if now >= state.endsAt then
@@ -364,6 +395,18 @@ local function grabber(kind: Kind, state: State, distance: number, now: number, 
 	if distance <= reach then
 		return with(state, "windup", now + (kind.windup or 0)), { move = "hold" }
 	end
+	-- Out of grab reach but inside charging distance: the rush. Grab wins when both apply, so a
+	-- player who walks into the grabber is still grabbed rather than merely shoved.
+	if
+		kind.canRush == true
+		and now >= (state.nextRushAt or 0)
+		and distance >= (kind.rushMinRange or 0)
+		and distance <= (kind.rushMaxRange or 0)
+	then
+		local cooldownFrom = now + (kind.rushCooldown or 0)
+		return with(state, "rushWindup", now + (kind.rushWindup or 0), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cooldownFrom),
+			{ move = "hold" }
+	end
 	return state, { move = "toward" }
 end
 
@@ -381,6 +424,11 @@ end
 
 -- Transitions a grabber out of `holding` into `recover` so it cannot re-grab on the next frame.
 function Brain.releaseGrab(state: State, recover: number, now: number): State
+	return with(state, "recover", now + recover)
+end
+
+-- Ends a rush early (it hit a wall), straight into the grabber's post-rush recovery.
+function Brain.endRush(state: State, recover: number, now: number): State
 	return with(state, "recover", now + recover)
 end
 
@@ -620,6 +668,49 @@ function Brain.selfTest()
 	assert(is(gl.phase, "lunge") and is(intent.action, "grabCheck"), "lunge checks grab contact each frame")
 	gl, intent = Brain.step("grabber", lungeGrabber, gl, 12, 1.85)
 	assert(is(gl.phase, "recover") and is(intent.move, "hold"), "missed lunge transitions to recover")
+
+	-- Grabber rush: from charging distance it telegraphs, then charges in a straight line, then
+	-- recovers; it waits out its cooldown, and grab still wins inside grab reach.
+	local rusher: Kind = {
+		reach = 13,
+		windup = 0.55,
+		lungeDuration = 0.28,
+		recover = 1.6,
+		canRush = true,
+		rushMinRange = 16,
+		rushMaxRange = 34,
+		rushWindup = 0.7,
+		rushDuration = 0.6,
+		rushCooldown = 6.5,
+		rushRecover = 1.1,
+	}
+	local ru = Brain.initial(0)
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 1)
+	assert(is(ru.phase, "chase") and is(intent.move, "toward"), "no rush before its first cooldown")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 3)
+	assert(is(ru.phase, "rushWindup") and is(intent.move, "hold") and is(intent.action, nil), "rush telegraphs, it does not charge at once")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 3.5)
+	assert(is(ru.phase, "rushWindup") and is(intent.action, nil), "the rush windup holds still")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 3.7)
+	assert(is(ru.phase, "rush") and is(intent.move, "rush") and is(intent.action, "rushLaunch"), "the windup launches the rush")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 3.9)
+	assert(is(intent.action, "rushCheck"), "the rush checks for contact every frame")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 4.3)
+	assert(is(ru.phase, "recover") and is(intent.move, "hold"), "the rush ends in recovery")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 5.5)
+	assert(is(ru.phase, "chase"), "recovery ends")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 6)
+	assert(is(ru.phase, "chase") and is(intent.move, "toward"), "no second rush inside the cooldown")
+	ru, intent = Brain.step("grabber", rusher, ru, 25, 9.6)
+	assert(is(ru.phase, "rushWindup"), "rushes again once the cooldown has passed")
+	local near = Brain.initial(0)
+	near, intent = Brain.step("grabber", rusher, near, 10, 5)
+	assert(is(near.phase, "windup"), "inside grab reach the grabber grabs rather than rushes")
+	local far = Brain.initial(0)
+	far, intent = Brain.step("grabber", rusher, far, 50, 5)
+	assert(is(far.phase, "chase") and is(intent.move, "toward"), "beyond rush range it walks in")
+	local walled = Brain.endRush({ phase = "rush", endsAt = 9, nextFireAt = 0 }, 1.1, 4)
+	assert(is(walled.phase, "recover") and walled.endsAt == 5.1, "a rush stopped by a wall recovers")
 
 	-- Escape progress math (10 presses, plus ally hit contributions).
 	local p1, freed1 = Brain.escapeProgress(0, 1, 10)

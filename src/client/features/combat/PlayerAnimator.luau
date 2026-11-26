@@ -214,7 +214,7 @@ local function onStepped()
 		end
 
 		-- Layer 1.5: seismic stagger/stun, continuous sword guard, Over Drive power-channeling, or
-		-- coiled power-charge stance while holding Attack for the 3-second heavy attack.
+		-- coiled power-charge stance while holding Attack for the heavy attack.
 		local serverNow = workspace:GetServerTimeNow()
 		local stunnedUntil = player:GetAttribute("StunnedUntil")
 		if type(stunnedUntil) == "number" and serverNow < stunnedUntil then

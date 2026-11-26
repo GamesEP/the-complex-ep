@@ -23,7 +23,7 @@ return {
 	-- only stops a script flooding the channel. The aim is shape-checked here and normalised in
 	-- CombatService, because only the handler knows what a direction means.
 	Attack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
-	-- Hold-to-charge heavy attack: `HeavyCharge(true/false)` opens/cancels the server's 3 s charge
+	-- Hold-to-charge heavy attack: `HeavyCharge(true/false)` opens/cancels the server's heavy charge
 	-- clock, and `HeavyAttack(aim)` unleashes the cleave once the server confirms full charge.
 	HeavyCharge = { rate = Config.ACTION_RATE, args = { Validate.boolean } },
 	HeavyAttack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
@@ -36,6 +36,12 @@ return {
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
 	-- feel responsive without opening an unbounded channel.
 	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
+	-- Class selection: a person picks once, so a low rate costs nobody anything. Whether the id
+	-- names a real class is ClassService's to decide.
+	ChooseClass = { rate = 2, args = { Validate.string } },
+	-- Every class ability added with the classes. Which id the player's class owns, and its
+	-- cooldown, are CombatService's to decide.
+	UseAbility = { rate = Config.ACTION_RATE, args = { Validate.string, Validate.vector3 } },
 
 	-- A client saying what broke on it. Metered hard and shape-checked twice — once here as a
 	-- table, once field by field in LogSink — because unlike every other remote in this file it

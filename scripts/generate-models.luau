@@ -96,14 +96,28 @@ local function writeModel(fileName: string, model: any)
 end
 
 -- Test sword equipped in the player's right hand. Grip sits at the origin with the blade extending
--- along -Z (matching RightGripAttachment's forward direction when welded to RightHand).
+-- along -Z; CombatService mounts it pitched forward by `Config.SWORD_GRIP_PITCH` so the blade is
+-- held out in front rather than hanging along the forearm.
+--
+-- Scaled by SWORD_SCALE as a whole. At full size (5.4 studs) the blade reached 2 studs *under* the
+-- floor in idle, because the right hand of an R15 character rests only ~2 studs up; 0.8 together
+-- with the grip pitch keeps the tip above the floor through idle, walking and the combo.
+local SWORD_SCALE = 0.8
+
 local function buildTestSword(): any
 	local model = Instance.new("Model")
 	model.Name = "TestSword"
 
+	local function size(x: number, y: number, z: number): any
+		return Vector3.new(x, y, z) * SWORD_SCALE
+	end
+	local function at(z: number): any
+		return CFrame.new(0, 0, z * SWORD_SCALE)
+	end
+
 	local grip = makePart({
 		name = "Grip",
-		size = Vector3.new(0.26, 0.26, 1.15),
+		size = size(0.26, 0.26, 1.15),
 		cframe = CFrame.new(0, 0, 0),
 		color = Color3.fromRGB(40, 44, 54),
 		material = Enum.Material.SmoothPlastic,
@@ -114,8 +128,8 @@ local function buildTestSword(): any
 	local parts = {
 		makePart({
 			name = "Pommel",
-			size = Vector3.new(0.42, 0.42, 0.42),
-			cframe = CFrame.new(0, 0, 0.65),
+			size = size(0.42, 0.42, 0.42),
+			cframe = at(0.65),
 			color = Color3.fromRGB(220, 185, 95),
 			material = Enum.Material.Metal,
 			shape = Enum.PartType.Ball,
@@ -123,8 +137,8 @@ local function buildTestSword(): any
 		}),
 		makePart({
 			name = "Guard",
-			size = Vector3.new(1.45, 0.28, 0.34),
-			cframe = CFrame.new(0, 0, -0.62),
+			size = size(1.45, 0.28, 0.34),
+			cframe = at(-0.62),
 			color = Color3.fromRGB(230, 195, 105),
 			material = Enum.Material.Metal,
 			anchored = false,
@@ -132,8 +146,8 @@ local function buildTestSword(): any
 		}),
 		makePart({
 			name = "Blade",
-			size = Vector3.new(0.42, 0.14, 3.6),
-			cframe = CFrame.new(0, 0, -2.55),
+			size = size(0.42, 0.14, 3.6),
+			cframe = at(-2.55),
 			color = Color3.fromRGB(215, 225, 240),
 			material = Enum.Material.Metal,
 			anchored = false,
@@ -141,16 +155,16 @@ local function buildTestSword(): any
 		}),
 		makePart({
 			name = "BladeCore",
-			size = Vector3.new(0.16, 0.18, 3.2),
-			cframe = CFrame.new(0, 0, -2.45),
+			size = size(0.16, 0.18, 3.2),
+			cframe = at(-2.45),
 			color = Color3.fromRGB(115, 210, 255),
 			material = Enum.Material.Neon,
 			anchored = false,
 		}),
 		makePart({
 			name = "BladeTip",
-			size = Vector3.new(0.32, 0.13, 0.65),
-			cframe = CFrame.new(0, 0, -4.45) * CFrame.Angles(0, math.rad(45), 0),
+			size = size(0.32, 0.13, 0.65),
+			cframe = at(-4.45) * CFrame.Angles(0, math.rad(45), 0),
 			color = Color3.fromRGB(215, 225, 240),
 			material = Enum.Material.Metal,
 			anchored = false,
@@ -166,6 +180,77 @@ local function buildTestSword(): any
 	model.PrimaryPart = grip
 	model.WorldPivot = CFrame.new(0, 0, 0)
 	return model
+end
+
+-- Class weapons (plans/gdd/systems.md, "Clases"). Same convention as the test sword: `Grip` at the
+-- origin, the weapon extending along -Z. CombatService welds `Grip` to a hand's grip attachment
+-- turned by the model's `GripPitch` / `GripYaw` / `GripRoll` attributes (degrees), so each weapon
+-- carries the way it is held instead of a table of angles in code.
+local function assembleWeapon(name: string, grip: any, parts: { any }, pitch: number, yaw: number?, roll: number?): any
+	local model = Instance.new("Model")
+	model.Name = name
+	grip.Parent = model
+	for _, part in ipairs(parts) do
+		part.Parent = model
+		weld(grip, part)
+	end
+	model.PrimaryPart = grip
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	model:SetAttribute("GripPitch", pitch)
+	model:SetAttribute("GripYaw", yaw or 0)
+	model:SetAttribute("GripRoll", roll or 0)
+	return model
+end
+
+local STEEL = Color3.fromRGB(205, 214, 228)
+local DARK = Color3.fromRGB(40, 44, 54)
+local GOLD = Color3.fromRGB(230, 195, 105)
+
+-- Tank: a broad, heavy greatsword. Wider and thicker than the test sword but no longer, so it keeps
+-- the same clearance above the floor at rest and in the dash (measured for the test sword).
+local function buildGreatsword(): any
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.3, 0.3, 1.1), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	return assembleWeapon("WeaponGreatsword", grip, {
+		makePart({ name = "Pommel", size = Vector3.new(0.42, 0.42, 0.42), cframe = CFrame.new(0, 0, 0.62), color = GOLD, material = Enum.Material.Metal, shape = Enum.PartType.Ball, anchored = false }),
+		makePart({ name = "Guard", size = Vector3.new(1.7, 0.32, 0.36), cframe = CFrame.new(0, 0, -0.6), color = GOLD, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "Blade", size = Vector3.new(0.62, 0.18, 2.9), cframe = CFrame.new(0, 0, -2.2), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "BladeCore", size = Vector3.new(0.2, 0.22, 2.5), cframe = CFrame.new(0, 0, -2.1), color = Color3.fromRGB(110, 160, 255), material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "BladeTip", size = Vector3.new(0.44, 0.17, 0.55), cframe = CFrame.new(0, 0, -3.78) * CFrame.Angles(0, math.rad(45), 0), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+	}, 70)
+end
+
+-- Tank: a kite shield for the left forearm. The plate is thin along X and spans Y/Z, so with the
+-- grip turned it sits flat against the outside of the forearm, facing forward.
+local function buildShield(): any
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.2, 0.2, 0.6), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	return assembleWeapon("WeaponShield", grip, {
+		makePart({ name = "Plate", size = Vector3.new(0.22, 2.4, 1.9), cframe = CFrame.new(-0.25, 0, -0.35), color = Color3.fromRGB(70, 95, 150), material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "Rim", size = Vector3.new(0.26, 2.55, 0.18), cframe = CFrame.new(-0.25, 0, 0.62), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Boss", size = Vector3.new(0.5, 0.5, 0.5), cframe = CFrame.new(-0.45, 0, -0.35), color = Color3.fromRGB(110, 160, 255), material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+	}, 70, 0, 0)
+end
+
+-- Damage: a short, light dagger, one in each hand.
+local function buildDagger(): any
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.22, 0.22, 0.7), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	return assembleWeapon("WeaponDagger", grip, {
+		makePart({ name = "Guard", size = Vector3.new(0.75, 0.18, 0.2), cframe = CFrame.new(0, 0, -0.4), color = Color3.fromRGB(120, 30, 40), material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Blade", size = Vector3.new(0.3, 0.1, 1.5), cframe = CFrame.new(0, 0, -1.2), color = STEEL, material = Enum.Material.Metal, anchored = false, castShadow = true }),
+		makePart({ name = "BladeCore", size = Vector3.new(0.1, 0.12, 1.3), cframe = CFrame.new(0, 0, -1.15), color = Color3.fromRGB(255, 70, 80), material = Enum.Material.Neon, anchored = false }),
+		makePart({ name = "BladeTip", size = Vector3.new(0.22, 0.09, 0.34), cframe = CFrame.new(0, 0, -2.02) * CFrame.Angles(0, math.rad(45), 0), color = STEEL, material = Enum.Material.Metal, anchored = false }),
+	}, 70)
+end
+
+-- Support: an energy staff held upright (pitched past vertical, so the shaft runs up from the hand
+-- and the orb sits above the head instead of pointing at the enemies).
+local function buildStaff(): any
+	local grip = makePart({ name = "Grip", size = Vector3.new(0.26, 0.26, 0.9), cframe = CFrame.new(0, 0, 0), color = DARK, anchored = false })
+	return assembleWeapon("WeaponStaff", grip, {
+		makePart({ name = "Shaft", size = Vector3.new(0.22, 0.22, 3.6), cframe = CFrame.new(0, 0, -0.9), color = Color3.fromRGB(120, 90, 60), material = Enum.Material.Wood, anchored = false, castShadow = true }),
+		makePart({ name = "Cap", size = Vector3.new(0.34, 0.34, 0.3), cframe = CFrame.new(0, 0, 0.95), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Crown", size = Vector3.new(0.7, 0.7, 0.5), cframe = CFrame.new(0, 0, -2.75), color = GOLD, material = Enum.Material.Metal, anchored = false }),
+		makePart({ name = "Orb", size = Vector3.new(0.75, 0.75, 0.75), cframe = CFrame.new(0, 0, -3.2), color = Color3.fromRGB(90, 240, 150), material = Enum.Material.Neon, shape = Enum.PartType.Ball, anchored = false }),
+	}, 165)
 end
 
 -- Emerald glowing cross: instantly readable as a heal pickup from the isometric camera.
@@ -1594,6 +1679,10 @@ local function buildEnemyGrabber(): any
 end
 
 writeModel("TestSword.rbxmx", buildTestSword())
+writeModel("WeaponGreatsword.rbxmx", buildGreatsword())
+writeModel("WeaponShield.rbxmx", buildShield())
+writeModel("WeaponDagger.rbxmx", buildDagger())
+writeModel("WeaponStaff.rbxmx", buildStaff())
 writeModel("DropHeal.rbxmx", buildDropHeal())
 writeModel("DropDamage.rbxmx", buildDropDamage())
 writeModel("DropSpeed.rbxmx", buildDropSpeed())

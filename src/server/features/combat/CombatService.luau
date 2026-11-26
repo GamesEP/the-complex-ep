@@ -19,6 +19,7 @@ local CombatAudio = require(Shared.features.combat.CombatAudio)
 local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
+local Classes = require(Shared.features.classes.Classes)
 
 local CombatService = {}
 
@@ -26,10 +27,12 @@ local CombatService = {}
 -- this much slack, so a dash pressed the instant the HUD says "ready" is never silently refused.
 local COOLDOWN_SLACK = 0.1
 
-type Enemy = { body: BasePart, radius: number }
+type Enemy = { body: BasePart, radius: number, health: number, spec: any, state: any }
 type Enemies = {
 	list: () -> { Enemy },
 	damage: (Enemy, number) -> (),
+	taunt: (Enemy, Player, number) -> (),
+	shove: (Enemy, Vector3, number, number, number, number) -> (),
 }
 
 local enemies: Enemies = nil :: any
@@ -40,6 +43,9 @@ local swings: { [Player]: { step: number, lastAt: number } } = {}
 local heavyCharges: { [Player]: number } = {}
 local overDriveTokens: { [Player]: number } = {}
 local dashStates: { [Player]: { charges: number, rechargeAt: number } } = {}
+
+-- Active Support protect fields. Server-only: what they *look* like is a CombatVfx broadcast.
+local protectFields: { { position: Vector3, radius: number, untilAt: number } } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -76,49 +82,77 @@ local function rootOf(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- Equips the tracked `.rbxmx` test sword onto the character's right hand so every client sees
--- it follow the procedural combat animations. Falls back to finding `Grip` by name because
--- Rojo 7 live-sync can drop `Model.PrimaryPart` on `.rbxmx` imports. Also called on
--- `CharacterAppearanceLoaded` because Roblox replaces R15 body parts after `CharacterAdded`.
-local function equipTestSword(character: Model)
+local function classIdOf(player: Player): string?
+	local classId = player:GetAttribute("Class")
+	return if type(classId) == "string" and classId ~= "" then classId else nil
+end
+
+-- Clones one tracked `.rbxmx` weapon and welds its `Grip` to a hand. Falls back to finding `Grip`
+-- by name because Rojo 7 live-sync can drop `Model.PrimaryPart` on `.rbxmx` imports.
+--
+-- The grip attachment's -Z runs down the forearm, so the weapon is pitched forward by its own
+-- `GripPitch` attribute (written by scripts/generate-models.luau), or by SWORD_GRIP_PITCH, to be
+-- held out in front instead of hanging into the floor.
+local function equipWeapon(character: Model, modelName: string, handName: string, attachmentName: string)
 	local models = ReplicatedStorage:FindFirstChild("Models")
-	local template = models and models:FindFirstChild(Config.TEST_SWORD_MODEL)
+	local template = models and models:FindFirstChild(modelName)
 	if not template or not template:IsA("Model") then
+		warn(`no weapon model "{modelName}" under ReplicatedStorage.Models`)
 		return
 	end
-	local hand = character:WaitForChild("RightHand", 5) or character:FindFirstChild("Right Arm")
+	local hand = character:WaitForChild(handName, 5)
 	if not hand or not hand:IsA("BasePart") or not hand:IsDescendantOf(character) then
 		return
 	end
-	local existing = character:FindFirstChild(Config.TEST_SWORD_MODEL)
-	if existing then
-		existing:Destroy()
-	end
 
-	local sword = template:Clone()
-	local grip = sword.PrimaryPart or sword:FindFirstChild("Grip")
+	local weapon = template:Clone()
+	local grip = weapon.PrimaryPart or weapon:FindFirstChild("Grip")
 	if not grip or not grip:IsA("BasePart") then
-		sword:Destroy()
+		weapon:Destroy()
 		return
 	end
-	sword.PrimaryPart = grip
-	sword.WorldPivot = grip.CFrame
+	weapon.PrimaryPart = grip
+	weapon.WorldPivot = grip.CFrame
+	weapon:SetAttribute("EquippedWeapon", true)
 
-	local gripAttachment = hand:FindFirstChild("RightGripAttachment")
-	if gripAttachment and gripAttachment:IsA("Attachment") then
-		-- RightGripAttachment points -Z forward and slightly down in idle; lift 25 deg so the
-		-- blade sits level and reads clearly from the isometric camera.
-		sword:PivotTo(gripAttachment.WorldCFrame * CFrame.Angles(math.rad(25), 0, 0))
-	else
-		sword:PivotTo(hand.CFrame * CFrame.new(0, -1, 0))
+	local function angle(attribute: string, default: number): number
+		local value = template:GetAttribute(attribute)
+		return math.rad(if type(value) == "number" then value else default)
 	end
-	sword.Parent = character
+	local turn = CFrame.Angles(angle("GripPitch", Config.SWORD_GRIP_PITCH), angle("GripYaw", 0), angle("GripRoll", 0))
+	local gripAttachment = hand:FindFirstChild(attachmentName)
+	if gripAttachment and gripAttachment:IsA("Attachment") then
+		weapon:PivotTo(gripAttachment.WorldCFrame * turn)
+	else
+		weapon:PivotTo(hand.CFrame * CFrame.new(0, -1, 0))
+	end
+	weapon.Parent = character
 
 	local weld = Instance.new("WeldConstraint")
-	weld.Name = "SwordGripWeld"
+	weld.Name = "WeaponGripWeld"
 	weld.Part0 = hand
 	weld.Part1 = grip
 	weld.Parent = grip
+end
+
+-- Arms the character for its class: main weapon in the right hand, the off-hand weapon (shield,
+-- second dagger) in the left. With no class yet, the test sword. Also called on
+-- `CharacterAppearanceLoaded`, because Roblox replaces R15 body parts after `CharacterAdded`.
+local function equipWeapons(player: Player, character: Model)
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Model") and child:GetAttribute("EquippedWeapon") == true then
+			child:Destroy()
+		end
+	end
+	local class = Classes.get(classIdOf(player))
+	if not class then
+		equipWeapon(character, Config.TEST_SWORD_MODEL, "RightHand", "RightGripAttachment")
+		return
+	end
+	equipWeapon(character, class.weapon, "RightHand", "RightGripAttachment")
+	if class.offHandWeapon then
+		equipWeapon(character, class.offHandWeapon, "LeftHand", "LeftGripAttachment")
+	end
 end
 
 local function isStunned(player: Player, t: number?): boolean
@@ -142,8 +176,9 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 	local chargeMultiplier = if chargingOverDrive
 		then Config.OVERDRIVE_CHARGE_MOVE_MULTIPLIER
 		else Config.HEAVY_CHARGE_MOVE_MULTIPLIER
+	local class = Classes.get(classIdOf(player))
 	targetHumanoid.WalkSpeed = Defense.walkSpeed(
-		Config.MOVE_SPEED,
+		if class then class.moveSpeed else Config.MOVE_SPEED,
 		player:GetAttribute("SpeedBuffUntil"),
 		player:GetAttribute("Blocking") == true,
 		player:GetAttribute("Grabbed") == true,
@@ -176,9 +211,11 @@ end
 
 local function onCharacter(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	humanoid.MaxHealth = Config.PLAYER_MAX_HEALTH
-	humanoid.Health = Config.PLAYER_MAX_HEALTH
-	humanoid.WalkSpeed = Config.MOVE_SPEED
+	local class = Classes.get(classIdOf(player))
+	local maxHealth = if class then class.maxHealth else Config.PLAYER_MAX_HEALTH
+	humanoid.MaxHealth = maxHealth
+	humanoid.Health = maxHealth
+	humanoid.WalkSpeed = if class then class.moveSpeed else Config.MOVE_SPEED
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = Config.JUMP_POWER
 
@@ -218,7 +255,11 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("ParryWarningUntil", 0)
 	player:SetAttribute("StunnedUntil", 0)
 	player:SetAttribute("GrabImmuneUntil", 0)
-	task.spawn(equipTestSword, character)
+	player:SetAttribute("BulwarkUntil", 0)
+	for _, ability in pairs(Config.ABILITIES) do
+		player:SetAttribute(ability.readyAttribute, 0)
+	end
+	task.spawn(equipWeapons, player, character)
 end
 
 local function onPlayer(player: Player)
@@ -230,7 +271,7 @@ local function onPlayer(player: Player)
 	-- Roblox replaces R15 limbs when avatar appearance finishes loading, which breaks a weld
 	-- attached during CharacterAdded; re-equip once the final RightHand is in place.
 	player.CharacterAppearanceLoaded:Connect(function(character)
-		task.spawn(equipTestSword, character)
+		task.spawn(equipWeapons, player, character)
 	end)
 	if player.Character then
 		task.spawn(onCharacter, player, player.Character)
@@ -248,6 +289,24 @@ function CombatService.start(dependencies: { enemies: any })
 	end
 end
 
+-- Called by ClassService once a player has picked a class: the character takes the class's health,
+-- speed and weapons now, at full health, without waiting for a respawn.
+function CombatService.applyClass(player: Player)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local class = Classes.get(classIdOf(player))
+	if not character or not humanoid or humanoid.Health <= 0 or not class then
+		return
+	end
+	humanoid.MaxHealth = class.maxHealth
+	humanoid.Health = class.maxHealth
+	refreshWalkSpeed(player, humanoid)
+	for _, ability in pairs(Config.ABILITIES) do
+		player:SetAttribute(ability.readyAttribute, 0)
+	end
+	task.spawn(equipWeapons, player, character)
+end
+
 function CombatService.forget(player: Player)
 	swings[player] = nil
 	heavyCharges[player] = nil
@@ -255,12 +314,48 @@ function CombatService.forget(player: Player)
 	dashStates[player] = nil
 end
 
+-- How much of a hit survives the class and the Support's protect field: the Tank's passive and a
+-- player standing in a field each cut it, and they stack.
+local function classReduction(player: Player, position: Vector3?, t: number): number
+	local multiplier = Classes.incomingMultiplier(classIdOf(player))
+	if position then
+		for _, field in ipairs(protectFields) do
+			if t < field.untilAt and Melee.inRadius(field.position, position, field.radius) then
+				multiplier *= 1 - Config.PROTECT_FIELD_REDUCTION
+				break
+			end
+		end
+	end
+	return multiplier
+end
+
+-- Every hit a player lands goes through here: the class multiplier, and the Damage passive when
+-- the enemy is recovering from its own attack (its stun window) or is hit from behind.
+local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3)
+	local vulnerable = (enemy.state and enemy.state.phase == "recover")
+		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
+	enemies.damage(enemy, damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable))
+end
+
+-- Whether a hit from `origin` lands on the Tank's raised Muralla: inside its frontal arc.
+local function stoppedByBulwark(player: Player, root: BasePart?, origin: Vector3?, t: number): boolean
+	local untilAt = player:GetAttribute("BulwarkUntil")
+	if not root or not origin or type(untilAt) ~= "number" or t >= untilAt then
+		return false
+	end
+	local facing = Melee.flat(root.CFrame.LookVector)
+	return facing ~= nil and Melee.inArc(root.Position, facing, origin, math.huge, Config.BULWARK_ARC)
+end
+
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
 -- through a dashing player ("invulnerable") and reflect back on a perfect "parry".
+--
+-- `origin` is where the hit came from, for the attacks the Tank's Muralla can stop (shots and
+-- beams); a hit without one is never stopped by it.
 function CombatService.hurt(
 	player: Player,
 	amount: number,
-	options: { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?
+	options: { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?
 ): (boolean, Defense.HitOutcome)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -269,6 +364,9 @@ function CombatService.hurt(
 	end
 
 	local t = now()
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	local rootBase = if rootPart and rootPart:IsA("BasePart") then rootPart else nil
+	amount *= classReduction(player, if rootBase then rootBase.Position else nil, t)
 	local finalDamage, outcome = Defense.resolveHit(amount, {
 		now = t,
 		invulnerableUntil = character:GetAttribute("InvulnerableUntil"),
@@ -284,6 +382,15 @@ function CombatService.hurt(
 
 	if outcome == "invulnerable" then
 		return false, "invulnerable"
+	end
+
+	-- After the dodge check (a dash still passes through), before a parry: the shield takes it.
+	-- Reported as a landed block so a projectile is stopped by the shield instead of flying on.
+	if outcome ~= "parry" and stoppedByBulwark(player, rootBase, options and options.origin, t) then
+		if rootBase then
+			Remotes.CombatSfx:FireAllClients("playerBlock", rootBase.Position)
+		end
+		return true, "block"
 	end
 
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -488,7 +595,7 @@ function CombatService.block(player: Player, active: boolean)
 	refreshWalkSpeed(player)
 end
 
--- Remote "HeavyCharge": starts or cancels the server-authoritative 3-second heavy-attack charge.
+-- Remote "HeavyCharge": starts or cancels the server-authoritative heavy-attack charge (HEAVY_CHARGE_SECONDS).
 function CombatService.heavyCharge(player: Player, active: boolean)
 	if not active then
 		cancelCharge(player)
@@ -511,14 +618,14 @@ function CombatService.heavyCharge(player: Player, active: boolean)
 	end
 	heavyCharges[player] = os.clock()
 	player:SetAttribute("ChargingHeavy", true)
-	-- Backdate by HEAVY_CHARGE_DELAY so the replicated HUD bar reflects the full 3 s button hold.
+	-- Backdate by HEAVY_CHARGE_DELAY so the replicated HUD bar reflects the full button hold.
 	player:SetAttribute("HeavyChargeStart", t - Config.HEAVY_CHARGE_DELAY)
 	refreshWalkSpeed(player)
 	broadcastOthers(player, "playerHeavyCharge", root.Position)
 end
 
 -- Remote "HeavyAttack": unleashes the wide crushing cleave once the server confirms the full
--- 3-second hold completed.
+-- full HEAVY_CHARGE_SECONDS hold completed.
 function CombatService.heavyAttack(player: Player, aim: Vector3)
 	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		cancelCharge(player)
@@ -561,7 +668,7 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 			)
 		then
 			hitAt = hitAt or enemy.body.Position
-			enemies.damage(enemy, damage)
+			hitEnemy(player, enemy, damage, root.Position)
 		end
 	end
 	if hitAt then
@@ -602,7 +709,7 @@ function CombatService.attack(player: Player, aim: Vector3)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
 			hitAt = hitAt or enemy.body.Position
-			enemies.damage(enemy, damage)
+			hitEnemy(player, enemy, damage, root.Position)
 		end
 	end
 	if hitAt then
@@ -645,6 +752,10 @@ end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
 function CombatService.spin(player: Player)
+	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
+	if not Classes.hasAbility(classIdOf(player), "spin") then
+		return
+	end
 	if
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
@@ -672,7 +783,7 @@ function CombatService.spin(player: Player)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			enemies.damage(enemy, spinDamage)
+			hitEnemy(player, enemy, spinDamage, root.Position)
 		end
 	end
 	if hitAt then
@@ -682,6 +793,10 @@ end
 
 -- Remote "Stinger" (Slot 2): DMC-style piercing forward thrust hitting every enemy in the lunge corridor.
 function CombatService.stinger(player: Player, aim: Vector3)
+	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
+	if not Classes.hasAbility(classIdOf(player), "stinger") then
+		return
+	end
 	if
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
@@ -717,7 +832,7 @@ function CombatService.stinger(player: Player, aim: Vector3)
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inCorridor(root.Position, facing, enemy.body.Position, Config.STINGER_DISTANCE, halfWidth + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			enemies.damage(enemy, damage)
+			hitEnemy(player, enemy, damage, root.Position)
 		end
 	end
 	if hitAt then
@@ -728,6 +843,10 @@ end
 -- Remote "OverDrive" (Slot 3, Ultimate): channels energy into the blade for OVERDRIVE_CHARGE_SECONDS,
 -- then unleashes 3 devastating piercing crescent slash waves downrange.
 function CombatService.overDrive(player: Player, aim: Vector3)
+	-- Only for a class that owns it: a client cannot fire another class's ability by remote.
+	if not Classes.hasAbility(classIdOf(player), "overdrive") then
+		return
+	end
 	if
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
@@ -804,7 +923,7 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 					)
 				then
 					hitAt = hitAt or enemy.body.Position
-					enemies.damage(enemy, waveDmg)
+					hitEnemy(player, enemy, waveDmg, waveRoot.Position)
 				end
 			end
 			if hitAt then
@@ -813,6 +932,184 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 			if wave < waveCount then
 				task.wait(Config.OVERDRIVE_WAVE_INTERVAL)
 			end
+		end
+	end)
+end
+
+--=============================================================================
+-- Class abilities (plans/gdd/systems.md, "Clases")
+--=============================================================================
+
+-- Every living player within `radius` of `position`, the caster included.
+local function playersNear(position: Vector3, radius: number): { { player: Player, humanoid: Humanoid } }
+	local found = {}
+	for _, other in ipairs(Players:GetPlayers()) do
+		local root = rootOf(other)
+		local humanoid = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and Melee.inRadius(position, root.Position, radius) then
+			table.insert(found, { player = other, humanoid = humanoid })
+		end
+	end
+	return found
+end
+
+local function heal(humanoid: Humanoid, amount: number)
+	if humanoid.Health > 0 then
+		humanoid.Health = math.min(humanoid.Health + amount, humanoid.MaxHealth)
+	end
+end
+
+local function buffed(player: Player, base: number, t: number): number
+	return base * Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
+end
+
+-- Each handler runs once the shared checks (class owns it, not grabbed/stunned/blocking, off
+-- cooldown) have passed and the cooldown has started.
+local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number) -> () } = {
+	-- Tank: every enemy in reach targets the tank for a few seconds.
+	taunt = function(player, root, _facing, t)
+		local untilAt = t + Config.TAUNT_DURATION
+		for _, enemy in ipairs(enemies.list()) do
+			if Melee.inRadius(root.Position, enemy.body.Position, Config.TAUNT_RADIUS + enemy.radius) then
+				enemies.taunt(enemy, player, untilAt)
+			end
+		end
+		Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", root.Position)
+		Remotes.CombatVfx:FireAllClients("taunt", player, Config.TAUNT_RADIUS)
+	end,
+
+	-- Tank: a frontal shield that stops shots and beams from in front (see `stoppedByBulwark`).
+	bulwark = function(player, root, _facing, t)
+		player:SetAttribute("BulwarkUntil", t + Config.BULWARK_DURATION)
+		Remotes.CombatSfx:FireAllClients("playerBlock", root.Position)
+		Remotes.CombatVfx:FireAllClients("bulwark", player, Config.BULWARK_DURATION)
+	end,
+
+	-- Damage: a frontal strike that triples against an enemy already low on health.
+	execute = function(player, root, facing, t)
+		local base = buffed(player, Config.EXECUTE_DAMAGE, t)
+		local hitAt: Vector3? = nil
+		for _, enemy in ipairs(enemies.list()) do
+			if Melee.inArc(root.Position, facing, enemy.body.Position, Config.EXECUTE_RANGE + enemy.radius, Config.EXECUTE_ARC) then
+				hitAt = hitAt or enemy.body.Position
+				local spec = enemy.spec or {}
+				hitEnemy(player, enemy, Classes.executeDamage(base, enemy.health, spec.health or 1), root.Position)
+			end
+		end
+		broadcastOthers(player, "playerHeavyAttack", root.Position)
+		broadcastAnimOthers(player, "attack", Config.COMBO_HITS)
+		Remotes.CombatVfx:FireAllClients("execute", root.Position, facing)
+		if hitAt then
+			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		end
+	end,
+
+	-- Support: heals every living player in the radius, the caster included.
+	healPulse = function(_player, root, _facing, _t)
+		for _, entry in ipairs(playersNear(root.Position, Config.HEAL_PULSE_RADIUS)) do
+			heal(entry.humanoid, Config.HEAL_PULSE_AMOUNT)
+		end
+		Remotes.CombatSfx:FireAllClients("dropHeal", root.Position)
+		Remotes.CombatVfx:FireAllClients("healPulse", root.Position, Config.HEAL_PULSE_RADIUS)
+	end,
+
+	-- Support: a zone on the floor where every hit is cut (see `classReduction`).
+	protectField = function(_player, root, _facing, t)
+		local floorPoint = Vector3.new(root.Position.X, 0, root.Position.Z)
+		table.insert(protectFields, {
+			position = floorPoint,
+			radius = Config.PROTECT_FIELD_RADIUS,
+			untilAt = t + Config.PROTECT_FIELD_DURATION,
+		})
+		Remotes.CombatSfx:FireAllClients("dropBuff", root.Position)
+		Remotes.CombatVfx:FireAllClients("protectField", floorPoint, Config.PROTECT_FIELD_RADIUS, Config.PROTECT_FIELD_DURATION)
+	end,
+
+	-- Support: hurts, pushes away and slows every enemy around the caster.
+	shockwave = function(player, root, _facing, t)
+		local damage = buffed(player, Config.SHOCKWAVE_DAMAGE, t)
+		for _, enemy in ipairs(enemies.list()) do
+			if Melee.inRadius(root.Position, enemy.body.Position, Config.SHOCKWAVE_RADIUS + enemy.radius) then
+				hitEnemy(player, enemy, damage, root.Position)
+				local away = Melee.flat(enemy.body.Position - root.Position) or Melee.flat(root.CFrame.LookVector)
+				if away then
+					enemies.shove(
+						enemy,
+						away,
+						Config.SHOCKWAVE_PUSH_DISTANCE,
+						Config.SHOCKWAVE_PUSH_SECONDS,
+						Config.SHOCKWAVE_SLOW_FACTOR,
+						t + Config.SHOCKWAVE_SLOW_SECONDS
+					)
+				end
+			end
+		end
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", root.Position)
+		Remotes.CombatVfx:FireAllClients("shockwave", root.Position, Config.SHOCKWAVE_RADIUS)
+	end,
+}
+
+-- Remote "UseAbility": every class ability added with the classes. The contract checked the shapes;
+-- this checks the class owns it and that it is off cooldown, then runs it.
+function CombatService.useAbility(player: Player, abilityId: string, aim: Vector3)
+	local handler = ABILITY_HANDLERS[abilityId]
+	local ability = Config.ABILITIES[abilityId]
+	if not handler or not ability or not Classes.hasAbility(classIdOf(player), abilityId) then
+		return
+	end
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("Blocking") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or isStunned(player)
+	then
+		return
+	end
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local facing = Melee.flat(aim) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+	local t = now()
+	local readyAt = player:GetAttribute(ability.readyAttribute) or 0
+	if t < readyAt - COOLDOWN_SLACK then
+		return
+	end
+	cancelCharge(player)
+	player:SetAttribute(ability.readyAttribute, t + ability.cooldown)
+	handler(player, root, facing, t)
+end
+
+-- The Support's passive and the protect fields' expiry, on one slow tick: once a second is plenty
+-- for a regeneration and keeps it off every frame.
+local function supportTick()
+	local t = now()
+	for i = #protectFields, 1, -1 do
+		if t >= protectFields[i].untilAt then
+			table.remove(protectFields, i)
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		if classIdOf(player) == "support" then
+			local root = rootOf(player)
+			if root then
+				for _, entry in ipairs(playersNear(root.Position, Config.SUPPORT_REGEN_RADIUS)) do
+					heal(entry.humanoid, Config.SUPPORT_REGEN_PER_SECOND)
+				end
+			end
+		end
+	end
+end
+
+-- Started from the server bootstrap after `start`.
+function CombatService.startSupportTick()
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			supportTick()
 		end
 	end)
 end

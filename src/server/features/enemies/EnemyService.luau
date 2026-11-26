@@ -58,6 +58,19 @@ export type Enemy = {
 	sectorJitter: number,
 	radiusBias: number,
 	lungeDirection: Vector3?,
+	-- Grabber rush: heading locked at launch, and who it has already run into this rush so a
+	-- player standing in its path is hit once, not every frame they overlap.
+	rushDirection: Vector3?,
+	rushHit: { [Player]: boolean }?,
+	-- Tank taunt: the player this enemy must target until `tauntUntil` (server time).
+	tauntedBy: Player?,
+	tauntUntil: number,
+	-- Support shockwave: a short push (velocity until `shoveUntil`) and a slow (its whole step runs
+	-- at `slowFactor` of real time until `slowUntil`).
+	shoveVelocity: Vector3?,
+	shoveUntil: number,
+	slowFactor: number,
+	slowUntil: number,
 	burstLeft: number,
 	nextBurstAt: number,
 	beamDirection: Vector3?,
@@ -89,7 +102,7 @@ local FLASH_SECONDS = 0.08
 local HIT_COLOR = Color3.new(1, 1, 1)
 local PARRIED_SHOT_COLOR = Color3.fromRGB(255, 225, 90)
 
-local hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?) =
+local hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?) -> (boolean, string?) =
 	nil :: any
 local onKill: ((Vector3) -> ())? = nil
 local canGrab: ((Player) -> boolean)? = nil
@@ -97,6 +110,8 @@ local setGrabbed: ((Player, boolean, number?, number?) -> ())? = nil
 local warnGrab: ((Player, number) -> ())? = nil
 local warnParry: ((Player, number) -> ())? = nil
 local stunPlayer: ((Player, number) -> ())? = nil
+-- ClassService's "somebody is still choosing a class": the whole board waits while it is true.
+local isPaused: (() -> boolean)? = nil
 local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
@@ -504,10 +519,14 @@ local function stepEnemy(
 			or enemy.state.phase == "beamCharge"
 			or enemy.state.phase == "evade"
 			or enemy.state.phase == "lunge"
+			or enemy.state.phase == "rushWindup"
+			or enemy.state.phase == "rush"
 			or enemy.state.phase == "fuse"
 		then
 			enemy.state = Brain.initial(t)
 			enemy.lungeDirection = nil
+			enemy.rushDirection = nil
+			enemy.rushHit = nil
 			enemy.beamDirection = nil
 			enemy.beamLocked = false
 			enemy.phantomOrigin = nil
@@ -584,6 +603,10 @@ local function stepEnemy(
 			telegraphColor = Color3.fromRGB(90, 225, 255)
 		elseif state.phase == "fuse" then
 			telegraphColor = Color3.fromRGB(255, 110, 45)
+		elseif state.phase == "rushWindup" or state.phase == "rush" then
+			-- Red, not the grab's amber: a different tell for a different answer (dash sideways out
+			-- of the line, rather than away).
+			telegraphColor = Color3.fromRGB(255, 60, 60)
 		elseif state.phase == "windup" or state.phase == "lunge" then
 			telegraphColor = Color3.fromRGB(255, 190, 85)
 		end
@@ -597,7 +620,8 @@ local function stepEnemy(
 		local isPhantomFinisher = state.phase == "windup" and state.phantomStepFinisher == true
 		local isPhantomAbility = state.phase == "phantomStep"
 			or (state.phase == "windup" and (state.pendingPhantomStep == true or state.phantomStepFinisher == true))
-		local isGrabAlert = enemy.kind == "grabber" and (state.phase == "windup" or state.phase == "lunge")
+		local isGrabAlert = enemy.kind == "grabber"
+			and (state.phase == "windup" or state.phase == "lunge" or state.phase == "rushWindup" or state.phase == "rush")
 		enemy.model:SetAttribute("ParryTelegraph", isPhantomFinisher)
 		enemy.model:SetAttribute("AlertIcon", isPhantomAbility or isGrabAlert)
 		enemy.model:SetAttribute("SlamRadius", if state.phase == "slamWindup" then (enemy.spec.slamRadius or 15.5) else nil)
@@ -626,6 +650,8 @@ local function stepEnemy(
 			end
 		elseif state.phase == "slamWindup" then
 			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+		elseif state.phase == "rushWindup" then
+			Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
 		elseif state.phase == "spin" then
 			Remotes.CombatSfx:FireAllClients("playerSpin", position)
 		elseif state.phase == "beamCharge" then
@@ -761,6 +787,20 @@ local function stepEnemy(
 				return
 			end
 		end
+	elseif intent.action == "rushLaunch" then
+		-- Heading locked here, at the end of the windup, like the grab lunge: the windup is the
+		-- warning, and stepping sideways out of the line is the counter.
+		local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local fallback = Vector3.new(body.CFrame.LookVector.X, 0, body.CFrame.LookVector.Z)
+		if toTarget.Magnitude > 1e-3 then
+			enemy.rushDirection = toTarget.Unit
+		elseif fallback.Magnitude > 1e-3 then
+			enemy.rushDirection = fallback.Unit
+		else
+			enemy.rushDirection = Vector3.new(0, 0, -1)
+		end
+		enemy.rushHit = {}
+		Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", position)
 	elseif intent.action == "beamStart" then
 		local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
 		local dir = if toTarget.Magnitude > 1e-3 then toTarget.Unit else Vector3.new(0, 0, -1)
@@ -788,7 +828,7 @@ local function stepEnemy(
 		Remotes.CombatSfx:FireAllClients("playerHeavyAttack", position)
 		for _, candidate in ipairs(list) do
 			if Hitbox.inBeam(beamOrigin, dir, beamRange, candidate.root.Position, beamRadius, beamHeight) then
-				hurt(candidate.player, beamDamage, { canBlock = true, canParry = false })
+				hurt(candidate.player, beamDamage, { canBlock = true, canParry = false, origin = beamOrigin })
 			end
 		end
 	elseif intent.action == "evade" then
@@ -953,6 +993,55 @@ local function stepEnemy(
 		local baseY = enemy.spec.size.Y / 2
 		local standPos = Vector3.new(position.X, baseY, position.Z)
 		moveEnemy(enemy, CFrame.lookAt(standPos, standPos + aimDir))
+		return
+	elseif intent.move == "rush" then
+		local rushDir = enemy.rushDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
+		local rushSpeed = enemy.spec.rushSpeed or (enemy.spec.speed * 4)
+		local candidatePos = position + rushDir * rushSpeed * dt
+		local moved = Waves.clamp(candidatePos, Config.ROOM_SIZE, WALL_MARGIN)
+		local look = Vector3.new(moved.X + rushDir.X, moved.Y, moved.Z + rushDir.Z)
+		moveEnemy(enemy, if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved))
+		grid:move(enemy, moved.X, moved.Z)
+		-- Checked after this frame's step, so a 58 stud/s charge cannot tunnel past a player.
+		local hitAlready = enemy.rushHit or {}
+		enemy.rushHit = hitAlready
+		for _, candidate in ipairs(list) do
+			if
+				not hitAlready[candidate.player]
+				and Hitbox.inEllipsoid(moved, candidate.root.Position, enemy.spec.rushHitRadius or 5.2, enemy.spec.rushHitHeight or 5)
+			then
+				hitAlready[candidate.player] = true
+				local landed, outcome = hurt(candidate.player, enemy.spec.rushDamage or 12, { canBlock = true, canParry = false })
+				if landed then
+					-- Flung along the charge, bent away from the grabber's centre line so a
+					-- player clipped on the side flies off to that side.
+					local away = Vector3.new(candidate.root.Position.X - moved.X, 0, candidate.root.Position.Z - moved.Z)
+					local fling = if away.Magnitude > 1e-3 then (rushDir * 0.7 + away.Unit * 0.3) else rushDir
+					local share = if outcome == "block" then 0.5 else 1
+					Remotes.Knockback:FireClient(
+						candidate.player,
+						fling.Unit,
+						(enemy.spec.rushKnockbackSpeed or 55) * share,
+						(enemy.spec.rushKnockbackUp or 28) * share,
+						enemy.spec.rushKnockbackSeconds or 0.32
+					)
+					if stunPlayer then
+						stunPlayer(candidate.player, (enemy.spec.rushStunDuration or 1.3) * (if outcome == "block" then 0.45 else 1))
+					end
+					Remotes.CombatSfx:FireAllClients("enemyExploderBlast", candidate.root.Position)
+				end
+			end
+		end
+		-- A wall ends the charge early, straight into recovery: it must not grind along the wall
+		-- for the rest of the rush.
+		if moved.X ~= candidatePos.X or moved.Z ~= candidatePos.Z then
+			enemy.state = Brain.endRush(enemy.state, enemy.spec.rushRecover or enemy.spec.recover or 1.1, t)
+			enemy.rushDirection = nil
+			enemy.rushHit = nil
+			setTelegraph(enemy, false)
+			enemy.model:SetAttribute("AlertIcon", false)
+			syncPhase(enemy, t)
+		end
 		return
 	elseif isLunging then
 		local chargeDir = enemy.lungeDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
@@ -1136,7 +1225,8 @@ local function stepProjectiles(list, dt: number, t: number)
 							Config.PROJECTILE_HIT_HEIGHT
 						)
 					then
-						local landed, outcome = hurt(target.player, shot.damage, { canBlock = true, canParry = true })
+						local landed, outcome =
+							hurt(target.player, shot.damage, { canBlock = true, canParry = true, origin = position })
 						if outcome == "parry" then
 							-- Deflect the shot back toward the shooter (or nearest enemy) at boosted speed.
 							local dir = reflectDirection(position, shot.velocity, shot.shooter)
@@ -1175,6 +1265,12 @@ local function stepProjectiles(list, dt: number, t: number)
 end
 
 local function step(dt: number)
+	-- Frozen while anybody is choosing a class: no movement, no attacks, no projectiles, no grab
+	-- drain. Everything is on timers in server time, so nothing fires late when it resumes beyond
+	-- what was already due.
+	if isPaused and isPaused() then
+		return
+	end
 	local t = now()
 	local list, grabbedPositions = targets()
 
@@ -1204,6 +1300,17 @@ local function step(dt: number)
 					assignedCounts,
 					Config.AI_COOP_CROWD_PENALTY
 				)
+				-- A taunting tank overrides the choice while the taunt lasts and the tank is a target.
+				local taunter = enemy.tauntedBy
+				if taunter and t < enemy.tauntUntil and targetByPlayer[taunter] then
+					local taunterRoot = targetByPlayer[taunter].root
+					chosen = { key = taunter, position = taunterRoot.Position }
+					dist = Vector3.new(
+						taunterRoot.Position.X - enemy.body.Position.X,
+						0,
+						taunterRoot.Position.Z - enemy.body.Position.Z
+					).Magnitude
+				end
 				if chosen then
 					local playerKey = chosen.key :: Player
 					assignedCounts[playerKey] = (assignedCounts[playerKey] or 0) + 1
@@ -1257,7 +1364,14 @@ local function step(dt: number)
 					sectorAngle = closeSectors[enemy] or 0
 				end
 			end
-			stepEnemy(enemy, list, grabbedPositions, target, dist, canAttack, sectorAngle, dt, t)
+			if enemy.shoveVelocity and t < enemy.shoveUntil then
+				local here = enemy.body.Position
+				local pushed = Waves.clamp(here + enemy.shoveVelocity * dt, Config.ROOM_SIZE, WALL_MARGIN)
+				moveEnemy(enemy, CFrame.new(pushed) * enemy.body.CFrame.Rotation)
+				grid:move(enemy, pushed.X, pushed.Z)
+			end
+			local enemyDt = if t < enemy.slowUntil then dt * enemy.slowFactor else dt
+			stepEnemy(enemy, list, grabbedPositions, target, dist, canAttack, sectorAngle, enemyDt, t)
 		end
 	end
 	for i = #enemies, 1, -1 do
@@ -1269,7 +1383,7 @@ local function step(dt: number)
 end
 
 function EnemyService.start(dependencies: {
-	hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean? }?) -> (boolean, string?),
+	hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?) -> (boolean, string?),
 	world: Instance,
 	onKill: ((Vector3) -> ())?,
 	canGrab: ((Player) -> boolean)?,
@@ -1277,6 +1391,7 @@ function EnemyService.start(dependencies: {
 	warnGrab: ((Player, number) -> ())?,
 	warnParry: ((Player, number) -> ())?,
 	stun: ((Player, number) -> ())?,
+	isPaused: (() -> boolean)?,
 })
 	hurt = dependencies.hurt
 	onKill = dependencies.onKill
@@ -1285,6 +1400,7 @@ function EnemyService.start(dependencies: {
 	warnGrab = dependencies.warnGrab
 	warnParry = dependencies.warnParry
 	stunPlayer = dependencies.stun
+	isPaused = dependencies.isPaused
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
@@ -1451,6 +1567,14 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		phantomStartedAt = 0,
 		phantomDuration = 0,
 		phantomStepIndex = 0,
+		rushDirection = nil,
+		rushHit = nil,
+		tauntedBy = nil,
+		tauntUntil = 0,
+		shoveVelocity = nil,
+		shoveUntil = 0,
+		slowFactor = 1,
+		slowUntil = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
@@ -1460,6 +1584,27 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		maxEnemyRadius = enemy.radius
 	end
 	return enemy
+end
+
+-- Tank taunt: this enemy targets `player` until `untilAt` (server time).
+function EnemyService.taunt(enemy: Enemy, player: Player, untilAt: number)
+	if not enemy.dead then
+		enemy.tauntedBy = player
+		enemy.tauntUntil = untilAt
+	end
+end
+
+-- Support shockwave: push `distance` studs along `direction` over `seconds`, then run at
+-- `slowFactor` of real time until `slowUntil`.
+function EnemyService.shove(enemy: Enemy, direction: Vector3, distance: number, seconds: number, slowFactor: number, slowUntil: number)
+	if enemy.dead or seconds <= 0 then
+		return
+	end
+	local t = now()
+	enemy.shoveVelocity = direction * (distance / seconds)
+	enemy.shoveUntil = t + seconds
+	enemy.slowFactor = slowFactor
+	enemy.slowUntil = slowUntil
 end
 
 function EnemyService.list(): { Enemy }

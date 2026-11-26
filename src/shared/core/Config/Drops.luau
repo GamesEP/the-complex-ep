@@ -40,5 +40,10 @@ Config.DEFENSE_SPAWN_INSET = 12
 
 -- Test sword model name under ReplicatedStorage.Models, equipped on spawn during the combat slice.
 Config.TEST_SWORD_MODEL = "TestSword"
+-- Degrees the blade is pitched forward from RightGripAttachment. That attachment's -Z points
+-- *down* the forearm, so at the old 25° a relaxed arm planted the tip 2 studs under the floor; at
+-- 70° the blade is held out in front, about 13° below horizontal at rest. Every combat pose in
+-- CombatAnim (the block guard most of all) is tuned against this angle.
+Config.SWORD_GRIP_PITCH = 70
 
 return Config

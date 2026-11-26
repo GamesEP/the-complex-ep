@@ -118,7 +118,9 @@ local function evaluateAttack(step: number, u: number): { [string]: CFrame }
 			waistPitch = lerpNumber(0.28, -0.45, p)
 			waistYaw = lerpNumber(-0.25, 0.35, p)
 			rootDrop = lerpNumber(0.12, -0.22, p)
-			rShoulderX = lerpNumber(2.45, 0.15, p)
+			-- Ends at 0.45 rather than lower: with the blade held forward, a deeper follow-through
+			-- drove the tip into the floor at the bottom of the cleave.
+			rShoulderX = lerpNumber(2.45, 0.45, p)
 			rShoulderZ = lerpNumber(0.35, -0.25, p)
 			rElbowX = lerpNumber(0.55, 0.25, p)
 			lShoulderX = lerpNumber(1.95, -0.45, p)
@@ -163,8 +165,11 @@ local function evaluateDash(u: number): { [string]: CFrame }
 		Root = CFrame.new(0, -0.35 * burst, 0) * CFrame.Angles(lean, 0, 0),
 		Waist = CFrame.Angles(-0.22 * burst, 0.28 * burst, 0),
 		Neck = CFrame.Angles(0.52 * burst, -0.22 * burst, 0),
-		RightShoulder = CFrame.Angles(-0.95 * burst, 0, 0.45 * burst),
-		RightElbow = CFrame.Angles(0.55 * burst, 0, 0),
+		-- Sword arm swept out and back so the blade trails behind the body, level. Pitching the
+		-- arm straight back (as the left one does) swings the forward-held blade down through the
+		-- floor halfway into the dash; this path stays ~1.8 studs clear at every point of the burst.
+		RightShoulder = CFrame.Angles(0.4 * burst, 1.4 * burst, 1.8 * burst),
+		RightElbow = CFrame.Angles(2.0 * burst, 0, 0),
 		LeftShoulder = CFrame.Angles(-0.8 * burst, 0, -0.5 * burst),
 		LeftElbow = CFrame.Angles(0.65 * burst, 0, 0),
 		RightHip = CFrame.Angles(0.75 * burst, 0, 0),
@@ -371,7 +376,7 @@ function CombatAnim.overdriveChargePose(progress: number): Pose
 	}
 end
 
--- Continuous power-charge stance while holding Attack toward the 3-second heavy attack. Pulls
+-- Continuous power-charge stance while holding Attack toward the heavy attack. Pulls
 -- the sword further back over the shoulder as `progress` rises from 0 to 1.
 function CombatAnim.chargePose(progress: number): Pose
 	local p = easeOutCubic(clamp01(progress))
@@ -413,19 +418,24 @@ function CombatAnim.staggerPose(clock: number): Pose
 	}
 end
 
--- Continuous defensive sword-guard pose while the player holds Block (upper body + slight brace,
--- leaving legs free to strafe slowly).
+-- Continuous sword guard while the player holds Block: the blade held level across the chest,
+-- about 1.9 studs in front, tip to the left, with the left hand bracing the flat. Upper body only,
+-- so the legs stay free to strafe slowly.
+--
+-- Solved against the live R15 rig with the sword mounted at Config.SWORD_GRIP_PITCH (forward
+-- kinematics over the AnimationConstraint attachments); change that pitch and these angles stop
+-- putting the blade in front. The previous guard only raised the sword beside the right shoulder.
 function CombatAnim.blockPose(): Pose
 	return {
 		active = true,
 		weight = Config.ANIM_BLOCK_WEIGHT,
 		joints = {
-			Waist = CFrame.Angles(-0.12, -0.35, 0),
-			Neck = CFrame.Angles(0.1, 0.3, 0),
-			RightShoulder = CFrame.Angles(1.25, -0.85, -0.45),
-			RightElbow = CFrame.Angles(1.15, 0, 0),
-			LeftShoulder = CFrame.Angles(0.85, 0.45, 0.25),
-			LeftElbow = CFrame.Angles(1.1, 0, 0),
+			Waist = CFrame.Angles(-0.08, 0.15, 0),
+			Neck = CFrame.Angles(0.05, -0.15, 0),
+			RightShoulder = CFrame.Angles(-0.3, 0, 1.3),
+			RightElbow = CFrame.Angles(1.8, 0, 0),
+			LeftShoulder = CFrame.Angles(1.8, -1.4, 0.1),
+			LeftElbow = CFrame.Angles(0, 0, 0),
 		},
 	}
 end
@@ -512,7 +522,8 @@ function CombatAnim.selfTest()
 
 	-- Block, Parry, Stagger, and Heavy Charge/Attack poses.
 	local blk = CombatAnim.blockPose()
-	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose raises sword guard")
+	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose holds the sword guard")
+	assert(blk.joints.LeftShoulder ~= nil, "block pose brings the left hand up to brace the blade")
 	local stgA = CombatAnim.staggerPose(0)
 	local stgB = CombatAnim.staggerPose(0.2)
 	assert(stgA.active and stgA.joints.Root ~= stgB.joints.Root, "stagger pose sways body while stunned")

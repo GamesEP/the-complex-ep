@@ -27,6 +27,7 @@ local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
+local Classes = require(Shared.features.classes.Classes)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
 local Tactics = require(Shared.features.enemies.Tactics)
 local Tonemapper = require(Shared.features.tonemapping.Tonemapper)
@@ -36,6 +37,7 @@ local Server = script.Parent
 
 local Dispatcher = require(Server.core.Net.Dispatcher)
 
+local ClassService = require(Server.features.classes.ClassService)
 local CombatService = require(Server.features.combat.CombatService)
 local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
@@ -59,6 +61,7 @@ if RunService:IsStudio() then
 	Drops.selfTest()
 	Melee.selfTest()
 	Brain.selfTest()
+	Classes.selfTest()
 	EnemyAnim.selfTest()
 	Tactics.selfTest()
 	Tonemapper.selfTest()
@@ -82,6 +85,9 @@ local world = WorldBuilder.build()
 -- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
 -- Before anybody can join, so a first character is already set up.
 CombatService.start({ enemies = EnemyService })
+CombatService.startSupportTick()
+-- Before anybody joins: every player starts with `Class = ""` and the board waits on it.
+ClassService.start({ applyClass = CombatService.applyClass })
 DropService.start({ world = world, onPickup = CombatService.applyDrop })
 EnemyService.start({
 	hurt = CombatService.hurt,
@@ -92,6 +98,7 @@ EnemyService.start({
 	warnGrab = CombatService.warnGrab,
 	warnParry = CombatService.warnParry,
 	stun = CombatService.stun,
+	isPaused = ClassService.isPaused,
 })
 -- After EnemyService and DropService, whose folders it populates and resets.
 WaveDirector.start({ world = world, onReset = DropService.clear })
@@ -142,6 +149,8 @@ Dispatcher.connect("Stinger", CombatService.stinger)
 Dispatcher.connect("OverDrive", CombatService.overDrive)
 Dispatcher.connect("Block", CombatService.block)
 Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
+Dispatcher.connect("ChooseClass", ClassService.choose)
+Dispatcher.connect("UseAbility", CombatService.useAbility)
 Dispatcher.connect("Diagnostic", LogSink.onClientReport)
 
 local function onPlayerRemoving(player: Player)

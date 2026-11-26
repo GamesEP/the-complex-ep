@@ -15,6 +15,7 @@
 local PARTS = {
 	"Animations",
 	"Audio",
+	"Classes",
 	"Combat",
 	"Diagnostics",
 	"Drops",

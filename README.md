@@ -8,19 +8,41 @@ The game design lives in [`plans/gdd/`](plans/gdd/).
 
 ## Current state
 
-The first playable slice (**single-room combat**) is implemented and passing offline checks
-(`make check`), ready for playtesting and tuning in Roblox Studio — see
-[`plans/gdd/scope.md`](plans/gdd/scope.md) and [`docs/combat.md`](docs/combat.md):
+The first playable slice — **single-room combat** — is implemented, has grown well past its
+original scope, and passes the offline checks (`make check`). It is ready for playtesting and
+tuning in Roblox Studio; nothing that needs a DataModel is verified automatically. See
+[`plans/gdd/scope.md`](plans/gdd/scope.md) and [`docs/combat.md`](docs/combat.md).
 
-- **Combat kit**: isometric camera, movement/jump, 3-hit melee combo, dash with invulnerability
-  window, and AoE spin attack across keyboard/mouse, gamepad, and touch controls.
-- **Enemies & waves**: 3 enemy types (melee, ranged, exploder) driven by a pure state machine and
-  a wave director that resets the room on clear or wipe.
-- **Feedback**: procedural combat/jump animations (`PlayerAnimator`), 2D/3D combat sound effects
-  (`assets/*.ogg` with Studio fallbacks), hit/swing visuals, and a React combat HUD.
+- **Player kit**: isometric camera, movement/jump, 3-hit combo with forward target sticking and a
+  short lunge, a 2 s charged heavy attack, dash with an invulnerability window (double dash while
+  the speed buff is active), and hold-to-block with a parry window that staggers melee attackers
+  and reflects shots.
+- **Classes**: three test classes picked on a selection screen before the fight (the enemies wait
+  while anyone is choosing) — **Tanque** (greatsword and shield: Giro, Provocación, Muralla),
+  **Daño** (two daggers: Stinger, Ejecución, Over Drive) and **Apoyo** (staff: Pulso curativo,
+  Campo protector, Onda de choque) — each with its own stats and passive
+  ([`docs/classes.md`](docs/classes.md)). Abilities are selected with `1`/`2`/`3` or the D-pad and
+  fired with `E` / `Y` / `R1`.
+- **Enemies & waves**: four kinds driven by pure state machines (`Brain`, `Tactics`) on a spatial
+  grid, as rigged `.rbxmx` models with weapon variants — the **Centinela** (melee: sword with the
+  parry-only *Paso Fantasma* ambush, dual blades spin, axe, mace stun slam), the **Cazador**
+  (ranged: rifle and plasma charged rail-beam, shotgun, minigun tracers, backstep evade leap), the
+  **Detonante** (exploder: oval blast that also hurts enemies) and the **Coloso** (grabber: mash or
+  teammates to break free, plus a bull rush that flings and stuns). Health scales by kind and
+  weapon. Five waves; the room restarts on clear and resets on a wipe.
+- **World & rewards**: the industrial `ComplexArena.rbxmx` room, 30% enemy drops (heal, damage,
+  speed) and a periodic defense pickup, all as `.rbxmx` models.
+- **Feedback**: procedural player and enemy animations, 2D/3D combat sound effects, looped
+  background music, combat VFX, the AgX Punchy tonemapper ([`docs/tonemapping.md`](docs/tonemapping.md))
+  and a React combat HUD (health, buffs, wave and telegraph banners, ability bar).
 - **Core infrastructure**: contract-enforced client→server networking, centralized `Config`,
   universe-based environments and feature flags, server log telemetry (`LogSink`), and offline
   Lune test suites.
+
+**Not done yet:** only the background music is uploaded to Roblox (`AssetIds.json`); every sound
+effect still plays through its Studio fallback and needs `make sync-assets` before a publish.
+There are no floors, run upgrades, bosses, hub, parties or persistence yet — those are the later
+milestones in `scope.md`.
 
 ## Stack & toolchain
 

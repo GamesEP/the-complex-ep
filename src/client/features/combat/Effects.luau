@@ -161,7 +161,7 @@ function Effects.dash(root: BasePart)
 	PlayerAnimator.playLocal("dash")
 end
 
--- Pulsing golden-orange energy ring at the player's feet while charging the 3 s heavy attack.
+-- Pulsing golden-orange energy ring at the player's feet while charging the heavy attack (HEAVY_CHARGE_SECONDS).
 function Effects.startCharge(root: BasePart)
 	Effects.stopCharge()
 	local startedAt = os.clock()
@@ -647,6 +647,108 @@ function Effects.overDriveWave(origin: Vector3, direction: Vector3, waveIndex: n
 	end)
 end
 
+--=============================================================================
+-- Class abilities (plans/gdd/systems.md, "Clases")
+--
+-- Drawn from the server's CombatVfx broadcast, the caster included, so every player sees the same
+-- thing and the caster never sees it twice. The caster's own pose is the one local part.
+--=============================================================================
+
+function Effects.classAbilityLocal(abilityId: string)
+	if abilityId == "execute" then
+		PlayerAnimator.playLocal("attack", Config.COMBO_HITS)
+	end
+end
+
+local function rootOfPlayer(target: any): BasePart?
+	if typeof(target) ~= "Instance" or not target:IsA("Player") then
+		return nil
+	end
+	local character = target.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return if root and root:IsA("BasePart") then root else nil
+end
+
+-- A flat disc on the floor growing from nothing to `radius` and fading: the shape every area
+-- ability here is read by.
+local function floorRing(position: Vector3, radius: number, color: Color3, seconds: number)
+	local cframe = CFrame.new(position.X, 0.15, position.Z) * CFrame.Angles(0, 0, math.rad(90))
+	local part = ghost(Vector3.new(0.2, 2, 2), cframe, color, Enum.PartType.Cylinder)
+	part.Transparency = 0.35
+	TweenService:Create(part, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.2, radius * 2, radius * 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(part, seconds + 0.05)
+end
+
+local function tauntVfx(target: any, radius: number)
+	local root = rootOfPlayer(target)
+	if not root then
+		return
+	end
+	floorRing(root.Position, radius, Color3.fromRGB(255, 70, 70), 0.45)
+	task.delay(0.15, function()
+		floorRing(root.Position, radius * 0.7, Color3.fromRGB(255, 120, 90), 0.4)
+	end)
+end
+
+-- A translucent shield plate held in front of the tank for the whole duration.
+local function bulwarkVfx(target: any, seconds: number)
+	local root = rootOfPlayer(target)
+	if not root then
+		return
+	end
+	local plate = Instance.new("Part")
+	plate.Name = "BulwarkVfx"
+	plate.Anchored = false
+	plate.Massless = true
+	plate.CanCollide = false
+	plate.CanQuery = false
+	plate.CanTouch = false
+	plate.CastShadow = false
+	plate.Material = Enum.Material.ForceField
+	plate.Color = Color3.fromRGB(120, 180, 255)
+	plate.Size = Vector3.new(6, 6, 0.4)
+	plate.CFrame = root.CFrame * CFrame.new(0, 0.5, -2.6)
+	local weldToRoot = Instance.new("WeldConstraint")
+	weldToRoot.Part0 = root
+	weldToRoot.Part1 = plate
+	weldToRoot.Parent = plate
+	plate.Parent = root.Parent
+	Debris:AddItem(plate, seconds)
+end
+
+local function executeVfx(position: Vector3, facing: Vector3)
+	local at = position + facing * (Config.EXECUTE_RANGE * 0.55)
+	local slash = ghost(
+		Vector3.new(Config.EXECUTE_RANGE * 1.1, 0.25, 1.1),
+		CFrame.lookAt(at, at + facing) * CFrame.Angles(0, math.rad(90), math.rad(25)),
+		Color3.fromRGB(230, 40, 60)
+	)
+	TweenService:Create(slash, TweenInfo.new(0.22), { Transparency = 1 }):Play()
+	Debris:AddItem(slash, 0.25)
+end
+
+-- A translucent dome over the field for as long as it protects.
+local function protectFieldVfx(position: Vector3, radius: number, seconds: number)
+	local dome = ghost(
+		Vector3.new(radius * 2, radius * 2, radius * 2),
+		CFrame.new(position.X, 0, position.Z),
+		Color3.fromRGB(90, 200, 255),
+		Enum.PartType.Ball
+	)
+	dome.Material = Enum.Material.ForceField
+	dome.Transparency = 0.2
+	floorRing(position, radius, Color3.fromRGB(90, 200, 255), 0.4)
+	task.delay(math.max(seconds - 0.4, 0), function()
+		if dome.Parent then
+			TweenService:Create(dome, TweenInfo.new(0.4), { Transparency = 1 }):Play()
+		end
+	end)
+	Debris:AddItem(dome, seconds)
+end
+
 Remotes.CombatVfx.OnClientEvent:Connect(function(kind: string, arg1: any, arg2: any, arg3: any)
 	if kind == "stinger" then
 		-- Local player already predicted their own Stinger trail & echoes immediately on input.
@@ -671,6 +773,30 @@ Remotes.CombatVfx.OnClientEvent:Connect(function(kind: string, arg1: any, arg2: 
 	elseif kind == "overdriveWave" then
 		if typeof(arg1) == "Vector3" and typeof(arg2) == "Vector3" and type(arg3) == "number" then
 			Effects.overDriveWave(arg1, arg2, arg3)
+		end
+	elseif kind == "taunt" then
+		if type(arg2) == "number" then
+			tauntVfx(arg1, arg2)
+		end
+	elseif kind == "bulwark" then
+		if type(arg2) == "number" then
+			bulwarkVfx(arg1, arg2)
+		end
+	elseif kind == "execute" then
+		if typeof(arg1) == "Vector3" and typeof(arg2) == "Vector3" then
+			executeVfx(arg1, arg2)
+		end
+	elseif kind == "healPulse" then
+		if typeof(arg1) == "Vector3" and type(arg2) == "number" then
+			floorRing(arg1, arg2, Color3.fromRGB(90, 230, 130), 0.5)
+		end
+	elseif kind == "protectField" then
+		if typeof(arg1) == "Vector3" and type(arg2) == "number" and type(arg3) == "number" then
+			protectFieldVfx(arg1, arg2, arg3)
+		end
+	elseif kind == "shockwave" then
+		if typeof(arg1) == "Vector3" and type(arg2) == "number" then
+			floorRing(arg1, arg2, Color3.fromRGB(235, 235, 255), 0.3)
 		end
 	end
 end)

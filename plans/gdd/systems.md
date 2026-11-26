@@ -78,6 +78,49 @@ servidor de run.
 
 ---
 
+## Clases
+
+`server/features/classes/`
+
+**Qué hace:** da a cada jugador una clase fija, elegida antes de empezar, que define cómo pelea.
+
+**Reglas decididas:**
+
+- Hay 3 clases: **Tanque**, **Daño** y **Apoyo**.
+- Una clase cambia cuatro cosas: las **estadísticas**, el **set de 3 habilidades**, el **arma** (con
+  su propio modelo) y una **pasiva de clase** fija.
+- La clase se elige en un **hub de selección** antes de empezar la sala (ver `ClassSelect` en
+  [ui.md](ui.md)). Mientras el jugador está eligiendo, **todos los enemigos quedan quietos**: no se
+  mueven ni atacan hasta que elige.
+- Es una medida para probar el gameplay. Cuando exista el lobby del hito de Grupos, la clase se
+  elegirá ahí.
+
+**Cada clase (aprobado; los números son valores de partida para ajustar jugando):**
+
+| | Tanque | Daño | Apoyo |
+|---|---|---|---|
+| Vida | 160 | 85 | 100 |
+| Velocidad | 22 | 28 | 25 |
+| Daño | ×0,85 | ×1,25 | ×0,9 |
+| Arma | Espadón con escudo | Dos dagas | Báculo de energía |
+| Habilidad 1 | **Giro** (ya existe) | **Stinger** (ya existe) | **Pulso curativo:** cura a los aliados cercanos y a sí mismo |
+| Habilidad 2 | **Provocación:** los enemigos cercanos le atacan solo a él unos segundos | **Ejecución:** golpe que hace mucho más daño a enemigos con poca vida | **Campo protector:** zona en el suelo que reduce el daño a quien esté dentro |
+| Habilidad 3 | **Muralla:** escudo frontal que detiene los disparos unos segundos | **Over Drive** (ya existe) | **Onda de choque:** empuja y ralentiza a los enemigos alrededor |
+| Pasiva | Recibe un 20 % menos de daño | +25 % de daño a enemigos aturdidos o por la espalda | Regenera vida poco a poco a los aliados cercanos |
+
+Valores exactos (recargas, radios, daños) en `Config/Classes.luau`. Cómo está hecho:
+[docs/classes.md](../../docs/classes.md).
+
+- Por ahora la clase se elige **una vez por sesión** y se conserva al reaparecer.
+
+**Open:** ¿la clase se puede cambiar a mitad de la sala, o solo en el hub? (Por ahora, solo una
+vez.) No bloquea probar las clases.
+
+**Habla con el cliente mediante:** la clase elegida como atributo del jugador; la elección, como
+un remoto declarado en el contrato.
+
+---
+
 ## Combate
 
 `server/features/combat/`
@@ -91,16 +134,18 @@ servidor de run.
   botón de ataque durante 3 segundos). Son los que definen la alta velocidad del juego, así que su
   rapidez y fluidez son lo primero que se ajusta.
 - **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora; mantener
-  pulsado Atacar durante **3 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un corte frontal
+  pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un corte frontal
   amplio de alto daño (`Config.HEAVY_ATTACK_DAMAGE`, arco de `160°` y `13` studs de alcance) que se
   libera automáticamente al completarse la carga. Durante la carga el jugador se desplaza más
   despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede
   cancelar soltando antes o usando Dash/Bloqueo.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
-  `"Bloquear"`) reduce el daño entrante en un 70% (`Config.BLOCK_DAMAGE_REDUCTION`) a cambio de
+  `"Bloquear"`) pone al personaje en guardia, con la espada cruzada delante del pecho y la mano
+  izquierda apoyándola, para que se lea de un vistazo que está cubriéndose de frente. Reduce el
+  daño entrante en un 70% (`Config.BLOCK_DAMAGE_REDUCTION`) a cambio de
   moverse más despacio (`Config.BLOCK_MOVE_MULTIPLIER`). Si se levanta la guardia justo antes de un
   impacto (`Config.PARRY_WINDOW`), ejecuta un **Parry**: anula todo el daño, aturde a enemigos
-  cuerpo a cuerpo (`Config.PARRY_STUN_SECONDS`) y **devuelve los disparos de enemigos a distancia**
+  cuerpo a cuerpo (`Config.PARRY_STUN_SECONDS`) y **devuelve los disparos de los Cazadores**
   hacia los enemigos a mayor velocidad (`Config.PARRY_PROJECTILE_DAMAGE`). Soltar el bloqueo tiene
   una breve recarga (`Config.BLOCK_COOLDOWN`) para evitar spam infinito de parry.
 - **Saltar tiene rol defensivo:** además de servir para movilidad y obstáculos, saltar permite
@@ -149,7 +194,7 @@ Valores de prueba del corte de combate, para ajustar jugando:
 |---|---|
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
-| Ataque pesado cargado | Mantener Atacar 3 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
+| Ataque pesado cargado | Mantener Atacar 2 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
 | Tiempo para encadenar el combo | 0,6 s (`Config.COMBO_WINDOW`) |
 | Enganche frontal del ataque básico | Cono de 120° (±60° desde la dirección pulsada) hasta 15 studs (retención en combo de 110°), con impulso de hasta 8 studs a 90 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
 | Velocidad al correr | 26 studs/s; la de Roblox por defecto es 16 (`Config.MOVE_SPEED`) |

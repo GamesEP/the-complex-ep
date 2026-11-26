@@ -16,7 +16,7 @@ Revivir del grupo) se diseñarán cuando arranque su hito.
 
 **Muestra:**
 - Barra de vida roja del jugador en la esquina superior izquierda (valor actual / máximo) y debajo los indicadores temporales de buffs recogidos solo mientras están activos.
-- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central (los avisos de habilidades enemigas —agarrador y Paso Fantasma— aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo, sin carteles de texto invasivos).
+- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central (los avisos de habilidades enemigas —Coloso y Paso Fantasma— aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo, sin carteles de texto invasivos).
 - Barra de vida del jefe en la parte superior central cuando la sala actual tiene jefe.
 - Iconos recargables de las 3 habilidades activas (`Config.ABILITY_SLOTS`) en la esquina inferior izquierda, intercambiables con `1`, `2` y `3` (o clic/toque / cruceta en mando) y lanzables con `E` / `Y` / `R1`: **`1` Giro** (`4 s`), **`2` Stinger** (`5,5 s`) y **`3` Over Drive** (definitiva, `14 s`), cada uno con barrido de recarga y cuenta atrás. Sin barras para el Dash ni para Bloqueo/Parry por su recarga rápida.
 
@@ -85,6 +85,26 @@ run o al limpiar una sala). Nunca pausa el juego ni bloquea el movimiento ni los
 **En pantalla pequeña (móvil):**
 - Panel centrado compacto con el resumen en 3 datos clave y botón **Reintentar** grande en la
   parte inferior del panel.
+
+---
+
+## ClassSelect
+
+`client/features/classes/ui/`
+
+**En pantalla cuando:** el jugador acaba de entrar (o reaparece en una sala nueva) y todavía no ha
+elegido clase. Mientras está abierta, los enemigos están quietos.
+
+**Muestra:**
+- Las 3 clases (Tanque, Daño, Apoyo) como tarjetas, cada una con su arma, sus estadísticas en
+  pocas cifras, sus 3 habilidades y su pasiva.
+
+**El jugador puede:**
+- Elegir una clase con clic, toque o mando, y empezar a pelear.
+
+**En pantalla pequeña (móvil):**
+- Las 3 tarjetas pasan de estar en fila a apiladas en columna, con desplazamiento vertical.
+  Todavía no se ha visto en un teléfono.
 
 ---
 

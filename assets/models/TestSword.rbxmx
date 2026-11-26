@@ -45,9 +45,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">272</token>
         <Vector3 name="size">
-          <X>0.2599945</X>
-          <Y>0.2599945</Y>
-          <Z>1.1499939</Z>
+          <X>0.20799255</X>
+          <Y>0.20799255</Y>
+          <Z>0.91999817</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -96,7 +96,7 @@
         <CoordinateFrame name="CFrame">
           <X>0</X>
           <Y>0</Y>
-          <Z>0.6499939</Z>
+          <Z>0.5200043</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -116,9 +116,9 @@
         <token name="Material">1088</token>
         <token name="shape">0</token>
         <Vector3 name="size">
-          <X>0.41999817</X>
-          <Y>0.41999817</Y>
-          <Z>0.41999817</Z>
+          <X>0.33599854</X>
+          <Y>0.33599854</Y>
+          <Z>0.33599854</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -132,7 +132,7 @@
         <CoordinateFrame name="CFrame">
           <X>0</X>
           <Y>0</Y>
-          <Z>-0.6199951</Z>
+          <Z>-0.4960022</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -151,9 +151,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>1.449997</X>
-          <Y>0.27999878</Y>
-          <Z>0.33999634</Z>
+          <X>1.1600037</X>
+          <Y>0.22399902</Y>
+          <Z>0.27200317</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -167,7 +167,7 @@
         <CoordinateFrame name="CFrame">
           <X>0</X>
           <Y>0</Y>
-          <Z>-2.550003</Z>
+          <Z>-2.0399933</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -186,9 +186,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>0.41999817</X>
-          <Y>0.13999939</Y>
-          <Z>3.600006</Z>
+          <X>0.33599854</X>
+          <Y>0.11199951</Y>
+          <Z>2.880005</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -202,7 +202,7 @@
         <CoordinateFrame name="CFrame">
           <X>0</X>
           <Y>0</Y>
-          <Z>-2.449997</Z>
+          <Z>-1.9600067</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -221,9 +221,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">288</token>
         <Vector3 name="size">
-          <X>0.16000366</X>
-          <Y>0.17999268</Y>
-          <Z>3.199997</Z>
+          <X>0.12800598</X>
+          <Y>0.14399719</Y>
+          <Z>2.5599976</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -237,7 +237,7 @@
         <CoordinateFrame name="CFrame">
           <X>0</X>
           <Y>0</Y>
-          <Z>-4.449997</Z>
+          <Z>-3.5599976</Z>
           <R00>0.70710754</R00>
           <R01>0</R01>
           <R02>0.70710754</R02>
@@ -256,9 +256,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>0.32000732</X>
-          <Y>0.13000488</Y>
-          <Z>0.6499939</Z>
+          <X>0.2559967</X>
+          <Y>0.104003906</Y>
+          <Z>0.5200043</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>

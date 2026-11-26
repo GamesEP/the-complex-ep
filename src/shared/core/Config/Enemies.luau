@@ -8,6 +8,9 @@ export type EnemyVariant = {
 	weapon: string,
 	-- Optional relative spawn weight (default 1) so rare specialists like minigun appear occasionally.
 	weight: number?,
+	-- Overrides the kind's health, so a heavier weapon reads as a tougher enemy (see the health
+	-- ladder above ENEMY_KINDS).
+	health: number?,
 	-- Melee dual-blade spin DPS ability.
 	canSpin: boolean?,
 	spinDuration: number?,
@@ -53,6 +56,10 @@ export type EnemyVariant = {
 }
 
 export type EnemyKind = {
+	-- The name a player reads (Spanish, as in plans/gdd/content.md). The table keys below (`melee`,
+	-- `ranged`, ...) stay as internal ids: they name the role in code, Brain and the waves, and
+	-- renaming them would touch every module for no visible change.
+	displayName: string,
 	model: string?,
 	variants: { EnemyVariant }?,
 	health: number,
@@ -66,6 +73,21 @@ export type EnemyKind = {
 	recover: number?,
 	damage: number?,
 	grabDamagePerSecond: number?,
+	canRush: boolean?,
+	rushMinRange: number?,
+	rushMaxRange: number?,
+	rushWindup: number?,
+	rushDuration: number?,
+	rushSpeed: number?,
+	rushCooldown: number?,
+	rushRecover: number?,
+	rushDamage: number?,
+	rushHitRadius: number?,
+	rushHitHeight: number?,
+	rushKnockbackSpeed: number?,
+	rushKnockbackSeconds: number?,
+	rushKnockbackUp: number?,
+	rushStunDuration: number?,
 	lungeDuration: number?,
 	lungeSpeed: number?,
 	grabRadius: number?,
@@ -87,11 +109,17 @@ export type EnemyKind = {
 	enemyDamage: number?,
 }
 
+-- Health ladder, starting values to tune by playing. Against the basic combo (40 damage in about
+-- 0.9 s) the roles read as: fragile threats die to one or two hits (exploder 15, ranged 22-34),
+-- the melee line takes a combo or so and grows with its weapon (30 sword up to 50 mace), and the
+-- grabber is the wall of the wave at 100 — it holds a teammate hostage, so killing it has to be
+-- a decision the group commits to, not a stray swing. Variants override `health` per weapon.
 Config.ENEMY_KINDS = {
 	-- Telegraphs every swing with a windup, so a dash during it always works. Spawns across
 	-- four rigged `.rbxmx` weapon variants: single-sword units can trigger a Sandevistan 3-dash
 	-- ambush, and dual-blade units unleash a high-DPS spin attack.
 	melee = {
+		displayName = "Centinela",
 		model = "EnemyMelee",
 		variants = {
 			{
@@ -108,6 +136,7 @@ Config.ENEMY_KINDS = {
 			{
 				model = "EnemyMeleeDual",
 				weapon = "dual",
+				health = 36,
 				canSpin = true,
 				spinDuration = 1.6,
 				spinTickEvery = 0.25,
@@ -116,10 +145,11 @@ Config.ENEMY_KINDS = {
 				spinCooldown = 6.5,
 				spinMoveFactor = 0.65,
 			},
-			{ model = "EnemyMeleeAxe", weapon = "axe" },
+			{ model = "EnemyMeleeAxe", weapon = "axe", health = 42 },
 			{
 				model = "EnemyMeleeMace",
 				weapon = "mace",
+				health = 50,
 				canSlam = true,
 				slamRange = 13,
 				slamRadius = 15.5,
@@ -145,11 +175,13 @@ Config.ENEMY_KINDS = {
 	-- heavy minigun firing rapid ballistic tracer lines. All ranged units backstep-leap away when
 	-- a player closes within `evadeTrigger` (at least 5 s cooldown).
 	ranged = {
+		displayName = "Cazador",
 		model = "EnemyRanged",
 		variants = {
 			{
 				model = "EnemyRanged",
 				weapon = "rifle",
+				health = 22,
 				weight = 4,
 				burstCount = 1,
 				projectileStyle = "orb",
@@ -166,6 +198,7 @@ Config.ENEMY_KINDS = {
 			{
 				model = "EnemyRangedShotgun",
 				weapon = "shotgun",
+				health = 26,
 				weight = 3,
 				burstCount = 2,
 				burstInterval = 0.2,
@@ -175,6 +208,7 @@ Config.ENEMY_KINDS = {
 			{
 				model = "EnemyRangedCarbine",
 				weapon = "plasma",
+				health = 26,
 				weight = 2,
 				burstCount = 2,
 				burstInterval = 0.18,
@@ -193,6 +227,7 @@ Config.ENEMY_KINDS = {
 			{
 				model = "EnemyRangedMinigun",
 				weapon = "minigun",
+				health = 34,
 				weight = 2,
 				burstCount = 6,
 				burstInterval = 0.11,
@@ -222,6 +257,7 @@ Config.ENEMY_KINDS = {
 	-- Its blast is a flattened oval (`blastHeight < blastRadius`) so jumping near the outer rim
 	-- clears the dome cleanly, and it also damages nearby enemies (`enemyDamage`).
 	exploder = {
+		displayName = "Detonante",
 		model = "EnemyExploder",
 		health = 15,
 		speed = 20,
@@ -237,8 +273,9 @@ Config.ENEMY_KINDS = {
 	-- Huge muscular juggernaut: telegraphs a windup (HUD Dash warning) and then lunges forward
 	-- to seize the player, draining 8 HP/s until freed by 10 attack presses or teammates.
 	grabber = {
+		displayName = "Coloso",
 		model = "EnemyGrabber",
-		health = 45,
+		health = 100,
 		speed = 13,
 		size = Vector3.new(4.8, 6.2, 4.2),
 		color = Color3.fromRGB(155, 45, 210),
@@ -250,6 +287,26 @@ Config.ENEMY_KINDS = {
 		recover = 1.6,
 		damage = 0,
 		grabDamagePerSecond = 8,
+		-- Rush (embestida): from beyond grab reach it lowers its shoulder (telegraphed) and
+		-- bull-charges in a straight line locked at launch, so a sideways dash dodges it. Anyone it
+		-- runs into is hurt, flung back about 17 studs and stunned. It is the grabber's answer to a
+		-- player who keeps out of grab reach. Blocking halves the fling and the stun; parry does
+		-- not apply (it is a body slam, not a weapon).
+		canRush = true,
+		rushMinRange = 16,
+		rushMaxRange = 34,
+		rushWindup = 0.7,
+		rushDuration = 0.6,
+		rushSpeed = 58,
+		rushCooldown = 6.5,
+		rushRecover = 1.1,
+		rushDamage = 12,
+		rushHitRadius = 5.2,
+		rushHitHeight = 5,
+		rushKnockbackSpeed = 55,
+		rushKnockbackSeconds = 0.32,
+		rushKnockbackUp = 28,
+		rushStunDuration = 1.3,
 	},
 } :: { [string]: EnemyKind }
 

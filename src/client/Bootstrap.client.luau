@@ -15,11 +15,13 @@ local Client = script.Parent
 local Layout = require(Client.ui.ScreenMetrics)
 
 local BuildStamp = require(Client.features.environment.ui.BuildStamp)
+local ClassSelect = require(Client.features.classes.ui.ClassSelect)
 local CombatHud = require(Client.features.combat.ui.CombatHud)
 local CombatInput = require(Client.features.combat.CombatInput)
 local DropVisuals = require(Client.features.drops.DropVisuals)
 local EnemyAnimator = require(Client.features.enemies.EnemyAnimator)
 local IsoCamera = require(Client.features.camera.IsoCamera)
+local Knockback = require(Client.features.combat.Knockback)
 local PlayerAnimator = require(Client.features.combat.PlayerAnimator)
 local SoundPlayer = require(Client.features.combat.SoundPlayer)
 local TonemapperController = require(Client.features.tonemapping.TonemapperController)
@@ -34,6 +36,7 @@ EnemyAnimator.start()
 PlayerAnimator.start()
 SoundPlayer.start()
 CombatInput.start()
+Knockback.start()
 TonemapperController.start()
 
 -- Everywhere but production, so a screenshot always says which experience it came from. The
@@ -45,3 +48,5 @@ end
 
 -- Last: it waits for the server to have built the room, and nothing above should wait with it.
 CombatHud.start()
+-- After the HUD, over it: the class choice is the first thing a player sees.
+ClassSelect.start()

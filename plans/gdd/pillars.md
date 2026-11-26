@@ -11,6 +11,15 @@ la run sin pausar la acción.
 **Descarta:** elegir clase o arma antes de empezar la run, o depender de equipo farmeado fuera para
 poder competir en una planta.
 
+**Excepción decidida (para probar el gameplay):** por ahora hay **3 clases fijas** (Tanque, Daño y
+Apoyo) que se eligen antes de empezar, en un hub de selección (ver Clases en
+[systems.md](systems.md)). Más adelante, con el lobby, cada jugador escogerá su rol ahí. Esto
+contradice este pilar tal como está escrito.
+
+**Open:** cuando existan las mejoras de 1 de 3 de la run, ¿conviven con las clases (la clase da
+la base y las mejoras la especializan) o las sustituyen? Según la respuesta, este pilar se
+reescribe. Bloquea el sistema de Mejoras de run; no bloquea probar las clases.
+
 ## 2. Acción cooperativa legible en PC, móvil y consola
 
 El combate rápido de 1 a 4 jugadores contra hordas y jefes tiene que sentirse igual de cómodo y

@@ -37,6 +37,12 @@ return {
 	Block = remote("Block"),
 	GrabEscape = remote("GrabEscape"),
 
+	-- The test classes (plans/gdd/systems.md, "Clases"). `ChooseClass(id)` from the selection
+	-- screen; `UseAbility(id, aim)` for every class ability added with them. Spin, Stinger and
+	-- Over Drive keep their own remotes above, which predate the classes.
+	ChooseClass = remote("ChooseClass"),
+	UseAbility = remote("UseAbility"),
+
 	-- Server -> client combat sound cues (enemy attacks, explosions, hit confirms, co-op swings).
 	-- No Contract entry: the contract governs what a client is allowed to send, not server
 	-- broadcasts (docs/net-contract.md).
@@ -54,6 +60,12 @@ return {
 	-- Server -> client enemy animation events (strike follow-through and death collapse clones).
 	-- No Contract entry: server broadcast only (docs/net-contract.md).
 	EnemyAnim = remote("EnemyAnim"),
+
+	-- Server -> one client: fling this player (the grabber's rush). The client owns its
+	-- character's physics, so a velocity set on the server would be overwritten by the next
+	-- physics update from the client; the client applies it itself. No Contract entry: server
+	-- -> client only (docs/net-contract.md).
+	Knockback = remote("Knockback"),
 
 	-- Faults a client saw and the server could not. Client -> server, and the one remote whose
 	-- payload outlives the session, so it is validated twice — once by the contract and once

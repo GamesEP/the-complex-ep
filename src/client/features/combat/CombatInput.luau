@@ -20,6 +20,7 @@ local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
+local Classes = require(Shared.features.classes.Classes)
 
 local Effects = require(script.Parent.Effects)
 local AbilityStore = require(script.Parent.stores.AbilityStore)
@@ -40,6 +41,8 @@ local dashToken = 0
 local spinReadyAt = 0
 local stingerReadyAt = 0
 local overDriveReadyAt = 0
+-- Predicted ready times for the class abilities that came with the classes, by ability id.
+local classAbilityReadyAt: { [string]: number } = {}
 local blockReadyAt = 0
 local heavyReadyAt = 0
 local blocking = false
@@ -353,7 +356,7 @@ local function beginAttackHold()
 	attackHeld = true
 
 	-- Keep normal combo taps instant on Begin; holding past HEAVY_CHARGE_DELAY transitions cleanly
-	-- into the 3-second heavy-attack charge and unleashes automatically at full charge.
+	-- into the heavy-attack charge (HEAVY_CHARGE_SECONDS) and unleashes automatically at full charge.
 	task.delay(Config.HEAVY_CHARGE_DELAY, function()
 		if chargeToken ~= myToken or not attackHeld then
 			return
@@ -566,10 +569,51 @@ local function overDrive()
 	Remotes.OverDrive:FireServer(aim)
 end
 
-local ABILITY_TITLES = { "Giro", "Stinger", "Over Drive" }
+local function classId(): string?
+	local current = player:GetAttribute("Class")
+	return if type(current) == "string" and current ~= "" then current else nil
+end
+
+-- Every ability that came with the classes: aimed like the Stinger (forward target sticking),
+-- predicted locally only for its cooldown and the caster's own pose. Its visuals come back from
+-- the server to everyone, the caster included, so they are never drawn twice.
+local function castClassAbility(abilityId: string)
+	local ability = Config.ABILITIES[abilityId]
+	if
+		not ability
+		or player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or blocking
+		or player:GetAttribute("Blocking") == true
+		or isStunned()
+	then
+		return
+	end
+	local root, humanoid = body()
+	if not root or not humanoid or not ready(classAbilityReadyAt[abilityId] or 0, ability.readyAttribute) then
+		return
+	end
+	local clock = os.clock()
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+	local pick, targetBody = selectTarget(root, facing, clock)
+	local aim = if pick then pick.direction else facing
+
+	cancelHeavyCharge(true)
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock else -math.huge
+	classAbilityReadyAt[abilityId] = now() + ability.cooldown
+	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+	Effects.classAbilityLocal(abilityId)
+	Remotes.UseAbility:FireServer(abilityId, aim)
+end
 
 local function updateAbilityTouchTitle(slot: number)
-	ContextActionService:SetTitle("Ability", ABILITY_TITLES[slot] or "Habilidad")
+	local abilityId = Classes.abilityAt(classId(), slot)
+	local ability = abilityId and Config.ABILITIES[abilityId]
+	ContextActionService:SetTitle("Ability", if ability then ability.name else "Habilidad")
 end
 
 local function selectAbilitySlot(slot: number)
@@ -577,14 +621,18 @@ local function selectAbilitySlot(slot: number)
 	updateAbilityTouchTitle(chosen)
 end
 
+-- The selected slot's ability for this player's class. No class yet (still on the selection
+-- screen) means no ability.
 local function useActiveAbility()
-	local slot = AbilityStore.current()
-	if slot == 2 then
-		stinger()
-	elseif slot == 3 then
-		overDrive()
-	else
+	local abilityId = Classes.abilityAt(classId(), AbilityStore.current())
+	if abilityId == "spin" then
 		spin()
+	elseif abilityId == "stinger" then
+		stinger()
+	elseif abilityId == "overdrive" then
+		overDrive()
+	elseif abilityId then
+		castClassAbility(abilityId)
 	end
 end
 
@@ -625,7 +673,7 @@ local ACTIONS = {
 	},
 	Ability = {
 		run = useActiveAbility,
-		title = ABILITY_TITLES[1],
+		title = "Habilidad",
 		inputs = { Enum.KeyCode.E, Enum.KeyCode.ButtonY, Enum.KeyCode.ButtonR1 },
 	},
 }
@@ -634,6 +682,12 @@ local ATTACK_INPUTS = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX, E
 local BLOCK_INPUTS = { Enum.UserInputType.MouseButton2, Enum.KeyCode.F, Enum.KeyCode.ButtonL1 }
 
 function CombatInput.start()
+	-- A new class means a new kit: back to slot 1, with its name on the touch button.
+	player:GetAttributeChangedSignal("Class"):Connect(function()
+		table.clear(classAbilityReadyAt)
+		AbilityStore.reset()
+		updateAbilityTouchTitle(1)
+	end)
 	for name, action in pairs(ACTIONS) do
 		ContextActionService:BindActionAtPriority(name, function(_, state: Enum.UserInputState)
 			if state ~= Enum.UserInputState.Begin then
@@ -687,7 +741,7 @@ function CombatInput.start()
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.DPadRight)
 
 	-- Attack: tap fires the basic combo immediately; holding continuously for HEAVY_CHARGE_SECONDS
-	-- (3 s) charges and unleashes the Heavy Attack. Releasing early cancels the charge cleanly.
+	-- (2 s) charges and unleashes the Heavy Attack. Releasing early cancels the charge cleanly.
 	ContextActionService:BindActionAtPriority("Attack", function(_, state: Enum.UserInputState)
 		if state == Enum.UserInputState.Begin then
 			beginAttackHold()
@@ -756,6 +810,7 @@ function CombatInput.start()
 		spinReadyAt = 0
 		stingerReadyAt = 0
 		overDriveReadyAt = 0
+		table.clear(classAbilityReadyAt)
 		blockReadyAt = 0
 		heavyReadyAt = 0
 		blocking = false

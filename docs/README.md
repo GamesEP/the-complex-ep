@@ -6,6 +6,7 @@ thirty-line comment block at the top of a module.
 
 | | |
 |---|---|
+| [classes.md](classes.md) | The three test classes: choosing one, the pause, weapons, passives and their abilities |
 | [combat.md](combat.md) | The player's kit, the enemies and the waves — and who decides what |
 | [tonemapping.md](tonemapping.md) | Active AgX Punchy post-processing, reference tonemappers (Khronos PBR Neutral, AgX, ACES…) and 1024×32 LUT pipeline |
 | [net-contract.md](net-contract.md) | How a client talks to the server, and why every remote is declared |

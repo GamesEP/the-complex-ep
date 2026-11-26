@@ -623,6 +623,10 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.beamChargePose(clock, phaseProgress)
 		elseif phase == "lunge" then
 			targetPose = EnemyAnim.grabLungePose()
+		elseif phase == "rushWindup" then
+			targetPose = EnemyAnim.rushWindupPose(phaseProgress, clock)
+		elseif phase == "rush" then
+			targetPose = EnemyAnim.rushPose(clock)
 		elseif phase == "fuse" then
 			targetPose = EnemyAnim.fusePose(clock, phaseProgress)
 		elseif strikeElapsed >= 0 and strikeElapsed < Config.ENEMY_STRIKE_ANIM_SECONDS then

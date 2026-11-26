@@ -71,10 +71,92 @@ function Effects.spin(root: BasePart)
 	PlayerAnimator.playLocal("spin")
 end
 
+-- Spawns a translucent neon silhouette echo of a character's current pose (clean afterimage wake).
+local function spawnCharacterEcho(character: Model, tint: Color3, startTransparency: number, fadeSeconds: number)
+	local folder = Instance.new("Model")
+	folder.Name = "AbilityEcho"
+	for _, desc in ipairs(character:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" and desc.Transparency < 0.9 then
+			local copy = Instance.new("Part")
+			if desc:IsA("Part") then
+				copy.Shape = desc.Shape
+			end
+			copy.Anchored = true
+			copy.CanCollide = false
+			copy.CanQuery = false
+			copy.CanTouch = false
+			copy.CastShadow = false
+			copy.Material = Enum.Material.Neon
+			copy.Color = tint
+			copy.Transparency = startTransparency
+			copy.Size = desc.Size
+			copy.CFrame = desc.CFrame
+			copy.Parent = folder
+			TweenService:Create(
+				copy,
+				TweenInfo.new(fadeSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Transparency = 1 }
+			):Play()
+		end
+	end
+	folder.Parent = workspace
+	Debris:AddItem(folder, fadeSeconds + 0.05)
+end
+
+-- Sleek evasive dash VFX: translucent icy-cyan silhouette echoes + tapered wind ribbon Trail
+-- (zero rectangular blocks).
 function Effects.dash(root: BasePart)
-	local part = ghost(Vector3.new(2, 5, 1), root.CFrame, Color3.fromRGB(140, 200, 255))
-	TweenService:Create(part, TweenInfo.new(0.2), { Transparency = 1 }):Play()
-	Debris:AddItem(part, 0.25)
+	local character = root.Parent
+	local duration = Config.DASH_DURATION
+
+	if character and character:IsA("Model") then
+		spawnCharacterEcho(character, Color3.fromRGB(120, 215, 255), 0.5, 0.22)
+		task.delay(duration * 0.48, function()
+			if character.Parent then
+				spawnCharacterEcho(character, Color3.fromRGB(75, 185, 255), 0.6, 0.2)
+			end
+		end)
+	end
+
+	if root.Parent then
+		local topAtt = Instance.new("Attachment")
+		topAtt.Position = Vector3.new(0, 1.2, 0)
+		topAtt.Parent = root
+
+		local botAtt = Instance.new("Attachment")
+		botAtt.Position = Vector3.new(0, -1.2, 0)
+		botAtt.Parent = root
+
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = topAtt
+		trail.Attachment1 = botAtt
+		trail.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(215, 245, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(115, 205, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(65, 145, 255)),
+		})
+		trail.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		trail.WidthScale = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.9),
+			NumberSequenceKeypoint.new(1, 0.05),
+		})
+		trail.Lifetime = 0.2
+		trail.LightEmission = 1
+		trail.Parent = root
+
+		task.delay(duration + 0.02, function()
+			if trail.Parent then
+				trail.Enabled = false
+			end
+		end)
+		Debris:AddItem(trail, duration + 0.26)
+		Debris:AddItem(topAtt, duration + 0.26)
+		Debris:AddItem(botAtt, duration + 0.26)
+	end
+
 	SoundPlayer.play("playerDash")
 	PlayerAnimator.playLocal("dash")
 end
@@ -121,41 +203,6 @@ function Effects.stopCharge()
 	end
 end
 
--- Massive forward shockwave burst + ground ring when the charged heavy attack unleashes.
-function Effects.heavyAttack(root: BasePart, direction: Vector3)
-	Effects.stopCharge()
-	local ringDiameter = Config.HEAVY_ATTACK_RANGE * 1.65
-	local groundPos = root.Position - Vector3.new(0, 2.2, 0)
-	local ring = ghost(
-		Vector3.new(0.5, 5, 5),
-		CFrame.new(groundPos) * CFrame.Angles(0, 0, math.rad(90)),
-		Color3.fromRGB(255, 120, 45),
-		Enum.PartType.Cylinder
-	)
-	ring.Transparency = 0.15
-	TweenService:Create(
-		ring,
-		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = Vector3.new(0.5, ringDiameter, ringDiameter), Transparency = 1 }
-	):Play()
-	Debris:AddItem(ring, 0.32)
-
-	-- Sweeping forward energy wave along `direction` so the wide 160-deg reach reads clearly.
-	local waveStart = CFrame.lookAt(root.Position + direction * 2.5, root.Position + direction * 10)
-	local waveEnd = CFrame.lookAt(root.Position + direction * (Config.HEAVY_ATTACK_RANGE * 0.72), root.Position + direction * (Config.HEAVY_ATTACK_RANGE + 5))
-	local wave = ghost(Vector3.new(8, 2.2, 1.4), waveStart, Color3.fromRGB(255, 200, 85))
-	wave.Transparency = 0.1
-	TweenService:Create(
-		wave,
-		TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = Vector3.new(Config.HEAVY_ATTACK_RANGE * 1.45, 0.6, 2.4), CFrame = waveEnd, Transparency = 1 }
-	):Play()
-	Debris:AddItem(wave, 0.28)
-
-	SoundPlayer.play("playerHeavyAttack")
-	PlayerAnimator.playLocal("heavyAttack")
-end
-
 -- Spawns a smooth tapered ellipsoid part (zero boxy edges) for razor slashes and spear tips.
 local function smoothPart(size: Vector3, cframe: CFrame, color: Color3, transparency: number): Part
 	local part = Instance.new("Part")
@@ -177,36 +224,103 @@ local function smoothPart(size: Vector3, cframe: CFrame, color: Color3, transpar
 	return part
 end
 
--- Spawns a translucent neon silhouette echo of a character's current pose (clean afterimage wake).
-local function spawnCharacterEcho(character: Model, tint: Color3, startTransparency: number, fadeSeconds: number)
-	local folder = Instance.new("Model")
-	folder.Name = "AbilityEcho"
-	for _, desc in ipairs(character:GetDescendants()) do
-		if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" and desc.Transparency < 0.9 then
-			local copy = Instance.new("Part")
-			if desc:IsA("Part") then
-				copy.Shape = desc.Shape
-			end
-			copy.Anchored = true
-			copy.CanCollide = false
-			copy.CanQuery = false
-			copy.CanTouch = false
-			copy.CastShadow = false
-			copy.Material = Enum.Material.Neon
-			copy.Color = tint
-			copy.Transparency = startTransparency
-			copy.Size = desc.Size
-			copy.CFrame = desc.CFrame
-			copy.Parent = folder
-			TweenService:Create(
-				copy,
-				TweenInfo.new(fadeSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Transparency = 1 }
-			):Play()
+-- Massive forward shockwave ring + curved 160-degree horizontal crescent cleave (zero boxes).
+function Effects.heavyAttack(root: BasePart, direction: Vector3)
+	Effects.stopCharge()
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	local dir = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+	local origin = root.Position
+
+	local ringDiameter = Config.HEAVY_ATTACK_RANGE * 1.65
+	local groundPos = origin - Vector3.new(0, 2.2, 0)
+	local ring = ghost(
+		Vector3.new(0.32, 5, 5),
+		CFrame.new(groundPos) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(255, 115, 45),
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.22
+	TweenService:Create(
+		ring,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.22, ringDiameter, ringDiameter), Transparency = 1 }
+	):Play()
+	Debris:AddItem(ring, 0.32)
+
+	-- Curved horizontal crescent cleave matching the wide 160-deg front arc (no blocky rectangle).
+	local arcModel = Instance.new("Model")
+	arcModel.Name = "HeavyCleaveArc"
+	arcModel.Parent = workspace
+
+	local halfSpan = math.rad(math.min(Config.HEAVY_ATTACK_ARC * 0.46, 76))
+	local segmentCount = 9
+	local duration = 0.26
+	local startRadius = 3.2
+	local endRadius = Config.HEAVY_ATTACK_RANGE * 0.96
+	local baseCf = CFrame.lookAt(Vector3.new(origin.X, origin.Y - 0.3, origin.Z), Vector3.new(origin.X + dir.X, origin.Y - 0.3, origin.Z + dir.Z))
+	local stepRad = (halfSpan * 2) / math.max(segmentCount - 1, 1)
+
+	type ArcSeg = {
+		outer: Part,
+		core: Part,
+		theta: number,
+		taper: number,
+	}
+	local segs: { ArcSeg } = {}
+	for i = 1, segmentCount do
+		local frac = (i - 1) / math.max(segmentCount - 1, 1)
+		local theta = -halfSpan + frac * (halfSpan * 2)
+		local taper = math.max(math.cos(theta * 1.15), 0.16)
+
+		local outer = smoothPart(Vector3.new(1, 0.36, 1), CFrame.identity, Color3.fromRGB(255, 130, 45), 0.16)
+		outer.Parent = arcModel
+		local core = smoothPart(Vector3.new(1, 0.16, 1), CFrame.identity, Color3.fromRGB(255, 240, 165), 0.04)
+		core.Parent = arcModel
+
+		table.insert(segs, {
+			outer = outer,
+			core = core,
+			theta = theta,
+			taper = taper,
+		})
+	end
+
+	local function placeArc(radius: number, fade: number)
+		local chord = radius * stepRad * 1.42
+		for _, seg in ipairs(segs) do
+			local lx = math.sin(seg.theta) * radius
+			local lz = -math.cos(seg.theta) * radius
+			-- Tangent along the horizontal crescent curve; outer edge bows forward along -Z.
+			local segCf = baseCf * CFrame.new(lx, 0, lz) * CFrame.Angles(0, -seg.theta, 0)
+			seg.outer.Size = Vector3.new(chord, 0.42 * seg.taper + 0.1, 2.35 * seg.taper)
+			seg.outer.CFrame = segCf
+			seg.outer.Transparency = 0.16 + 0.84 * fade
+
+			seg.core.Size = Vector3.new(chord * 0.94, 0.18 * seg.taper + 0.06, 1.05 * seg.taper)
+			seg.core.CFrame = segCf * CFrame.new(0, 0.02, -0.35 * seg.taper)
+			seg.core.Transparency = 0.04 + 0.96 * fade
 		end
 	end
-	folder.Parent = workspace
-	Debris:AddItem(folder, fadeSeconds + 0.05)
+
+	placeArc(startRadius, 0)
+
+	local startedAt = os.clock()
+	local conn: RBXScriptConnection
+	conn = RunService.RenderStepped:Connect(function()
+		local u = (os.clock() - startedAt) / duration
+		if u >= 1 or not arcModel.Parent then
+			conn:Disconnect()
+			arcModel:Destroy()
+			return
+		end
+		local ease = 1 - (1 - u) * (1 - u)
+		local radius = startRadius + (endRadius - startRadius) * ease
+		local fade = if u > 0.35 then (u - 0.35) / 0.65 else 0
+		placeArc(radius, fade)
+	end)
+
+	SoundPlayer.play("playerHeavyAttack")
+	PlayerAnimator.playLocal("heavyAttack")
 end
 
 -- DMC-style Stinger piercing thrust: leaves crisp character afterimage echoes, a silky tapered

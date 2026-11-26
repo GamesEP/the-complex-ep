@@ -224,8 +224,8 @@ function Tactics.assignMeleeTokens(candidates: { MeleeCandidate }, maxAttackers:
 
 	for _, bucket in pairs(byTarget) do
 		table.sort(bucket, function(a, b)
-			local aCommitted = a.phase == "windup" or a.phase == "spin" or a.phase == "sandevistan"
-			local bCommitted = b.phase == "windup" or b.phase == "spin" or b.phase == "sandevistan"
+			local aCommitted = a.phase == "windup" or a.phase == "spin" or a.phase == "phantomStep" or a.phase == "slamWindup"
+			local bCommitted = b.phase == "windup" or b.phase == "spin" or b.phase == "phantomStep" or b.phase == "slamWindup"
 			if aCommitted ~= bCommitted then
 				return aCommitted
 			end
@@ -361,10 +361,10 @@ function Tactics.grabberApproach(
 	return flatUnit(radial + tangent * (inFront * flankWeight * 1.4)) or radial
 end
 
--- Computes the destination waypoint for each hop of a Sandevistan multi-dash ambush (`stepIndex`
--- in `1..totalSteps`). Alternates sharply across left/right flanks before snapping behind/beside
--- the player on the final hop so every dash moves in a distinct unpredictable direction.
-function Tactics.sandevistanWaypoint(
+-- Computes the destination waypoint for each hop of a Paso Fantasma (Phantom Step) multi-dash
+-- ambush (`stepIndex` in `1..totalSteps`). Alternates sharply across left/right flanks before
+-- snapping behind/beside the player on the final hop so every dash moves in a distinct direction.
+function Tactics.phantomStepWaypoint(
 	enemyPos: Vector3,
 	targetPos: Vector3,
 	targetFacing: Vector3,
@@ -484,15 +484,15 @@ function Tactics.selfTest()
 	local pushEdge = Tactics.antiClumpPush(Vector3.zero, { Vector3.new(8, 0, 0) }, 10, 1, 1.45)
 	assert(pushClose.X < 0 and pushClose.Magnitude > pushEdge.Magnitude * 3, "anti-clump push ramps up strongly")
 
-	-- Sandevistan 3-hop waypoints move in 3 distinct directions and finish close behind the player.
+	-- Paso Fantasma 3-hop waypoints move in 3 distinct directions and finish close behind the player.
 	local p0 = Vector3.new(0, 2.5, -18)
-	local w1 = Tactics.sandevistanWaypoint(p0, Vector3.zero, Vector3.new(0, 0, -1), 1, 3, 1)
-	local w2 = Tactics.sandevistanWaypoint(w1, Vector3.zero, Vector3.new(0, 0, -1), 2, 3, 1)
-	local w3 = Tactics.sandevistanWaypoint(w2, Vector3.zero, Vector3.new(0, 0, -1), 3, 3, 1)
+	local w1 = Tactics.phantomStepWaypoint(p0, Vector3.zero, Vector3.new(0, 0, -1), 1, 3, 1)
+	local w2 = Tactics.phantomStepWaypoint(w1, Vector3.zero, Vector3.new(0, 0, -1), 2, 3, 1)
+	local w3 = Tactics.phantomStepWaypoint(w2, Vector3.zero, Vector3.new(0, 0, -1), 3, 3, 1)
 	local d1 = Vector3.new(w1.X - p0.X, 0, w1.Z - p0.Z).Unit
 	local d2 = Vector3.new(w2.X - w1.X, 0, w2.Z - w1.Z).Unit
 	local d3 = Vector3.new(w3.X - w2.X, 0, w3.Z - w2.Z).Unit
-	assert(d1:Dot(d2) < 0.5 and d2:Dot(d3) < 0.7, "Sandevistan hops change direction sharply")
+	assert(d1:Dot(d2) < 0.5 and d2:Dot(d3) < 0.7, "Paso Fantasma hops change direction sharply")
 	assert(w3.Z > 2 and Vector3.new(w3.X, 0, w3.Z).Magnitude < 6, "final hop lands close behind player")
 end
 

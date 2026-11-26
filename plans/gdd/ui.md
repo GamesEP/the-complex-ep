@@ -16,7 +16,7 @@ Revivir del grupo) se diseñarán cuando arranque su hito.
 
 **Muestra:**
 - Barra de vida roja del jugador en la esquina superior izquierda (valor actual / máximo) y debajo los indicadores temporales de buffs recogidos solo mientras están activos.
-- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central, junto con alertas breves de ataques especiales (agarre / Sandevistan).
+- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central (los avisos de habilidades enemigas —agarrador y Paso Fantasma— aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo, sin carteles de texto invasivos).
 - Barra de vida del jefe en la parte superior central cuando la sala actual tiene jefe.
 - Iconos recargables de las 3 habilidades activas (`Config.ABILITY_SLOTS`) en la esquina inferior izquierda, intercambiables con `1`, `2` y `3` (o clic/toque / cruceta en mando) y lanzables con `E` / `Y` / `R1`: **`1` Giro** (`4 s`), **`2` Stinger** (`5,5 s`) y **`3` Over Drive** (definitiva, `14 s`), cada uno con barrido de recarga y cuenta atrás. Sin barras para el Dash ni para Bloqueo/Parry por su recarga rápida.
 

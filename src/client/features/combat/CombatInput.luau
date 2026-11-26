@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
+local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 
 local Effects = require(script.Parent.Effects)
@@ -31,7 +32,11 @@ local player = Players.LocalPlayer
 -- The local value stops a double press from firing twice before the attribute replicates.
 local comboStep = 0
 local lastSwingAt = -math.huge
-local dashReadyAt = 0
+local dashCharges = 1
+local dashRechargeAt = 0
+local lastDashAt = -math.huge
+local activeDash: { velocity: LinearVelocity, attachment: Attachment }? = nil
+local dashToken = 0
 local spinReadyAt = 0
 local stingerReadyAt = 0
 local overDriveReadyAt = 0
@@ -79,6 +84,11 @@ end
 
 local function now(): number
 	return workspace:GetServerTimeNow()
+end
+
+local function isStunned(): boolean
+	local stunnedUntil = player:GetAttribute("StunnedUntil")
+	return type(stunnedUntil) == "number" and now() < stunnedUntil
 end
 
 local function body(): (BasePart?, Humanoid?)
@@ -153,7 +163,7 @@ local function attack()
 		Remotes.GrabEscape:FireServer()
 		return
 	end
-	if blocking or player:GetAttribute("Blocking") == true then
+	if blocking or player:GetAttribute("Blocking") == true or isStunned() then
 		return
 	end
 	local clock = os.clock()
@@ -372,12 +382,32 @@ local function beginAttackHold()
 	end)
 end
 
+local function clearDash()
+	if activeDash then
+		activeDash.velocity:Destroy()
+		activeDash.attachment:Destroy()
+		activeDash = nil
+	end
+end
+
 local function dash()
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or isStunned() then
 		return
 	end
 	local root, humanoid = body()
-	if not root or not humanoid or not ready(dashReadyAt, "DashReadyAt") then
+	if not root or not humanoid then
+		return
+	end
+	local clock = os.clock()
+	-- Small guard so a rapid double-tap chains smoothly instead of overlapping two dashes on the same frame.
+	if clock - lastDashAt < Config.DASH_DURATION * 0.72 then
+		return
+	end
+	local t = now()
+	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
+	local allowed, nextCharges, nextRechargeAt =
+		Drops.consumeDash(dashCharges, dashRechargeAt, maxCharges, t, Config.DASH_COOLDOWN, 0)
+	if not allowed then
 		return
 	end
 	local direction = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
@@ -387,12 +417,17 @@ local function dash()
 	cancelHeavyCharge(true)
 	lungeToken += 1
 	clearLunge()
+	clearDash()
 	blocking = false
-	dashReadyAt = now() + Config.DASH_COOLDOWN
-	dashEndsAt = os.clock() + Config.DASH_DURATION
+	dashCharges = nextCharges
+	dashRechargeAt = nextRechargeAt
+	lastDashAt = clock
+	dashEndsAt = clock + Config.DASH_DURATION
 
 	-- The character is the client's to move, so the dash is a velocity held along one line for
 	-- its duration: horizontal only, gravity left alone, and gone before the next frame's input.
+	dashToken += 1
+	local myDashToken = dashToken
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = root
 	local velocity = Instance.new("LinearVelocity")
@@ -403,9 +438,11 @@ local function dash()
 	velocity.LineVelocity = Config.DASH_DISTANCE / Config.DASH_DURATION
 	velocity.MaxForce = math.huge
 	velocity.Parent = root
+	activeDash = { velocity = velocity, attachment = attachment }
 	task.delay(Config.DASH_DURATION, function()
-		velocity:Destroy()
-		attachment:Destroy()
+		if dashToken == myDashToken then
+			clearDash()
+		end
 	end)
 
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + direction)
@@ -419,6 +456,7 @@ local function spin()
 		or player:GetAttribute("OverDriveCharging") == true
 		or blocking
 		or player:GetAttribute("Blocking") == true
+		or isStunned()
 	then
 		return
 	end
@@ -447,6 +485,7 @@ local function stinger()
 		or player:GetAttribute("OverDriveCharging") == true
 		or blocking
 		or player:GetAttribute("Blocking") == true
+		or isStunned()
 	then
 		return
 	end
@@ -500,6 +539,7 @@ local function overDrive()
 		or player:GetAttribute("OverDriveCharging") == true
 		or blocking
 		or player:GetAttribute("Blocking") == true
+		or isStunned()
 	then
 		return
 	end
@@ -550,7 +590,12 @@ end
 
 local function setBlock(active: boolean)
 	if active then
-		if blocking or player:GetAttribute("Grabbed") == true or player:GetAttribute("OverDriveCharging") == true then
+		if
+			blocking
+			or player:GetAttribute("Grabbed") == true
+			or player:GetAttribute("OverDriveCharging") == true
+			or isStunned()
+		then
 			return
 		end
 		local root = body()
@@ -668,10 +713,28 @@ function CombatInput.start()
 	end, true, Enum.ContextActionPriority.High.Value, table.unpack(BLOCK_INPUTS))
 	ContextActionService:SetTitle("Block", "Bloquear")
 
-	-- Clear local charge visuals immediately if a grabber catches the player mid-charge.
+	-- Clear local charge visuals immediately if a grabber catches or a mace stuns the player.
 	player:GetAttributeChangedSignal("Grabbed"):Connect(function()
 		if player:GetAttribute("Grabbed") == true then
 			cancelHeavyCharge(false)
+		end
+	end)
+	player:GetAttributeChangedSignal("StunnedUntil"):Connect(function()
+		if isStunned() then
+			cancelHeavyCharge(false)
+			blocking = false
+			lungeToken += 1
+			clearLunge()
+		end
+	end)
+
+	-- Grant the bonus Double Dash charge immediately when picking up a Speed Buff drop.
+	player:GetAttributeChangedSignal("SpeedBuffUntil"):Connect(function()
+		local t = now()
+		local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
+		if maxCharges >= 2 and dashCharges < 2 then
+			dashCharges = 2
+			dashRechargeAt = 0
 		end
 	end)
 
@@ -680,12 +743,16 @@ function CombatInput.start()
 		cancelHeavyCharge(false)
 		lungeToken += 1
 		clearLunge()
+		dashToken += 1
+		clearDash()
 		dashEndsAt = 0
 		lockedTarget = nil
 		lastEngageAt = -math.huge
 		comboStep = 0
 		lastSwingAt = -math.huge
-		dashReadyAt = 0
+		dashCharges = 1
+		dashRechargeAt = 0
+		lastDashAt = -math.huge
 		spinReadyAt = 0
 		stingerReadyAt = 0
 		overDriveReadyAt = 0

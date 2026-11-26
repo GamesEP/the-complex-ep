@@ -96,6 +96,53 @@ function Drops.buffRemaining(buffUntil: any, duration: number, now: number): num
 	return math.clamp((buffUntil - now) / duration, 0, 1)
 end
 
+-- Maximum Dash charges: 2 while the Speed Buff is active, 1 normally.
+function Drops.maxDashCharges(speedBuffUntil: any, now: number): number
+	if type(speedBuffUntil) == "number" and now < speedBuffUntil then
+		return 2
+	end
+	return 1
+end
+
+-- Refills elapsed Dash charges up to `maxCharges` and attempts to consume 1 charge.
+-- Returns `(allowed, nextCharges, nextRechargeAt)`.
+function Drops.consumeDash(
+	charges: number,
+	rechargeAt: number,
+	maxCharges: number,
+	now: number,
+	cooldown: number,
+	slack: number?
+): (boolean, number, number)
+	local cap = math.max(maxCharges, 1)
+	local cur = charges
+	local nextAt = rechargeAt
+	local tol = slack or 0
+
+	if cur < cap and nextAt > 0 and now >= nextAt - tol then
+		local step = math.max(cooldown, 1e-3)
+		local gained = 1 + math.floor(math.max(now - nextAt, 0) / step)
+		cur = math.min(cap, cur + gained)
+		nextAt = if cur >= cap then 0 else nextAt + gained * step
+	elseif cur < cap and nextAt <= 0 then
+		cur = cap
+	end
+	if cur > cap then
+		cur = cap
+	end
+	if cur >= cap then
+		nextAt = 0
+	end
+
+	if cur <= 0 then
+		return false, 0, nextAt
+	end
+
+	local remaining = cur - 1
+	local outRecharge = if nextAt > 0 and now < nextAt then nextAt else now + cooldown
+	return true, remaining, outRecharge
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -136,6 +183,26 @@ function Drops.selfTest()
 	-- HUD remaining fraction.
 	assert(math.abs(Drops.buffRemaining(20, 10, 15) - 0.5) < 1e-6, "halfway through buff reports 0.5")
 	assert(Drops.buffRemaining(20, 10, 25) == 0, "expired buff reports 0")
+
+	-- Speed buff grants 2 Dash charges; without it only 1 Dash is allowed per cooldown.
+	assert(Drops.maxDashCharges(0, 10) == 1, "base dash charges is 1")
+	assert(Drops.maxDashCharges(20, 10) == 2, "active speed buff grants 2 dash charges")
+	assert(Drops.maxDashCharges(10, 10) == 1, "expired speed buff drops back to 1 dash charge")
+
+	local ok1, c1, r1 = Drops.consumeDash(1, 0, 1, 10, 0.7, 0)
+	assert(ok1 and c1 == 0 and math.abs(r1 - 10.7) < 1e-6, "single dash consumes sole charge")
+	local ok2, c2 = Drops.consumeDash(c1, r1, 1, 10.2, 0.7, 0)
+	assert(not ok2 and c2 == 0, "second dash without speed buff is refused during cooldown")
+
+	-- With speed buff active (2 charges), two back-to-back dashes succeed and a third waits.
+	local sOk1, sC1, sR1 = Drops.consumeDash(2, 0, 2, 10.0, 0.7, 0)
+	assert(sOk1 and sC1 == 1 and math.abs(sR1 - 10.7) < 1e-6, "first speed-buff dash leaves 1 charge")
+	local sOk2, sC2, sR2 = Drops.consumeDash(sC1, sR1, 2, 10.2, 0.7, 0)
+	assert(sOk2 and sC2 == 0 and math.abs(sR2 - 10.7) < 1e-6, "second immediate dash consumes 2nd charge")
+	local sOk3, sC3 = Drops.consumeDash(sC2, sR2, 2, 10.4, 0.7, 0)
+	assert(not sOk3 and sC3 == 0, "third dash waits for recharge")
+	local sOk4, sC4 = Drops.consumeDash(sC2, sR2, 2, 10.75, 0.7, 0)
+	assert(sOk4 and sC4 == 0, "recharged dash succeeds at 10.75")
 
 	-- Every kind has a configured model name.
 	for _, kind in ipairs(ALL_KINDS) do

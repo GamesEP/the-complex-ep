@@ -213,21 +213,25 @@ local function onStepped()
 			applyPose(rig, CombatAnim.jumpPose(rig.root.AssemblyLinearVelocity.Y))
 		end
 
-		-- Layer 1.5: continuous sword guard while holding Block, Over Drive power-channeling, or
+		-- Layer 1.5: seismic stagger/stun, continuous sword guard, Over Drive power-channeling, or
 		-- coiled power-charge stance while holding Attack for the 3-second heavy attack.
-		if player:GetAttribute("Blocking") == true then
+		local serverNow = workspace:GetServerTimeNow()
+		local stunnedUntil = player:GetAttribute("StunnedUntil")
+		if type(stunnedUntil) == "number" and serverNow < stunnedUntil then
+			applyPose(rig, CombatAnim.staggerPose(now))
+		elseif player:GetAttribute("Blocking") == true then
 			applyPose(rig, CombatAnim.blockPose())
 		elseif player:GetAttribute("OverDriveCharging") == true then
 			local progress = Melee.chargeProgress(
 				player:GetAttribute("OverDriveChargeStart"),
-				workspace:GetServerTimeNow(),
+				serverNow,
 				Config.OVERDRIVE_CHARGE_SECONDS
 			)
 			applyPose(rig, CombatAnim.overdriveChargePose(progress))
 		elseif player:GetAttribute("ChargingHeavy") == true then
 			local progress = Melee.chargeProgress(
 				player:GetAttribute("HeavyChargeStart"),
-				workspace:GetServerTimeNow(),
+				serverNow,
 				Config.HEAVY_CHARGE_SECONDS
 			)
 			applyPose(rig, CombatAnim.chargePose(progress))

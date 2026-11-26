@@ -91,6 +91,7 @@ EnemyService.start({
 	setGrabbed = CombatService.setGrabbed,
 	warnGrab = CombatService.warnGrab,
 	warnParry = CombatService.warnParry,
+	stun = CombatService.stun,
 })
 -- After EnemyService and DropService, whose folders it populates and resets.
 WaveDirector.start({ world = world, onReset = DropService.clear })

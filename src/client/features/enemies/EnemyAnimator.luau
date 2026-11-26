@@ -47,6 +47,9 @@ type Rig = {
 	beamGuide: Part?,
 	beamOrb: Part?,
 	parryGlint: Part?,
+	slamOuter: Part?,
+	slamInner: Part?,
+	alertGui: BillboardGui?,
 	lastAfterimageAt: number,
 	afterimageIndex: number,
 }
@@ -163,6 +166,18 @@ local function detachEnemy(inst: Instance)
 			rig.parryGlint:Destroy()
 			rig.parryGlint = nil
 		end
+		if rig.slamOuter then
+			rig.slamOuter:Destroy()
+			rig.slamOuter = nil
+		end
+		if rig.slamInner then
+			rig.slamInner:Destroy()
+			rig.slamInner = nil
+		end
+		if rig.alertGui then
+			rig.alertGui:Destroy()
+			rig.alertGui = nil
+		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
 		end
@@ -201,6 +216,9 @@ local function attachEnemy(inst: Instance)
 			beamGuide = nil,
 			beamOrb = nil,
 			parryGlint = nil,
+			slamOuter = nil,
+			slamInner = nil,
+			alertGui = nil,
 			lastAfterimageAt = 0,
 			afterimageIndex = 0,
 		}
@@ -226,18 +244,72 @@ local function attachEnemy(inst: Instance)
 	end)
 end
 
-local SANDEVISTAN_COLORS = {
+-- Overhead yellow warning triangle with exclamation mark (`!`) shown above the head of grabbers
+-- and single-sword Paso Fantasma units when activating their abilities.
+local function createAlertGui(body: BasePart): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "EnemyAlertIcon"
+	gui.Size = UDim2.fromOffset(56, 56)
+	gui.StudsOffset = Vector3.new(0, body.Size.Y / 2 + 3.4, 0)
+	gui.AlwaysOnTop = true
+	gui.Adornee = body
+	gui.LightInfluence = 0
+
+	local outline = Instance.new("TextLabel")
+	outline.Name = "TriangleOutline"
+	outline.AnchorPoint = Vector2.new(0.5, 0.5)
+	outline.Position = UDim2.fromScale(0.5, 0.5)
+	outline.Size = UDim2.fromScale(1, 1)
+	outline.BackgroundTransparency = 1
+	outline.Font = Enum.Font.GothamBold
+	outline.Text = "▲"
+	outline.TextSize = 54
+	outline.TextColor3 = Color3.fromRGB(22, 24, 30)
+	outline.ZIndex = 1
+	outline.Parent = gui
+
+	local fill = Instance.new("TextLabel")
+	fill.Name = "TriangleFill"
+	fill.AnchorPoint = Vector2.new(0.5, 0.5)
+	fill.Position = UDim2.fromScale(0.5, 0.51)
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BackgroundTransparency = 1
+	fill.Font = Enum.Font.GothamBold
+	fill.Text = "▲"
+	fill.TextSize = 44
+	fill.TextColor3 = Color3.fromRGB(255, 212, 38)
+	fill.ZIndex = 2
+	fill.Parent = gui
+
+	local mark = Instance.new("TextLabel")
+	mark.Name = "Exclamation"
+	mark.AnchorPoint = Vector2.new(0.5, 0.5)
+	mark.Position = UDim2.fromScale(0.5, 0.57)
+	mark.Size = UDim2.fromScale(0.6, 0.6)
+	mark.BackgroundTransparency = 1
+	mark.Font = Enum.Font.GothamBlack
+	mark.Text = "!"
+	mark.TextSize = 24
+	mark.TextColor3 = Color3.fromRGB(20, 22, 28)
+	mark.ZIndex = 3
+	mark.Parent = gui
+
+	gui.Parent = body
+	return gui
+end
+
+local PHANTOM_STEP_COLORS = {
 	Color3.fromRGB(55, 235, 255),
 	Color3.fromRGB(85, 255, 145),
 	Color3.fromRGB(255, 210, 60),
 	Color3.fromRGB(255, 65, 190),
 }
 
--- Spawns a Cyberpunk Sandevistan neon afterimage silhouette of the enemy's current pose in
+-- Spawns a Paso Fantasma (Phantom Step) neon afterimage silhouette of the enemy's current pose in
 -- `_EnemyCorpses` so target-locking never selects afterimages.
-local function spawnSandevistanGhost(model: Model, tint: Color3)
+local function spawnPhantomStepGhost(model: Model, tint: Color3)
 	local ghost = Instance.new("Model")
-	ghost.Name = "SandevistanGhost"
+	ghost.Name = "PhantomStepGhost"
 	for _, desc in ipairs(model:GetDescendants()) do
 		if desc:IsA("BasePart") and desc.Transparency < 0.95 then
 			local copy = Instance.new("Part")
@@ -251,7 +323,7 @@ local function spawnSandevistanGhost(model: Model, tint: Color3)
 			copy.CastShadow = false
 			copy.Material = Enum.Material.Neon
 			copy.Color = tint
-			copy.Transparency = 0.36
+			copy.Transparency = 0.42
 			copy.Size = desc.Size
 			copy.CFrame = desc.CFrame
 			copy.Parent = ghost
@@ -266,7 +338,100 @@ local function spawnSandevistanGhost(model: Model, tint: Color3)
 	Debris:AddItem(ghost, 0.36)
 end
 
--- Renders the devastating rail-beam discharge (bright core + wide outer plasma sheath + muzzle flash).
+-- Renders the heavy Mace seismic ground-slam shockwave: expanding shock rings + tumbling
+-- dark-stone/amber floor debris in `_EnemyCorpses`.
+local function spawnSlamShockwave(origin: Vector3, radius: number)
+	local parent = getCorpseFolder()
+	local floorY = 0.25
+	local diameter = radius * 2
+
+	local outer = Instance.new("Part")
+	outer.Name = "MaceSlamShockwave"
+	outer.Shape = Enum.PartType.Cylinder
+	outer.Anchored = true
+	outer.CanCollide = false
+	outer.CanQuery = false
+	outer.CanTouch = false
+	outer.CastShadow = false
+	outer.Material = Enum.Material.Neon
+	outer.Color = Color3.fromRGB(255, 145, 45)
+	outer.Transparency = 0.16
+	outer.Size = Vector3.new(0.45, 4, 4)
+	outer.CFrame = CFrame.new(origin.X, floorY, origin.Z) * CFrame.Angles(0, 0, math.rad(90))
+	outer.Parent = parent
+	TweenService:Create(
+		outer,
+		TweenInfo.new(0.36, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.25, diameter, diameter), Transparency = 1 }
+	):Play()
+	Debris:AddItem(outer, 0.4)
+
+	local core = Instance.new("Part")
+	core.Name = "MaceSlamCore"
+	core.Shape = Enum.PartType.Cylinder
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.CanTouch = false
+	core.CastShadow = false
+	core.Material = Enum.Material.Neon
+	core.Color = Color3.fromRGB(255, 235, 160)
+	core.Transparency = 0.08
+	core.Size = Vector3.new(0.55, 3, 3)
+	core.CFrame = CFrame.new(origin.X, floorY + 0.1, origin.Z) * CFrame.Angles(0, 0, math.rad(90))
+	core.Parent = parent
+	TweenService:Create(
+		core,
+		TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.18, radius * 1.15, radius * 1.15), Transparency = 1 }
+	):Play()
+	Debris:AddItem(core, 0.28)
+
+	local chunkCount = 10
+	for i = 1, chunkCount do
+		local angle = (i / chunkCount) * math.pi * 2 + (math.random() - 0.5) * 0.35
+		local dirX, dirZ = math.cos(angle), math.sin(angle)
+		local rStart = 2.0 + math.random() * 1.5
+		local rEnd = radius * (0.55 + math.random() * 0.42)
+		local peakY = 2.4 + math.random() * 2.2
+		local chunk = Instance.new("Part")
+		chunk.Name = "MaceSlamDebris"
+		chunk.Anchored = true
+		chunk.CanCollide = false
+		chunk.CanQuery = false
+		chunk.CanTouch = false
+		chunk.CastShadow = false
+		chunk.Material = if i % 3 == 0 then Enum.Material.Neon else Enum.Material.Concrete
+		chunk.Color = if i % 3 == 0 then Color3.fromRGB(255, 165, 55) else Color3.fromRGB(78, 82, 92)
+		local s = 0.65 + math.random() * 0.65
+		chunk.Size = Vector3.new(s, s * 0.75, s * 1.1)
+		local startPos = Vector3.new(origin.X + dirX * rStart, 0.4, origin.Z + dirZ * rStart)
+		local peakPos = Vector3.new(origin.X + dirX * (rEnd * 0.6), peakY, origin.Z + dirZ * (rEnd * 0.6))
+		local endPos = Vector3.new(origin.X + dirX * rEnd, 0.25, origin.Z + dirZ * rEnd)
+		chunk.CFrame = CFrame.new(startPos) * CFrame.Angles(math.random() * 3, math.random() * 3, math.random() * 3)
+		chunk.Parent = parent
+
+		local spinCf = CFrame.Angles(math.random() * 4, math.random() * 4, math.random() * 4)
+		TweenService:Create(
+			chunk,
+			TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ CFrame = CFrame.new(peakPos) * spinCf }
+		):Play()
+		task.delay(0.22, function()
+			if chunk.Parent then
+				TweenService:Create(
+					chunk,
+					TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+					{ CFrame = CFrame.new(endPos) * spinCf * spinCf, Transparency = 1 }
+				):Play()
+			end
+		end)
+		Debris:AddItem(chunk, 0.54)
+	end
+end
+
+-- Renders the devastating rail-beam discharge using smooth cylindrical plasma beams + expanding
+-- barrel shock rings (zero rectangular blocks).
 local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: number)
 	local flat = Vector3.new(direction.X, 0, direction.Z)
 	if flat.Magnitude < 1e-3 or length <= 0 then
@@ -274,12 +439,13 @@ local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: numbe
 	end
 	local unit = flat.Unit
 	local mid = origin + unit * (length * 0.5)
-	local orient = CFrame.lookAt(mid, mid + unit)
+	-- Roblox Cylinders extend along local +X; rotating +90 deg around Y aligns +X with forward (-Z).
+	local cylOrient = CFrame.lookAt(mid, mid + unit) * CFrame.Angles(0, math.rad(90), 0)
 	local parent = getCorpseFolder()
 
 	local core = Instance.new("Part")
 	core.Name = "RailBeamCore"
-	core.Shape = Enum.PartType.Block
+	core.Shape = Enum.PartType.Cylinder
 	core.Anchored = true
 	core.CanCollide = false
 	core.CanQuery = false
@@ -288,19 +454,19 @@ local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: numbe
 	core.Material = Enum.Material.Neon
 	core.Color = Color3.fromRGB(235, 252, 255)
 	core.Transparency = 0
-	core.Size = Vector3.new(2.0, 2.0, length)
-	core.CFrame = orient
+	core.Size = Vector3.new(length, 1.85, 1.85)
+	core.CFrame = cylOrient
 	core.Parent = parent
 	TweenService:Create(
 		core,
 		TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = Vector3.new(0.15, 0.15, length), Transparency = 1 }
+		{ Size = Vector3.new(length, 0.12, 0.12), Transparency = 1 }
 	):Play()
 	Debris:AddItem(core, 0.46)
 
 	local outer = Instance.new("Part")
 	outer.Name = "RailBeamHalo"
-	outer.Shape = Enum.PartType.Block
+	outer.Shape = Enum.PartType.Cylinder
 	outer.Anchored = true
 	outer.CanCollide = false
 	outer.CanQuery = false
@@ -309,15 +475,45 @@ local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: numbe
 	outer.Material = Enum.Material.Neon
 	outer.Color = Color3.fromRGB(55, 215, 255)
 	outer.Transparency = 0.28
-	outer.Size = Vector3.new(4.6, 3.8, length)
-	outer.CFrame = orient
+	outer.Size = Vector3.new(length, 4.0, 4.0)
+	outer.CFrame = cylOrient
 	outer.Parent = parent
 	TweenService:Create(
 		outer,
 		TweenInfo.new(0.44, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = Vector3.new(6.4, 5.2, length), Transparency = 1 }
+		{ Size = Vector3.new(length, 5.8, 5.8), Transparency = 1 }
 	):Play()
 	Debris:AddItem(outer, 0.48)
+
+	-- Twin plasma shock-rings expanding perpendicular to the rail-beam muzzle.
+	for i = 1, 2 do
+		local ringPos = origin + unit * (2.5 + i * 3.5)
+		local ring = Instance.new("Part")
+		ring.Name = "RailBeamRing"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = if i == 1 then Color3.fromRGB(200, 250, 255) else Color3.fromRGB(70, 225, 255)
+		ring.Transparency = 0.2
+		ring.Size = Vector3.new(0.35, 2.2, 2.2)
+		ring.CFrame = CFrame.lookAt(ringPos, ringPos + unit) * CFrame.Angles(0, math.rad(90), 0)
+		ring.Parent = parent
+		local endPos = ringPos + unit * (6 + i * 4)
+		TweenService:Create(
+			ring,
+			TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{
+				Size = Vector3.new(0.18, 6.5 + i * 1.8, 6.5 + i * 1.8),
+				CFrame = CFrame.lookAt(endPos, endPos + unit) * CFrame.Angles(0, math.rad(90), 0),
+				Transparency = 1,
+			}
+		):Play()
+		Debris:AddItem(ring, 0.36)
+	end
 
 	local flash = Instance.new("Part")
 	flash.Name = "RailBeamMuzzle"
@@ -330,13 +526,13 @@ local function spawnBeamBlast(origin: Vector3, direction: Vector3, length: numbe
 	flash.Material = Enum.Material.Neon
 	flash.Color = Color3.fromRGB(160, 240, 255)
 	flash.Transparency = 0.1
-	flash.Size = Vector3.one * 3.5
+	flash.Size = Vector3.one * 3.2
 	flash.Position = origin + unit * 2
 	flash.Parent = parent
 	TweenService:Create(
 		flash,
 		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = Vector3.one * 7.5, Transparency = 1 }
+		{ Size = Vector3.one * 7.0, Transparency = 1 }
 	):Play()
 	Debris:AddItem(flash, 0.32)
 end
@@ -417,8 +613,10 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "spin" then
 			targetPose = EnemyAnim.spinPose(clock)
-		elseif phase == "sandevistan" then
-			targetPose = EnemyAnim.sandevistanPose()
+		elseif phase == "phantomStep" then
+			targetPose = EnemyAnim.phantomStepPose()
+		elseif phase == "slamWindup" then
+			targetPose = EnemyAnim.slamWindupPose(phaseProgress, clock)
 		elseif phase == "evade" then
 			targetPose = EnemyAnim.evadeJumpPose(phaseProgress)
 		elseif phase == "beamCharge" then
@@ -449,7 +647,7 @@ local function onRenderStepped(dt: number)
 				if not guide or not guide.Parent then
 					local line = Instance.new("Part")
 					line.Name = "EnemyBeamGuide"
-					line.Shape = Enum.PartType.Block
+					line.Shape = Enum.PartType.Cylinder
 					line.Anchored = true
 					line.CanCollide = false
 					line.CanQuery = false
@@ -482,18 +680,18 @@ local function onRenderStepped(dt: number)
 				local locked = model:GetAttribute("BeamLocked") == true
 				if guide then
 					local mid = origin + unit * (range * 0.5)
-					local thickness = if locked then 0.46 + 0.18 * math.abs(math.sin(clock * 36)) else 0.24 + phaseProgress * 0.22
-					guide.Size = Vector3.new(thickness, thickness, range)
-					guide.CFrame = CFrame.lookAt(mid, mid + unit)
+					local thickness = if locked then 0.42 + 0.16 * math.abs(math.sin(clock * 36)) else 0.22 + phaseProgress * 0.2
+					guide.Size = Vector3.new(range, thickness, thickness)
+					guide.CFrame = CFrame.lookAt(mid, mid + unit) * CFrame.Angles(0, math.rad(90), 0)
 					guide.Color = if locked then Color3.fromRGB(255, 70, 70) else Color3.fromRGB(90, 235, 255)
-					guide.Transparency = if locked then 0.08 else 0.35 - phaseProgress * 0.22
+					guide.Transparency = if locked then 0.08 else 0.34 - phaseProgress * 0.2
 				end
 				if orb then
-					local sz = 0.7 + phaseProgress * 1.9 + 0.25 * math.sin(clock * 28)
+					local sz = 0.68 + phaseProgress * 1.45 + 0.2 * math.sin(clock * 28)
 					orb.Size = Vector3.one * sz
 					orb.Position = origin + unit * 3.8
 					orb.Color = if locked then Color3.fromRGB(255, 120, 120) else Color3.fromRGB(160, 245, 255)
-					orb.Transparency = 0.12
+					orb.Transparency = 0.2
 				end
 			end
 		else
@@ -504,6 +702,66 @@ local function onRenderStepped(dt: number)
 			if rig.beamOrb then
 				rig.beamOrb:Destroy()
 				rig.beamOrb = nil
+			end
+		end
+
+		-- Client-only seismic ground danger zone while a heavy Mace enemy winds up its ground slam.
+		if phase == "slamWindup" then
+			local radiusAttr = model:GetAttribute("SlamRadius")
+			local slamDiameter = (if type(radiusAttr) == "number" and radiusAttr > 0 then radiusAttr else 15.5) * 2
+			local outer = rig.slamOuter
+			if not outer or not outer.Parent then
+				local disc = Instance.new("Part")
+				disc.Name = "MaceSlamOuter"
+				disc.Shape = Enum.PartType.Cylinder
+				disc.Anchored = true
+				disc.CanCollide = false
+				disc.CanQuery = false
+				disc.CanTouch = false
+				disc.CastShadow = false
+				disc.Material = Enum.Material.Neon
+				disc.Color = Color3.fromRGB(255, 115, 45)
+				disc.Transparency = 0.72
+				disc.Parent = getCorpseFolder()
+				rig.slamOuter = disc
+				outer = disc
+			end
+			local inner = rig.slamInner
+			if not inner or not inner.Parent then
+				local fill = Instance.new("Part")
+				fill.Name = "MaceSlamInner"
+				fill.Shape = Enum.PartType.Cylinder
+				fill.Anchored = true
+				fill.CanCollide = false
+				fill.CanQuery = false
+				fill.CanTouch = false
+				fill.CastShadow = false
+				fill.Material = Enum.Material.Neon
+				fill.Color = Color3.fromRGB(255, 200, 65)
+				fill.Transparency = 0.55
+				fill.Parent = getCorpseFolder()
+				rig.slamInner = fill
+				inner = fill
+			end
+			if outer then
+				outer.Size = Vector3.new(0.16, slamDiameter, slamDiameter)
+				outer.CFrame = CFrame.new(pos.X, 0.16, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+				outer.Transparency = 0.74 - 0.14 * math.abs(math.sin(clock * 18))
+			end
+			if inner then
+				local fillDiam = math.max(slamDiameter * phaseProgress, 1.5)
+				inner.Size = Vector3.new(0.22, fillDiam, fillDiam)
+				inner.CFrame = CFrame.new(pos.X, 0.22, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+				inner.Transparency = 0.62 - 0.3 * phaseProgress
+			end
+		else
+			if rig.slamOuter then
+				rig.slamOuter:Destroy()
+				rig.slamOuter = nil
+			end
+			if rig.slamInner then
+				rig.slamInner:Destroy()
+				rig.slamInner = nil
 			end
 		end
 
@@ -521,7 +779,7 @@ local function onRenderStepped(dt: number)
 				disc.CastShadow = false
 				disc.Material = Enum.Material.Neon
 				disc.Color = Color3.fromRGB(255, 65, 110)
-				disc.Transparency = 0.62
+				disc.Transparency = 0.65
 				disc.Size = Vector3.new(0.35, 15.5, 15.5)
 				disc.Parent = getCorpseFolder()
 				rig.spinRing = disc
@@ -537,27 +795,43 @@ local function onRenderStepped(dt: number)
 			rig.spinRing = nil
 		end
 
-		-- Instant snap during high-speed spin or Sandevistan dash so pose never lags behind.
-		if phase == "spin" or phase == "sandevistan" then
+		-- Overhead yellow warning triangle (`!`) for Grabber and single-sword Paso Fantasma abilities.
+		if model:GetAttribute("AlertIcon") == true then
+			local alert = rig.alertGui
+			if not alert or not alert.Parent then
+				alert = createAlertGui(rig.body)
+				rig.alertGui = alert
+			end
+			if alert then
+				local baseY = rig.body.Size.Y / 2 + 3.4
+				alert.StudsOffset = Vector3.new(0, baseY + 0.32 * math.abs(math.sin(clock * 14)), 0)
+			end
+		elseif rig.alertGui then
+			rig.alertGui:Destroy()
+			rig.alertGui = nil
+		end
+
+		-- Instant snap during high-speed spin or Paso Fantasma dash so pose never lags behind.
+		if phase == "spin" or phase == "phantomStep" then
 			rig.currentPose = targetPose
 		else
 			rig.currentPose = EnemyAnim.blend(rig.currentPose, targetPose, blendRate)
 		end
 		applyPose(rig.joints, rig.currentPose)
 
-		-- Cyberpunk Sandevistan neon afterimage trail sampled rapidly after posing limbs.
-		if phase == "sandevistan" and clock - rig.lastAfterimageAt >= 0.042 then
+		-- Paso Fantasma neon afterimage trail sampled rapidly after posing limbs.
+		if phase == "phantomStep" and clock - rig.lastAfterimageAt >= 0.042 then
 			rig.lastAfterimageAt = clock
-			rig.afterimageIndex = (rig.afterimageIndex % #SANDEVISTAN_COLORS) + 1
-			spawnSandevistanGhost(model, SANDEVISTAN_COLORS[rig.afterimageIndex])
+			rig.afterimageIndex = (rig.afterimageIndex % #PHANTOM_STEP_COLORS) + 1
+			spawnPhantomStepGhost(model, PHANTOM_STEP_COLORS[rig.afterimageIndex])
 		end
 
-		-- Vivid pulsing parry-only glint while the Sandevistan finisher is winding up.
+		-- Vivid pulsing parry-only glint while the Paso Fantasma finisher is winding up.
 		if model:GetAttribute("ParryTelegraph") == true then
 			local glint = rig.parryGlint
 			if not glint or not glint.Parent then
 				local flare = Instance.new("Part")
-				flare.Name = "SandevistanParryGlint"
+				flare.Name = "PhantomStepParryGlint"
 				flare.Shape = Enum.PartType.Ball
 				flare.Anchored = true
 				flare.CanCollide = false
@@ -570,12 +844,12 @@ local function onRenderStepped(dt: number)
 				glint = flare
 			end
 			if glint then
-				local pulse = 1.6 + 1.2 * math.abs(math.sin(clock * 32))
+				local pulse = 1.2 + 0.75 * math.abs(math.sin(clock * 32))
 				glint.Size = Vector3.one * pulse
 				glint.Color = if math.sin(clock * 36) > 0
 					then Color3.fromRGB(70, 245, 255)
 					else Color3.fromRGB(255, 230, 85)
-				glint.Transparency = 0.12
+				glint.Transparency = 0.2
 				glint.Position = pos + Vector3.new(0, 2.2, 0) + rig.body.CFrame.LookVector * 1.4
 			end
 		elseif rig.parryGlint then
@@ -652,6 +926,16 @@ function EnemyAnimator.start()
 			end
 			if typeof(arg2) == "Vector3" and typeof(arg3) == "Vector3" and type(arg4) == "number" then
 				spawnBeamBlast(arg2, arg3, arg4)
+			end
+		elseif eventKind == "slamImpact" then
+			if typeof(arg1) == "Instance" and arg1:IsA("Model") then
+				local rig = rigs[arg1]
+				if rig then
+					rig.strikeStartedAt = os.clock()
+				end
+			end
+			if typeof(arg2) == "Vector3" and type(arg3) == "number" then
+				spawnSlamShockwave(arg2, arg3)
 			end
 		elseif eventKind == "death" then
 			if type(arg1) == "string" and typeof(arg3) == "CFrame" then

@@ -39,6 +39,7 @@ local enemies: Enemies = nil :: any
 local swings: { [Player]: { step: number, lastAt: number } } = {}
 local heavyCharges: { [Player]: number } = {}
 local overDriveTokens: { [Player]: number } = {}
+local dashStates: { [Player]: { charges: number, rechargeAt: number } } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -120,6 +121,11 @@ local function equipTestSword(character: Model)
 	weld.Parent = grip
 end
 
+local function isStunned(player: Player, t: number?): boolean
+	local stunnedUntil = player:GetAttribute("StunnedUntil")
+	return type(stunnedUntil) == "number" and (t or now()) < stunnedUntil
+end
+
 local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 	local targetHumanoid = humanoid
 	if not targetHumanoid then
@@ -129,6 +135,8 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 	if not targetHumanoid or targetHumanoid.Health <= 0 then
 		return
 	end
+	local t = now()
+	local stunned = isStunned(player, t)
 	local chargingOverDrive = player:GetAttribute("OverDriveCharging") == true
 	local chargingHeavy = player:GetAttribute("ChargingHeavy") == true
 	local chargeMultiplier = if chargingOverDrive
@@ -139,11 +147,12 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 		player:GetAttribute("SpeedBuffUntil"),
 		player:GetAttribute("Blocking") == true,
 		player:GetAttribute("Grabbed") == true,
-		now(),
+		t,
 		Config.BUFF_SPEED_MULTIPLIER,
 		Config.BLOCK_MOVE_MULTIPLIER,
 		chargingOverDrive or chargingHeavy,
-		chargeMultiplier
+		chargeMultiplier,
+		stunned
 	)
 end
 
@@ -185,7 +194,9 @@ local function onCharacter(player: Player, character: Model)
 	swings[player] = nil
 	heavyCharges[player] = nil
 	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
+	dashStates[player] = { charges = 1, rechargeAt = 0 }
 	player:SetAttribute("DashReadyAt", 0)
+	player:SetAttribute("DashCharges", 1)
 	player:SetAttribute("SpinReadyAt", 0)
 	player:SetAttribute("StingerReadyAt", 0)
 	player:SetAttribute("OverDriveReadyAt", 0)
@@ -205,6 +216,7 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("GrabGoal", Config.GRAB_ESCAPE_PRESSES)
 	player:SetAttribute("GrabWarningUntil", 0)
 	player:SetAttribute("ParryWarningUntil", 0)
+	player:SetAttribute("StunnedUntil", 0)
 	player:SetAttribute("GrabImmuneUntil", 0)
 	task.spawn(equipTestSword, character)
 end
@@ -240,6 +252,7 @@ function CombatService.forget(player: Player)
 	swings[player] = nil
 	heavyCharges[player] = nil
 	overDriveTokens[player] = nil
+	dashStates[player] = nil
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -323,12 +336,48 @@ function CombatService.warnGrab(player: Player, untilAt: number)
 	end
 end
 
--- Signals an unavoidable Sandevistan ambush slash so the HUD alerts `player` to Parry.
+-- Signals an unavoidable Paso Fantasma ambush slash for `player`.
 function CombatService.warnParry(player: Player, untilAt: number)
 	local current = player:GetAttribute("ParryWarningUntil")
 	if type(current) ~= "number" or untilAt > current then
 		player:SetAttribute("ParryWarningUntil", untilAt)
 	end
+end
+
+-- Staggers and stuns `player` (e.g. hit by a Mace enemy's seismic ground slam): cancels active
+-- channels/guard, locks movement and jumping for `duration` seconds, then restores cleanly.
+function CombatService.stun(player: Player, duration: number)
+	if duration <= 0 then
+		return
+	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	local t = now()
+	local untilAt = t + duration
+	local current = player:GetAttribute("StunnedUntil")
+	if type(current) ~= "number" or untilAt > current then
+		player:SetAttribute("StunnedUntil", untilAt)
+	end
+	cancelCharge(player)
+	cancelOverDrive(player)
+	if player:GetAttribute("Blocking") == true then
+		player:SetAttribute("Blocking", false)
+		player:SetAttribute("ParryUntil", 0)
+	end
+	humanoid.WalkSpeed = 0
+	humanoid.JumpPower = 0
+	task.delay(duration + 0.05, function()
+		if not player.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+			return
+		end
+		if not isStunned(player) and player:GetAttribute("Grabbed") ~= true then
+			refreshWalkSpeed(player, humanoid)
+			humanoid.JumpPower = Config.JUMP_POWER
+		end
+	end)
 end
 
 -- Locks or restores player movement when grabbed/released by a grabber. Restores speed buff if
@@ -392,6 +441,10 @@ function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
 	elseif kind == "speed" then
 		local untilAt = t + Config.BUFF_SPEED_DURATION
 		player:SetAttribute("SpeedBuffUntil", untilAt)
+		-- Picking up a Speed Buff immediately unlocks Double Dash (2 charges).
+		dashStates[player] = { charges = 2, rechargeAt = 0 }
+		player:SetAttribute("DashCharges", 2)
+		player:SetAttribute("DashReadyAt", 0)
 		refreshWalkSpeed(player, humanoid)
 		-- Re-check the attribute when the timer fires so picking up a second speed buff refreshes
 		-- the timer instead of being reset early by the first timer.
@@ -419,7 +472,7 @@ function CombatService.block(player: Player, active: boolean)
 		return
 	end
 
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player, t) then
 		return
 	end
 	if not rootOf(player) then
@@ -441,7 +494,7 @@ function CombatService.heavyCharge(player: Player, active: boolean)
 		cancelCharge(player)
 		return
 	end
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	if player:GetAttribute("ChargingHeavy") == true then
@@ -467,7 +520,7 @@ end
 -- Remote "HeavyAttack": unleashes the wide crushing cleave once the server confirms the full
 -- 3-second hold completed.
 function CombatService.heavyAttack(player: Player, aim: Vector3)
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		cancelCharge(player)
 		return
 	end
@@ -520,7 +573,7 @@ end
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
 function CombatService.attack(player: Player, aim: Vector3)
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	local root = rootOf(player)
@@ -558,9 +611,9 @@ function CombatService.attack(player: Player, aim: Vector3)
 end
 
 -- Remote "Dash". The motion already happened on the client; this grants the invulnerability and
--- starts the cooldown, both of which have to be the server's or a client could keep them forever.
+-- meters the cooldown (1 charge normally, 2 charges back-to-back while Speed Buff is active).
 function CombatService.dash(player: Player)
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or isStunned(player) then
 		return
 	end
 	local character = player.Character
@@ -569,17 +622,22 @@ function CombatService.dash(player: Player)
 		return
 	end
 	local t = now()
-	local readyAt = player:GetAttribute("DashReadyAt") or 0
-	if t < readyAt - COOLDOWN_SLACK then
+	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t)
+	local state = dashStates[player] or { charges = maxCharges, rechargeAt = 0 }
+	local allowed, nextCharges, nextRechargeAt =
+		Drops.consumeDash(state.charges, state.rechargeAt, maxCharges, t, Config.DASH_COOLDOWN, COOLDOWN_SLACK)
+	if not allowed then
 		return
 	end
+	dashStates[player] = { charges = nextCharges, rechargeAt = nextRechargeAt }
 	if player:GetAttribute("Blocking") == true then
 		player:SetAttribute("Blocking", false)
 		player:SetAttribute("ParryUntil", 0)
 		refreshWalkSpeed(player)
 	end
 	cancelCharge(player)
-	player:SetAttribute("DashReadyAt", t + Config.DASH_COOLDOWN)
+	player:SetAttribute("DashCharges", nextCharges)
+	player:SetAttribute("DashReadyAt", nextRechargeAt)
 	character:SetAttribute("InvulnerableUntil", t + Config.DASH_IFRAMES)
 	broadcastOthers(player, "playerDash", root.Position)
 	broadcastAnimOthers(player, "dash")
@@ -591,6 +649,7 @@ function CombatService.spin(player: Player)
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
+		or isStunned(player)
 	then
 		return
 	end
@@ -627,6 +686,7 @@ function CombatService.stinger(player: Player, aim: Vector3)
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
+		or isStunned(player)
 	then
 		return
 	end
@@ -672,6 +732,7 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 		player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
+		or isStunned(player)
 	then
 		return
 	end

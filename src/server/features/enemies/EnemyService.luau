@@ -66,11 +66,11 @@ export type Enemy = {
 	evadeTarget: Vector3?,
 	evadeStartedAt: number,
 	evadeDuration: number,
-	sandyOrigin: Vector3?,
-	sandyTarget: Vector3?,
-	sandyStartedAt: number,
-	sandyDuration: number,
-	sandyStepIndex: number,
+	phantomOrigin: Vector3?,
+	phantomTarget: Vector3?,
+	phantomStartedAt: number,
+	phantomDuration: number,
+	phantomStepIndex: number,
 }
 
 type Projectile = {
@@ -96,6 +96,7 @@ local canGrab: ((Player) -> boolean)? = nil
 local setGrabbed: ((Player, boolean, number?, number?) -> ())? = nil
 local warnGrab: ((Player, number) -> ())? = nil
 local warnParry: ((Player, number) -> ())? = nil
+local stunPlayer: ((Player, number) -> ())? = nil
 local folder: Folder = nil :: any
 
 local enemies: { Enemy } = {}
@@ -273,15 +274,31 @@ local function burst(position: Vector3, radius: number, color: Color3, verticalR
 	end)
 end
 
-local function setTelegraph(enemy: Enemy, on: boolean)
-	-- Neon while winding up or fused: the tell a player reads to know when to dash or parry.
-	-- Restores each part's authored material (e.g. Metal on EnemyMelee, SmoothPlastic on
-	-- single-part fallbacks) so multi-part `.rbxmx` enemies keep their look after windup.
-	for _, entry in ipairs(enemy.visuals) do
-		if entry.material ~= Enum.Material.Neon then
-			entry.part.Material = if on then Enum.Material.Neon else entry.material
+local function setTelegraph(enemy: Enemy, on: boolean, color: Color3?)
+	-- Crisp zero-bloom Highlight outline while telegraphing an attack or ability (never turns the
+	-- whole body Neon, which over-blooms under AgX tonemapping). Destroyed immediately when off so
+	-- active Highlights stay well under Roblox's 31-instance limit.
+	local existing = enemy.model:FindFirstChild("TelegraphHighlight")
+	if not on then
+		if existing then
+			existing:Destroy()
 		end
+		return
 	end
+	local tint = color or Color3.fromRGB(255, 190, 85)
+	local hl: Highlight
+	if existing and existing:IsA("Highlight") then
+		hl = existing
+	else
+		hl = Instance.new("Highlight")
+		hl.Name = "TelegraphHighlight"
+		hl.DepthMode = Enum.HighlightDepthMode.Occluded
+		hl.FillTransparency = 0.72
+		hl.OutlineTransparency = 0.08
+		hl.Parent = enemy.model
+	end
+	hl.FillColor = tint
+	hl.OutlineColor = tint
 end
 
 local function releaseGrab(enemy: Enemy, t: number, playEscapeSfx: boolean)
@@ -482,7 +499,8 @@ local function stepEnemy(
 		if
 			enemy.state.phase == "windup"
 			or enemy.state.phase == "spin"
-			or enemy.state.phase == "sandevistan"
+			or enemy.state.phase == "phantomStep"
+			or enemy.state.phase == "slamWindup"
 			or enemy.state.phase == "beamCharge"
 			or enemy.state.phase == "evade"
 			or enemy.state.phase == "lunge"
@@ -492,12 +510,14 @@ local function stepEnemy(
 			enemy.lungeDirection = nil
 			enemy.beamDirection = nil
 			enemy.beamLocked = false
-			enemy.sandyOrigin = nil
-			enemy.sandyTarget = nil
-			enemy.sandyStepIndex = 0
+			enemy.phantomOrigin = nil
+			enemy.phantomTarget = nil
+			enemy.phantomStepIndex = 0
 			enemy.model:SetAttribute("BeamDir", nil)
 			enemy.model:SetAttribute("BeamLocked", false)
 			enemy.model:SetAttribute("ParryTelegraph", false)
+			enemy.model:SetAttribute("AlertIcon", false)
+			enemy.model:SetAttribute("SlamRadius", nil)
 			setTelegraph(enemy, false)
 			syncPhase(enemy, t)
 		end
@@ -553,22 +573,34 @@ local function stepEnemy(
 	local state, intent = Brain.step(enemy.kind, enemy.spec, enemy.state, distance, t, canAttack)
 	enemy.state = state
 	if state.phase ~= before then
-		setTelegraph(
-			enemy,
-			state.phase == "windup"
-				or state.phase == "spin"
-				or state.phase == "sandevistan"
-				or state.phase == "beamCharge"
-				or state.phase == "lunge"
-				or state.phase == "fuse"
-		)
-		syncPhase(enemy, t)
-		if before == "sandevistan" and state.phase ~= "sandevistan" then
-			enemy.sandyStepIndex = 0
-			enemy.sandyOrigin = nil
-			enemy.sandyTarget = nil
+		local telegraphColor: Color3? = nil
+		if state.phase == "phantomStep" or (state.phase == "windup" and (state.phantomStepFinisher or state.pendingPhantomStep)) then
+			telegraphColor = Color3.fromRGB(70, 235, 255)
+		elseif state.phase == "slamWindup" then
+			telegraphColor = Color3.fromRGB(255, 165, 55)
+		elseif state.phase == "spin" then
+			telegraphColor = Color3.fromRGB(255, 85, 120)
+		elseif state.phase == "beamCharge" then
+			telegraphColor = Color3.fromRGB(90, 225, 255)
+		elseif state.phase == "fuse" then
+			telegraphColor = Color3.fromRGB(255, 110, 45)
+		elseif state.phase == "windup" or state.phase == "lunge" then
+			telegraphColor = Color3.fromRGB(255, 190, 85)
 		end
-		enemy.model:SetAttribute("ParryTelegraph", state.phase == "windup" and state.sandevistanFinisher == true)
+		setTelegraph(enemy, telegraphColor ~= nil, telegraphColor)
+		syncPhase(enemy, t)
+		if before == "phantomStep" and state.phase ~= "phantomStep" then
+			enemy.phantomStepIndex = 0
+			enemy.phantomOrigin = nil
+			enemy.phantomTarget = nil
+		end
+		local isPhantomFinisher = state.phase == "windup" and state.phantomStepFinisher == true
+		local isPhantomAbility = state.phase == "phantomStep"
+			or (state.phase == "windup" and (state.pendingPhantomStep == true or state.phantomStepFinisher == true))
+		local isGrabAlert = enemy.kind == "grabber" and (state.phase == "windup" or state.phase == "lunge")
+		enemy.model:SetAttribute("ParryTelegraph", isPhantomFinisher)
+		enemy.model:SetAttribute("AlertIcon", isPhantomAbility or isGrabAlert)
+		enemy.model:SetAttribute("SlamRadius", if state.phase == "slamWindup" then (enemy.spec.slamRadius or 15.5) else nil)
 		if before == "evade" then
 			-- Ensure ground elevation snaps cleanly to exact floor height on landing.
 			local baseY = enemy.spec.size.Y / 2
@@ -582,9 +614,9 @@ local function stepEnemy(
 				if warnGrab then
 					warnGrab(target.player, state.endsAt + (enemy.spec.lungeDuration or 0))
 				end
-			elseif state.pendingSandevistan then
+			elseif state.pendingPhantomStep then
 				Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
-			elseif state.sandevistanFinisher then
+			elseif state.phantomStepFinisher then
 				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 				if warnParry then
 					warnParry(target.player, state.endsAt)
@@ -592,6 +624,8 @@ local function stepEnemy(
 			else
 				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 			end
+		elseif state.phase == "slamWindup" then
+			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 		elseif state.phase == "spin" then
 			Remotes.CombatSfx:FireAllClients("playerSpin", position)
 		elseif state.phase == "beamCharge" then
@@ -607,6 +641,7 @@ local function stepEnemy(
 		enemy.grabProgress = 0
 		enemy.nextGrabDamageAt = t + Config.GRAB_DAMAGE_TICK_SECONDS
 		enemy.lungeDirection = nil
+		enemy.model:SetAttribute("AlertIcon", false)
 		setTelegraph(enemy, false)
 		syncPhase(enemy, t)
 		if setGrabbed then
@@ -620,8 +655,8 @@ local function stepEnemy(
 		if enemy.hasJoints then
 			Remotes.EnemyAnim:FireAllClients("strike", enemy.model, enemy.weapon)
 		end
-		if enemy.state.sandevistanFinisher then
-			-- Sandevistan ambush finisher is unavoidable at hyper-speed: even if the player runs,
+		if enemy.state.phantomStepFinisher then
+			-- Paso Fantasma ambush finisher is unavoidable at hyper-speed: even if the player runs,
 			-- jumps, or Dashes, the swordsman stays locked on them and only a timed Parry stops it.
 			local baseY = enemy.spec.size.Y / 2
 			local toEnemy = Vector3.new(position.X - target.root.Position.X, 0, position.Z - target.root.Position.Z)
@@ -639,7 +674,7 @@ local function stepEnemy(
 			grid:move(enemy, snapPos.X, snapPos.Z)
 			position = snapPos
 
-			local strikeDamage = enemy.spec.sandevistanDamage or enemy.spec.damage
+			local strikeDamage = enemy.spec.phantomStepDamage or enemy.spec.damage
 			local _, outcome = hurt(target.player, strikeDamage, {
 				canDodge = false,
 				canBlock = false,
@@ -660,6 +695,24 @@ local function stepEnemy(
 					-- Parrying a melee strike staggers the attacker into an extended recover window.
 					enemy.state = Brain.releaseGrab(enemy.state, Config.PARRY_STUN_SECONDS, t)
 					syncPhase(enemy, t)
+				end
+			end
+		end
+	elseif intent.action == "slam" then
+		-- Heavy mace ground slam: seismic shockwave that staggers & stuns grounded players inside
+		-- `slamRadius` (jumping over `slamHeight` or Dashing with i-frames cleanly avoids it).
+		local slamRadius = enemy.spec.slamRadius or 15.5
+		local slamHeight = enemy.spec.slamHeight or 4.2
+		local slamDamage = enemy.spec.slamDamage or 14
+		local slamStun = enemy.spec.slamStunDuration or 1.6
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", position)
+		Remotes.EnemyAnim:FireAllClients("slamImpact", enemy.model, position, slamRadius)
+		for _, candidate in ipairs(list) do
+			if Hitbox.inEllipsoid(position, candidate.root.Position, slamRadius, slamHeight) then
+				local landed, outcome = hurt(candidate.player, slamDamage, { canBlock = true, canParry = false })
+				if landed and stunPlayer then
+					local stunDur = if outcome == "block" then slamStun * 0.45 else slamStun
+					stunPlayer(candidate.player, stunDur)
 				end
 			end
 		end
@@ -717,15 +770,12 @@ local function stepEnemy(
 		enemy.model:SetAttribute("BeamLocked", false)
 		enemy.model:SetAttribute("BeamRange", enemy.spec.beamRange or 55)
 	elseif intent.action == "beamFire" then
-		local dir = enemy.beamDirection
-		if not dir or dir.Magnitude < 1e-3 then
-			local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
-			dir = if toTarget.Magnitude > 1e-3 then toTarget.Unit else Vector3.new(0, 0, -1)
-		end
+		local toTarget = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local dir = enemy.beamDirection or (if toTarget.Magnitude > 1e-3 then toTarget.Unit else Vector3.new(0, 0, -1))
 		local beamOrigin = Vector3.new(position.X, 2.4, position.Z)
-		local beamRange = enemy.spec.beamRange or 55
-		local beamRadius = enemy.spec.beamRadius or 2.4
-		local beamHeight = enemy.spec.beamHeight or 3.2
+		local beamRange = enemy.spec.beamRange or 65
+		local beamRadius = enemy.spec.beamRadius or 2.6
+		local beamHeight = enemy.spec.beamHeight or 3.4
 		local beamDamage = enemy.spec.beamDamage or 32
 
 		enemy.beamDirection = nil
@@ -775,29 +825,29 @@ local function stepEnemy(
 		enemy.evadeStartedAt = t
 		enemy.evadeDuration = enemy.spec.evadeDuration or 0.34
 		Remotes.CombatSfx:FireAllClients("playerDash", position)
-	elseif intent.action == "sandevistanHop" then
-		-- Single-sword Cyberpunk Sandevistan: chain 3+ rapid dashes across sharp angles before
-		-- snapping close behind the player for a surprise slash.
-		if before ~= "sandevistan" then
-			enemy.sandyStepIndex = 1
+	elseif intent.action == "phantomStepHop" then
+		-- Single-sword Paso Fantasma: chain 3+ rapid dashes across sharp angles before
+		-- snapping close behind the player for a surprise parry-only slash.
+		if before ~= "phantomStep" then
+			enemy.phantomStepIndex = 1
 		else
-			enemy.sandyStepIndex += 1
+			enemy.phantomStepIndex += 1
 		end
-		local totalSteps = math.max(enemy.spec.sandevistanSteps or 3, 3)
-		local rawWaypoint = Tactics.sandevistanWaypoint(
+		local totalSteps = math.max(enemy.spec.phantomStepCount or 3, 3)
+		local rawWaypoint = Tactics.phantomStepWaypoint(
 			position,
 			target.root.Position,
 			target.root.CFrame.LookVector,
-			enemy.sandyStepIndex,
+			enemy.phantomStepIndex,
 			totalSteps,
 			enemy.orbitSign
 		)
 		local clamped = Waves.clamp(rawWaypoint, Config.ROOM_SIZE, WALL_MARGIN)
 		local baseY = enemy.spec.size.Y / 2
-		enemy.sandyOrigin = Vector3.new(position.X, baseY, position.Z)
-		enemy.sandyTarget = Vector3.new(clamped.X, baseY, clamped.Z)
-		enemy.sandyStartedAt = t
-		enemy.sandyDuration = enemy.spec.sandevistanStepDuration or 0.15
+		enemy.phantomOrigin = Vector3.new(position.X, baseY, position.Z)
+		enemy.phantomTarget = Vector3.new(clamped.X, baseY, clamped.Z)
+		enemy.phantomStartedAt = t
+		enemy.phantomDuration = enemy.spec.phantomStepDuration or 0.15
 		Remotes.CombatSfx:FireAllClients("playerDash", position)
 	elseif intent.action == "fire" then
 		lastRangedShotAt[target.player] = t
@@ -823,20 +873,20 @@ local function stepEnemy(
 	local direction = Vector3.zero
 	local speedScale = 1
 	local isLunging = intent.move == "lunge"
-	if intent.move == "sandevistan" and enemy.sandyOrigin and enemy.sandyTarget then
-		local dur = math.max(enemy.sandyDuration, 0.04)
-		local u = math.clamp((t - enemy.sandyStartedAt) / dur, 0, 1)
+	if intent.move == "phantomStep" and enemy.phantomOrigin and enemy.phantomTarget then
+		local dur = math.max(enemy.phantomDuration, 0.04)
+		local u = math.clamp((t - enemy.phantomStartedAt) / dur, 0, 1)
 		local ease = 1 - (1 - u) * (1 - u)
 		local baseY = enemy.spec.size.Y / 2
 		local dashPos = Vector3.new(
-			enemy.sandyOrigin.X + (enemy.sandyTarget.X - enemy.sandyOrigin.X) * ease,
+			enemy.phantomOrigin.X + (enemy.phantomTarget.X - enemy.phantomOrigin.X) * ease,
 			baseY,
-			enemy.sandyOrigin.Z + (enemy.sandyTarget.Z - enemy.sandyOrigin.Z) * ease
+			enemy.phantomOrigin.Z + (enemy.phantomTarget.Z - enemy.phantomOrigin.Z) * ease
 		)
-		local totalSteps = math.max(enemy.spec.sandevistanSteps or 3, 3)
-		local travel = Vector3.new(enemy.sandyTarget.X - enemy.sandyOrigin.X, 0, enemy.sandyTarget.Z - enemy.sandyOrigin.Z)
+		local totalSteps = math.max(enemy.spec.phantomStepCount or 3, 3)
+		local travel = Vector3.new(enemy.phantomTarget.X - enemy.phantomOrigin.X, 0, enemy.phantomTarget.Z - enemy.phantomOrigin.Z)
 		local lookTarget: Vector3
-		if enemy.sandyStepIndex >= totalSteps and u >= 0.65 then
+		if enemy.phantomStepIndex >= totalSteps and u >= 0.65 then
 			lookTarget = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
 		elseif travel.Magnitude > 1e-3 then
 			lookTarget = dashPos + travel.Unit
@@ -849,8 +899,8 @@ local function stepEnemy(
 		moveEnemy(enemy, nextCFrame)
 		grid:move(enemy, dashPos.X, dashPos.Z)
 		return
-	elseif enemy.state.phase == "windup" and enemy.state.sandevistanFinisher then
-		-- Shadow-step lock during the Sandevistan finisher windup: if the player tries to sprint,
+	elseif enemy.state.phase == "windup" and enemy.state.phantomStepFinisher then
+		-- Shadow-step lock during the Paso Fantasma finisher windup: if the player tries to sprint,
 		-- jump, or Dash out of range, the hyper-speed swordsman sticks right on them.
 		local baseY = enemy.spec.size.Y / 2
 		local toEnemy = Vector3.new(position.X - target.root.Position.X, 0, position.Z - target.root.Position.Z)
@@ -887,8 +937,8 @@ local function stepEnemy(
 		grid:move(enemy, leapPos.X, leapPos.Z)
 		return
 	elseif enemy.state.phase == "beamCharge" then
-		-- Track the player during early charge, then lock aim for the final `beamLockTime` so the
-		-- player can react with a lateral Dash or jump.
+		-- Track the player until the final `beamLockTime` lock window so players can sidestep,
+		-- jump over, or dash out of the locked red rail-beam line.
 		local lockWindow = enemy.spec.beamLockTime or 0.4
 		if not enemy.beamLocked then
 			if state.endsAt - t <= lockWindow then
@@ -1226,6 +1276,7 @@ function EnemyService.start(dependencies: {
 	setGrabbed: ((Player, boolean, number?, number?) -> ())?,
 	warnGrab: ((Player, number) -> ())?,
 	warnParry: ((Player, number) -> ())?,
+	stun: ((Player, number) -> ())?,
 })
 	hurt = dependencies.hurt
 	onKill = dependencies.onKill
@@ -1233,6 +1284,7 @@ function EnemyService.start(dependencies: {
 	setGrabbed = dependencies.setGrabbed
 	warnGrab = dependencies.warnGrab
 	warnParry = dependencies.warnParry
+	stunPlayer = dependencies.stun
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
@@ -1394,11 +1446,11 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		evadeTarget = nil,
 		evadeStartedAt = 0,
 		evadeDuration = 0,
-		sandyOrigin = nil,
-		sandyTarget = nil,
-		sandyStartedAt = 0,
-		sandyDuration = 0,
-		sandyStepIndex = 0,
+		phantomOrigin = nil,
+		phantomTarget = nil,
+		phantomStartedAt = 0,
+		phantomDuration = 0,
+		phantomStepIndex = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder

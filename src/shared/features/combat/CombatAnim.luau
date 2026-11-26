@@ -389,6 +389,30 @@ function CombatAnim.chargePose(progress: number): Pose
 	}
 end
 
+-- Continuous staggering/dizzy stun pose while rattled by a mace enemy's ground slam: buckled
+-- knees, torso reeling back, head and shoulders swaying uncontrollably side to side.
+function CombatAnim.staggerPose(clock: number): Pose
+	local sway = math.sin(clock * 11)
+	local bob = math.cos(clock * 22)
+	return {
+		active = true,
+		weight = 0.94,
+		joints = {
+			Root = CFrame.new(0, -0.32 + 0.06 * bob, 0) * CFrame.Angles(0.18 + 0.08 * bob, 0.14 * sway, 0.18 * sway),
+			Waist = CFrame.Angles(0.24 + 0.08 * bob, -0.22 * sway, 0.24 * sway),
+			Neck = CFrame.Angles(0.28, 0.36 * sway, -0.28 * sway),
+			RightShoulder = CFrame.Angles(0.55 + 0.25 * sway, 0.25, 0.85 + 0.2 * sway),
+			RightElbow = CFrame.Angles(0.75, 0, 0),
+			LeftShoulder = CFrame.Angles(0.55 - 0.25 * sway, -0.25, -0.85 + 0.2 * sway),
+			LeftElbow = CFrame.Angles(0.85, 0, 0),
+			RightHip = CFrame.Angles(0.45, 0, 0.12),
+			RightKnee = CFrame.Angles(-0.85, 0, 0),
+			LeftHip = CFrame.Angles(0.35, 0, -0.12),
+			LeftKnee = CFrame.Angles(-0.75, 0, 0),
+		},
+	}
+end
+
 -- Continuous defensive sword-guard pose while the player holds Block (upper body + slight brace,
 -- leaving legs free to strafe slowly).
 function CombatAnim.blockPose(): Pose
@@ -486,9 +510,12 @@ function CombatAnim.selfTest()
 	local land = CombatAnim.evaluate("land", nil, Config.ANIMATIONS.land.duration * 0.5)
 	assert(land.active and land.joints.Root.Position.Y < -0.1, "landing squashes root downward")
 
-	-- Block, Parry, and Heavy Charge/Attack poses.
+	-- Block, Parry, Stagger, and Heavy Charge/Attack poses.
 	local blk = CombatAnim.blockPose()
 	assert(blk.active and blk.joints.RightShoulder ~= nil and blk.joints.RightElbow ~= nil, "block pose raises sword guard")
+	local stgA = CombatAnim.staggerPose(0)
+	local stgB = CombatAnim.staggerPose(0.2)
+	assert(stgA.active and stgA.joints.Root ~= stgB.joints.Root, "stagger pose sways body while stunned")
 	local pry = CombatAnim.evaluate("parry", nil, Config.ANIMATIONS.parry.duration * 0.4)
 	assert(pry.active and pry.joints.RightShoulder ~= nil, "parry animates deflect sweep")
 	local chg0 = CombatAnim.chargePose(0)

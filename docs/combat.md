@@ -94,8 +94,11 @@ exploders curve-intercept moving players (`Tactics.interceptPoint`), and grabber
 player's blindspot (`Tactics.grabberApproach`) before launching their lunge. Keeping all of that
 pure lets `make test` assert timings, sector dispersion, and anti-clump repulsion offline.
 
-**The telegraph is the material.** During a windup or a fuse the body turns Neon. A strike checks
-reach again at the moment it lands, so dashing out during the windup always works.
+**The telegraph is a crisp Highlight outline.** During a windup, ability charge, or fuse the enemy
+gains a color-coded `Highlight` (`FillTransparency = 0.72`, `OutlineTransparency = 0.08`) instead of
+turning its body Neon, keeping armor silhouettes sharp with controlled glow. A strike checks
+reach again at the moment it lands, so dashing out during the windup always works (except the
+single-sword Paso Fantasma parry-only finisher).
 
 **Vertical hitboxes (`Hitbox.inEllipsoid`)** check height (`Y`) as well as horizontal distance so
 jumping has a defensive role: ranged shots travel at `Config.PROJECTILE_HEIGHT` (`Y = 2`) and pass
@@ -114,8 +117,8 @@ grid to push nearby enemies apart in `O(local)` rather than `O(N^2)`.
 
 **Grabbers telegraph, immobilise, and drain 8 HP/s.** Modeled as `assets/models/EnemyGrabber.rbxmx`
 (mounted at `ReplicatedStorage.Models.EnemyGrabber`, moved via `Model:PivotTo`), a grabber enters
-`windup` (`0.55 s`) turning Neon, playing `enemyGrabberWindup`, and setting `GrabWarningUntil` on
-the targeted player so `CombatHud` flashes `"¡AGARRE INMINENTE! Usa Dash"`. If the player does not
+`windup` (`0.55 s`) showing its `TelegraphHighlight`, playing `enemyGrabberWindup`, and displaying
+the overhead yellow `!` triangle (`AlertIcon`). If the player does not
 escape reach or Dash i-frames (`CombatService.canGrab`), the grabber enters `holding`, locks
 movement (`Grabbed = true`), and ticks 8 HP/s (`Config.GRAB_DAMAGE_TICK_SECONDS`). While trapped,
 pressing Attack (mouse/gamepad/touch) fires the contracted `GrabEscape` remote (10 presses,
@@ -243,15 +246,20 @@ and `lune run scripts/generate-models.luau`, mounted at `ReplicatedStorage.Model
 `default.project.json` (never built part-by-part at runtime, per `CLAUDE.md`). Every combat enemy
 model anchors only `Body` and rigs limbs via `Group`-tagged `Motor6D` pivots so `EnemyService`
 updates `Body.CFrame` while `EnemyAnimator` drives walk/strafe/sprint, weapon-specific melee
-strikes, single-sword Sandevistan multi-directional ambush dashes (`sandevistanPose` + neon
-afterimage silhouettes in `_EnemyCorpses`, 3+ hops via `Tactics.sandevistanWaypoint` into an
-unavoidable parry-only finisher slash that shadows the player and passes `canDodge = false,
-canBlock = false, canParry = true` to `CombatService.hurt`, telegraphed by `ParryWarningUntil` +
-a pulsing `SandevistanParryGlint`), dual-blade DPS tornado spin (`spinPose` + danger disc), ranged gun
-recoil (single orb, double-burst orb, or 6-round minigun tracer lines), rifle charged rail-beam
-(`beamChargePose` + targeting laser guide + `beamFire` plasma blast checked via `Hitbox.inBeam`),
+strikes, single-sword Paso Fantasma (`phantomStep`) multi-directional ambush dashes
+(`phantomStepPose` + neon afterimage silhouettes in `_EnemyCorpses`, 3+ hops via
+`Tactics.phantomStepWaypoint` into an unavoidable parry-only finisher slash that shadows the player
+and passes `canDodge = false, canBlock = false, canParry = true` to `CombatService.hurt`,
+telegraphed by an overhead yellow warning triangle `!` + pulsing `PhantomStepParryGlint`),
+dual-blade DPS tornado spin (`spinPose` + danger disc), heavy mace seismic ground slam
+(`slamWindupPose` + filling floor warning ring + `slamImpact` shockwave & debris checked via
+`Hitbox.inEllipsoid`, staggering and stunning grounded players via `CombatService.stun` /
+`StunnedUntil` + `CombatAnim.staggerPose`), ranged gun recoil (single orb, double-burst orb, or
+6-round minigun tracer lines), rifle/plasma charged cylindrical rail-beam (`beamChargePose` +
+cylindrical laser guide that locks `0.4 s` before `beamFire`, checked via `Hitbox.inBeam`),
 ranged parabolic backstep evade leaps (`evadeJumpPose`, >=5 s cooldown), exploder fuse shake,
-muscular grabber windup/lunge/hold, and client death collapses at 60 FPS without Humanoids.
+muscular grabber windup/lunge/hold (overhead yellow `!` triangle), and client death collapses at 60
+FPS without Humanoids.
 
 - **Arena (`ComplexArena.rbxmx`):** industrial sci-fi sector room (140×140 studs, floor top at
   `y = 0`) cloned by `WorldBuilder.build()`, with `SpawnLocation` placed from the arena's pivot

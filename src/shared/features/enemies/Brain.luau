@@ -10,9 +10,10 @@
 
 local Brain = {}
 
--- chase: moving into position. windup: about to strike, spin, sandevistan, or grab.
--- spin: dual-blade melee whirling continuously for high DPS. sandevistan: single-sword melee
--- chaining 3+ ultra-fast dashes in different directions before an ambush slash.
+-- chase: moving into position. windup: about to strike, spin, phantomStep, or grab.
+-- spin: dual-blade melee whirling continuously for high DPS. phantomStep (Paso Fantasma):
+-- single-sword melee chaining 3+ ultra-fast dashes in different directions before an ambush slash.
+-- slamWindup: mace melee raising its crusher overhead before slamming the floor to stun players.
 -- beamCharge: rifle ranged unit charging a devastating beam. evade: ranged unit leaping backward.
 -- lunge: grabber charging forward. recover: just acted, frozen. fuse: the exploder is about to
 -- go off. spent: the exploder went off. holding: the grabber is currently immobilising a player.
@@ -20,7 +21,8 @@ export type Phase =
 	"chase"
 	| "windup"
 	| "spin"
-	| "sandevistan"
+	| "phantomStep"
+	| "slamWindup"
 	| "beamCharge"
 	| "evade"
 	| "lunge"
@@ -38,18 +40,20 @@ export type State = {
 	pendingSpin: boolean?,
 	nextBeamAt: number?,
 	nextEvadeAt: number?,
-	nextSandevistanAt: number?,
-	sandevistanLeft: number?,
-	pendingSandevistan: boolean?,
-	sandevistanFinisher: boolean?,
+	nextPhantomStepAt: number?,
+	phantomStepLeft: number?,
+	pendingPhantomStep: boolean?,
+	phantomStepFinisher: boolean?,
+	nextSlamAt: number?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "sandevistan" | "evade",
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "evade",
 	action: (
 		"strike"
 		| "spinTick"
-		| "sandevistanHop"
+		| "phantomStepHop"
+		| "slam"
 		| "fire"
 		| "beamStart"
 		| "beamFire"
@@ -75,12 +79,16 @@ export type Kind = {
 	spinDuration: number?,
 	spinTickEvery: number?,
 	spinCooldown: number?,
-	canSandevistan: boolean?,
-	sandevistanSteps: number?,
-	sandevistanStepDuration: number?,
-	sandevistanRange: number?,
-	sandevistanCooldown: number?,
-	sandevistanStrikeWindup: number?,
+	canPhantomStep: boolean?,
+	phantomStepCount: number?,
+	phantomStepDuration: number?,
+	phantomStepRange: number?,
+	phantomStepCooldown: number?,
+	phantomStepStrikeWindup: number?,
+	canSlam: boolean?,
+	slamRange: number?,
+	slamWindup: number?,
+	slamCooldown: number?,
 	canBeam: boolean?,
 	beamCharge: number?,
 	beamCooldown: number?,
@@ -110,10 +118,11 @@ function Brain.initial(now: number): State
 		pendingSpin = false,
 		nextBeamAt = now + 1.8,
 		nextEvadeAt = 0,
-		nextSandevistanAt = now + 1.8,
-		sandevistanLeft = 0,
-		pendingSandevistan = false,
-		sandevistanFinisher = false,
+		nextPhantomStepAt = now + 1.8,
+		phantomStepLeft = 0,
+		pendingPhantomStep = false,
+		phantomStepFinisher = false,
+		nextSlamAt = now + 1.8,
 	}
 end
 
@@ -126,10 +135,11 @@ local function with(
 	pendingSpin: boolean?,
 	nextBeamAt: number?,
 	nextEvadeAt: number?,
-	nextSandevistanAt: number?,
-	sandevistanLeft: number?,
-	pendingSandevistan: boolean?,
-	sandevistanFinisher: boolean?
+	nextPhantomStepAt: number?,
+	phantomStepLeft: number?,
+	pendingPhantomStep: boolean?,
+	phantomStepFinisher: boolean?,
+	nextSlamAt: number?
 ): State
 	return {
 		phase = phase,
@@ -140,30 +150,40 @@ local function with(
 		pendingSpin = if pendingSpin ~= nil then pendingSpin else false,
 		nextBeamAt = if nextBeamAt ~= nil then nextBeamAt else state.nextBeamAt,
 		nextEvadeAt = if nextEvadeAt ~= nil then nextEvadeAt else state.nextEvadeAt,
-		nextSandevistanAt = if nextSandevistanAt ~= nil then nextSandevistanAt else state.nextSandevistanAt,
-		sandevistanLeft = if sandevistanLeft ~= nil then sandevistanLeft else 0,
-		pendingSandevistan = if pendingSandevistan ~= nil then pendingSandevistan else false,
-		sandevistanFinisher = if sandevistanFinisher ~= nil then sandevistanFinisher else false,
+		nextPhantomStepAt = if nextPhantomStepAt ~= nil then nextPhantomStepAt else state.nextPhantomStepAt,
+		phantomStepLeft = if phantomStepLeft ~= nil then phantomStepLeft else 0,
+		pendingPhantomStep = if pendingPhantomStep ~= nil then pendingPhantomStep else false,
+		phantomStepFinisher = if phantomStepFinisher ~= nil then phantomStepFinisher else false,
+		nextSlamAt = if nextSlamAt ~= nil then nextSlamAt else state.nextSlamAt,
 	}
 end
 
 local function melee(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
 	local reach = kind.reach or 0
-	if state.phase == "sandevistan" then
+	if state.phase == "slamWindup" then
 		if now >= state.endsAt then
-			local left = (state.sandevistanLeft or 1) - 1
+			local slamCd = kind.slamCooldown or 6.5
+			local rec = (kind.recover or 0.8) * 1.45
+			return with(state, "recover", now + rec, nil, nil, false, nil, nil, nil, 0, false, false, now + slamCd),
+				{ move = "hold", action = "slam" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "phantomStep" then
+		if now >= state.endsAt then
+			local left = (state.phantomStepLeft or 1) - 1
 			if left > 0 then
-				local stepDur = kind.sandevistanStepDuration or 0.15
-				return with(state, "sandevistan", now + stepDur, nil, nil, false, nil, nil, nil, left, false, false),
-					{ move = "sandevistan", action = "sandevistanHop" }
+				local stepDur = kind.phantomStepDuration or 0.15
+				return with(state, "phantomStep", now + stepDur, nil, nil, false, nil, nil, nil, left, false, false),
+					{ move = "phantomStep", action = "phantomStepHop" }
 			end
 			-- Finished all rapid hops: brief ambush windup before the surprise slash.
-			local strikeWindup = kind.sandevistanStrikeWindup or 0.28
-			local cd = kind.sandevistanCooldown or 7.0
+			local strikeWindup = kind.phantomStepStrikeWindup or 0.38
+			local cd = kind.phantomStepCooldown or 7.0
 			return with(state, "windup", now + strikeWindup, nil, nil, false, nil, nil, now + cd, 0, false, true),
 				{ move = "hold" }
 		end
-		return state, { move = "sandevistan" }
+		return state, { move = "phantomStep" }
 	end
 	if state.phase == "spin" then
 		if now >= state.endsAt then
@@ -180,11 +200,11 @@ local function melee(kind: Kind, state: State, distance: number, now: number, ca
 	end
 	if state.phase == "windup" then
 		if now >= state.endsAt then
-			if state.pendingSandevistan and kind.canSandevistan then
-				local steps = math.max(kind.sandevistanSteps or 3, 3)
-				local stepDur = kind.sandevistanStepDuration or 0.15
-				return with(state, "sandevistan", now + stepDur, nil, nil, false, nil, nil, nil, steps, false, false),
-					{ move = "sandevistan", action = "sandevistanHop" }
+			if state.pendingPhantomStep and kind.canPhantomStep then
+				local steps = math.max(kind.phantomStepCount or 3, 3)
+				local stepDur = kind.phantomStepDuration or 0.15
+				return with(state, "phantomStep", now + stepDur, nil, nil, false, nil, nil, nil, steps, false, false),
+					{ move = "phantomStep", action = "phantomStepHop" }
 			end
 			if state.pendingSpin and kind.canSpin then
 				local spinDur = kind.spinDuration or 1.6
@@ -192,8 +212,8 @@ local function melee(kind: Kind, state: State, distance: number, now: number, ca
 				return with(state, "spin", now + spinDur, state.nextSpinAt, now + tickEvery, false),
 					{ move = "spin", action = "spinTick" }
 			end
-			local rec = if state.sandevistanFinisher then (kind.recover or 0.8) * 1.3 else (kind.recover or 0)
-			return with(state, "recover", now + rec, nil, nil, false, nil, nil, nil, 0, false, state.sandevistanFinisher),
+			local rec = if state.phantomStepFinisher then (kind.recover or 0.8) * 1.3 else (kind.recover or 0)
+			return with(state, "recover", now + rec, nil, nil, false, nil, nil, nil, 0, false, state.phantomStepFinisher),
 				{ move = "hold", action = "strike" }
 		end
 		return state, { move = "hold" }
@@ -207,10 +227,16 @@ local function melee(kind: Kind, state: State, distance: number, now: number, ca
 	if not canAttack then
 		return state, { move = "flank" }
 	end
-	-- Single-sword Sandevistan: activates from mid-range (up to sandevistanRange) to chain 3+
-	-- rapid multi-directional dashes into a surprise ambush strike.
-	local sandyRange = kind.sandevistanRange or 24
-	if kind.canSandevistan == true and now >= (state.nextSandevistanAt or 0) and distance <= sandyRange then
+	-- Mace ground slam: hoists the heavy mace overhead and smashes the floor to stagger & stun.
+	local slamRange = kind.slamRange or 13
+	if kind.canSlam == true and now >= (state.nextSlamAt or 0) and distance <= slamRange then
+		local slamWindup = kind.slamWindup or 0.78
+		return with(state, "slamWindup", now + slamWindup), { move = "hold" }
+	end
+	-- Single-sword Paso Fantasma: activates from mid-range to chain 3+ rapid multi-directional
+	-- dashes into a surprise parry-only ambush strike.
+	local phantomRange = kind.phantomStepRange or 24
+	if kind.canPhantomStep == true and now >= (state.nextPhantomStepAt or 0) and distance <= phantomRange then
 		local prepWindup = (kind.windup or 0.45) * 0.85
 		return with(state, "windup", now + prepWindup, nil, nil, false, nil, nil, nil, 0, true, false),
 			{ move = "hold" }
@@ -476,30 +502,30 @@ function Brain.selfTest()
 	sd, intent = Brain.step("melee", dualKind, sd, 5, 4.8)
 	assert(is(sd.phase, "recover") and is(intent.move, "hold"), "spin ends into recover")
 
-	-- Single-sword Sandevistan: prep windup -> 3 rapid multi-direction hops -> finisher windup -> strike.
-	local sandyKind: Kind = {
+	-- Single-sword Paso Fantasma: prep windup -> 3 rapid multi-direction hops -> finisher windup -> strike.
+	local phantomKind: Kind = {
 		reach = 6,
 		windup = 0.45,
 		recover = 0.8,
-		canSandevistan = true,
-		sandevistanSteps = 3,
-		sandevistanStepDuration = 0.15,
-		sandevistanRange = 24,
-		sandevistanCooldown = 7.0,
-		sandevistanStrikeWindup = 0.28,
+		canPhantomStep = true,
+		phantomStepCount = 3,
+		phantomStepDuration = 0.15,
+		phantomStepRange = 24,
+		phantomStepCooldown = 7.0,
+		phantomStepStrikeWindup = 0.38,
 	}
 	local ss: any = Brain.initial(0)
-	ss, intent = Brain.step("melee", sandyKind, ss, 18, 2.0)
-	assert(is(ss.phase, "windup") and ss.pendingSandevistan == true, "sword melee winds up into Sandevistan")
-	ss, intent = Brain.step("melee", sandyKind, ss, 18, 2.45)
-	assert(is(ss.phase, "sandevistan") and is(intent.action, "sandevistanHop") and ss.sandevistanLeft == 3, "hop 1 fires")
-	ss, intent = Brain.step("melee", sandyKind, ss, 12, 2.61)
-	assert(is(ss.phase, "sandevistan") and is(intent.action, "sandevistanHop") and ss.sandevistanLeft == 2, "hop 2 fires")
-	ss, intent = Brain.step("melee", sandyKind, ss, 10, 2.77)
-	assert(is(ss.phase, "sandevistan") and is(intent.action, "sandevistanHop") and ss.sandevistanLeft == 1, "hop 3 fires")
-	ss, intent = Brain.step("melee", sandyKind, ss, 5, 2.93)
-	assert(is(ss.phase, "windup") and ss.sandevistanFinisher == true, "after 3 hops enters ambush strike windup")
-	ss, intent = Brain.step("melee", sandyKind, ss, 5, 3.25)
+	ss, intent = Brain.step("melee", phantomKind, ss, 18, 2.0)
+	assert(is(ss.phase, "windup") and ss.pendingPhantomStep == true, "sword melee winds up into Paso Fantasma")
+	ss, intent = Brain.step("melee", phantomKind, ss, 18, 2.45)
+	assert(is(ss.phase, "phantomStep") and is(intent.action, "phantomStepHop") and ss.phantomStepLeft == 3, "hop 1 fires")
+	ss, intent = Brain.step("melee", phantomKind, ss, 12, 2.61)
+	assert(is(ss.phase, "phantomStep") and is(intent.action, "phantomStepHop") and ss.phantomStepLeft == 2, "hop 2 fires")
+	ss, intent = Brain.step("melee", phantomKind, ss, 10, 2.77)
+	assert(is(ss.phase, "phantomStep") and is(intent.action, "phantomStepHop") and ss.phantomStepLeft == 1, "hop 3 fires")
+	ss, intent = Brain.step("melee", phantomKind, ss, 5, 2.93)
+	assert(is(ss.phase, "windup") and ss.phantomStepFinisher == true, "after 3 hops enters ambush strike windup")
+	ss, intent = Brain.step("melee", phantomKind, ss, 5, 3.35)
 	assert(is(ss.phase, "recover") and is(intent.action, "strike"), "ambush windup unleashes surprise strike")
 
 	-- Ranged enemy respects volley stagger gate (`canAttack = false`) without firing.
@@ -617,6 +643,30 @@ function Brain.selfTest()
 	assert(steerAway.X > 0, "roaming steers away from a grabbed player inside avoidRadius")
 	local farIgnore = Brain.wanderDirection(Vector3.new(30, 0, 0), Vector3.new(-1, 0, 0), { Vector3.new(0, 0, 0) }, 12)
 	assert(farIgnore.X < -0.99, "roaming ignores grabbed players outside avoidRadius")
+
+	-- Mace ground slam: hoists mace overhead in slamWindup, emits slam action on completion, then respects cooldown.
+	local maceKind: Kind = {
+		reach = 6,
+		windup = 0.45,
+		recover = 0.8,
+		canSlam = true,
+		slamRange = 13,
+		slamWindup = 0.78,
+		slamCooldown = 6.5,
+	}
+	local mc: any = Brain.initial(0)
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 2.0, true)
+	assert(is(mc.phase, "slamWindup") and is(intent.move, "hold") and is(intent.action, nil), "mace enters slamWindup in slamRange")
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 2.4, true)
+	assert(is(mc.phase, "slamWindup") and is(intent.action, nil), "mace holds during slamWindup")
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 2.8, true)
+	assert(is(mc.phase, "recover") and is(intent.action, "slam"), "mace emits slam action at end of slamWindup")
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 5.0, true)
+	assert(is(mc.phase, "chase"), "mace resumes chasing after slam recover")
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 5.1, true)
+	assert(is(mc.phase, "chase"), "mace does not re-slam before slamCooldown elapses")
+	mc, intent = Brain.step("melee", maceKind, mc, 11, 9.5, true)
+	assert(is(mc.phase, "slamWindup"), "mace slams again once slamCooldown expires")
 end
 
 return Brain

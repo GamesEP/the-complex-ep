@@ -56,7 +56,7 @@ function Defense.resolveHit(rawDamage: number, ctx: HitContext): (number, HitOut
 end
 
 -- Computes WalkSpeed combining base speed, speed buff, blocking slowdown, heavy-attack charge
--- slowdown, and grab lock.
+-- slowdown, grab lock, and seismic stun lock.
 function Defense.walkSpeed(
 	baseSpeed: number,
 	speedBuffUntil: any,
@@ -66,9 +66,10 @@ function Defense.walkSpeed(
 	speedMultiplier: number,
 	blockMultiplier: number,
 	charging: boolean?,
-	chargeMultiplier: number?
+	chargeMultiplier: number?,
+	stunned: boolean?
 ): number
-	if grabbed then
+	if grabbed or stunned then
 		return 0
 	end
 	local speed = baseSpeed
@@ -146,29 +147,30 @@ function Defense.selfTest()
 	dmg, out = Defense.resolveHit(8, grabCtx)
 	assert(math.abs(dmg - 4) < 1e-6 and out == "hit", "unblockable drain ignores guard but keeps 50% defense buff")
 
-	-- Parry-only Sandevistan strike: bypasses Dash i-frames and passive Block, countered only by Parry.
-	local sandyDashCtx = table.clone(base)
-	sandyDashCtx.invulnerableUntil = 10.5
-	sandyDashCtx.canDodge = false
-	sandyDashCtx.canBlock = false
-	sandyDashCtx.canParry = true
-	dmg, out = Defense.resolveHit(15, sandyDashCtx)
+	-- Parry-only Paso Fantasma strike: bypasses Dash i-frames and passive Block, countered only by Parry.
+	local phantomDashCtx = table.clone(base)
+	phantomDashCtx.invulnerableUntil = 10.5
+	phantomDashCtx.canDodge = false
+	phantomDashCtx.canBlock = false
+	phantomDashCtx.canParry = true
+	dmg, out = Defense.resolveHit(15, phantomDashCtx)
 	assert(dmg == 15 and out == "hit", "parry-only strike bypasses dash i-frames")
 
-	local sandyBlockCtx = table.clone(sandyDashCtx)
-	sandyBlockCtx.blocking = true
-	sandyBlockCtx.parryUntil = 9.5
-	dmg, out = Defense.resolveHit(15, sandyBlockCtx)
+	local phantomBlockCtx = table.clone(phantomDashCtx)
+	phantomBlockCtx.blocking = true
+	phantomBlockCtx.parryUntil = 9.5
+	dmg, out = Defense.resolveHit(15, phantomBlockCtx)
 	assert(dmg == 15 and out == "hit", "parry-only strike bypasses passive block outside parry window")
 
-	local sandyParryCtx = table.clone(sandyDashCtx)
-	sandyParryCtx.blocking = true
-	sandyParryCtx.parryUntil = 10.2
-	dmg, out = Defense.resolveHit(15, sandyParryCtx)
+	local phantomParryCtx = table.clone(phantomDashCtx)
+	phantomParryCtx.blocking = true
+	phantomParryCtx.parryUntil = 10.2
+	dmg, out = Defense.resolveHit(15, phantomParryCtx)
 	assert(dmg == 0 and out == "parry", "parry negates parry-only strike completely")
 
 	-- WalkSpeed combinations.
 	assert(Defense.walkSpeed(26, 0, false, true, 10, 1.35, 0.55) == 0, "grabbed player has 0 WalkSpeed")
+	assert(Defense.walkSpeed(26, 20, false, false, 10, 1.35, 0.55, false, 1, true) == 0, "stunned player has 0 WalkSpeed")
 	assert(math.abs(Defense.walkSpeed(26, 0, true, false, 10, 1.35, 0.55) - 26 * 0.55) < 1e-6, "blocking slows WalkSpeed")
 	assert(math.abs(Defense.walkSpeed(26, 20, true, false, 10, 1.35, 0.55) - 26 * 1.35 * 0.55) < 1e-6, "speed buff stacks with blocking")
 	assert(

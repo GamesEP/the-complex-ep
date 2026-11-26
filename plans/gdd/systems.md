@@ -134,7 +134,8 @@ servidor de run.
   - **Buff de ataque (`damage`):** aumenta el daño de ataques básicos y habilidades durante unos
     segundos (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`).
   - **Buff de velocidad (`speed`):** aumenta la velocidad de movimiento durante unos segundos
-    (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`).
+    (`Config.BUFF_SPEED_MULTIPLIER`, `Config.BUFF_SPEED_DURATION`) y permite realizar **Doble Dash**
+    (2 cargas seguidas de Dash) mientras el buff está activo.
 - **Buff de defensa en el mapa (`defense`):** cada cierto tiempo durante el combate
   (`Config.DEFENSE_SPAWN_INTERVAL`) aparece un escudo recogible en el suelo (máximo 1 activo a la
   vez) que otorga un **50% de defensa** (`Config.BUFF_DEFENSE_REDUCTION`) durante

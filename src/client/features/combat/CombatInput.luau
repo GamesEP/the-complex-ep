@@ -21,6 +21,7 @@ local Remotes = require(Shared.core.Net.Remotes)
 local Melee = require(Shared.features.combat.Melee)
 
 local Effects = require(script.Parent.Effects)
+local AbilityStore = require(script.Parent.stores.AbilityStore)
 
 local CombatInput = {}
 
@@ -32,6 +33,8 @@ local comboStep = 0
 local lastSwingAt = -math.huge
 local dashReadyAt = 0
 local spinReadyAt = 0
+local stingerReadyAt = 0
+local overDriveReadyAt = 0
 local blockReadyAt = 0
 local heavyReadyAt = 0
 local blocking = false
@@ -411,7 +414,12 @@ local function dash()
 end
 
 local function spin()
-	if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or blocking
+		or player:GetAttribute("Blocking") == true
+	then
 		return
 	end
 	local root, humanoid = body()
@@ -433,9 +441,116 @@ local function spin()
 	Remotes.Spin:FireServer()
 end
 
+local function stinger()
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or blocking
+		or player:GetAttribute("Blocking") == true
+	then
+		return
+	end
+	local root, humanoid = body()
+	if not root or not humanoid or not ready(stingerReadyAt, "StingerReadyAt") then
+		return
+	end
+	local clock = os.clock()
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+	local pick, targetBody = selectTarget(root, facing, clock)
+	local aim = if pick then pick.direction else facing
+
+	cancelHeavyCharge(true)
+	lungeToken += 1
+	clearLunge()
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock + Config.STINGER_DURATION else -math.huge
+	stingerReadyAt = now() + Config.STINGER_COOLDOWN
+	dashEndsAt = clock + Config.STINGER_DURATION
+
+	-- Explosive horizontal piercing thrust (DMC Stinger), keeping gravity intact and respecting walls.
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = root
+	local velocity = Instance.new("LinearVelocity")
+	velocity.Attachment0 = attachment
+	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+	velocity.LineDirection = aim
+	velocity.LineVelocity = Config.STINGER_DISTANCE / math.max(Config.STINGER_DURATION, 0.05)
+	velocity.MaxForce = math.huge
+	velocity.Parent = root
+	activeLunge = { velocity = velocity, attachment = attachment }
+	local myToken = lungeToken
+	task.delay(Config.STINGER_DURATION, function()
+		if lungeToken == myToken then
+			clearLunge()
+		end
+	end)
+
+	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+	Effects.stinger(root, aim, true)
+	Remotes.Stinger:FireServer(aim)
+end
+
+local function overDrive()
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("OverDriveCharging") == true
+		or blocking
+		or player:GetAttribute("Blocking") == true
+	then
+		return
+	end
+	local root, humanoid = body()
+	if not root or not humanoid or not ready(overDriveReadyAt, "OverDriveReadyAt") then
+		return
+	end
+	local clock = os.clock()
+	local facing = Melee.flat(humanoid.MoveDirection) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+	local pick, targetBody = selectTarget(root, facing, clock)
+	local aim = if pick then pick.direction else facing
+
+	cancelHeavyCharge(true)
+	lungeToken += 1
+	clearLunge()
+	lockedTarget = targetBody
+	lastEngageAt = if targetBody then clock else -math.huge
+	overDriveReadyAt = now() + Config.OVERDRIVE_COOLDOWN
+
+	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
+	Remotes.OverDrive:FireServer(aim)
+end
+
+local ABILITY_TITLES = { "Giro", "Stinger", "Over Drive" }
+
+local function updateAbilityTouchTitle(slot: number)
+	ContextActionService:SetTitle("Ability", ABILITY_TITLES[slot] or "Habilidad")
+end
+
+local function selectAbilitySlot(slot: number)
+	local chosen = AbilityStore.select(slot)
+	updateAbilityTouchTitle(chosen)
+end
+
+local function useActiveAbility()
+	local slot = AbilityStore.current()
+	if slot == 2 then
+		stinger()
+	elseif slot == 3 then
+		overDrive()
+	else
+		spin()
+	end
+end
+
 local function setBlock(active: boolean)
 	if active then
-		if blocking or player:GetAttribute("Grabbed") == true then
+		if blocking or player:GetAttribute("Grabbed") == true or player:GetAttribute("OverDriveCharging") == true then
 			return
 		end
 		local root = body()
@@ -463,9 +578,9 @@ local ACTIONS = {
 		title = "Dash",
 		inputs = { Enum.KeyCode.LeftShift, Enum.KeyCode.Q, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonL2 },
 	},
-	Spin = {
-		run = spin,
-		title = "Giro",
+	Ability = {
+		run = useActiveAbility,
+		title = ABILITY_TITLES[1],
 		inputs = { Enum.KeyCode.E, Enum.KeyCode.ButtonY, Enum.KeyCode.ButtonR1 },
 	},
 }
@@ -484,6 +599,47 @@ function CombatInput.start()
 		end, true, Enum.ContextActionPriority.High.Value, table.unpack(action.inputs))
 		ContextActionService:SetTitle(name, action.title)
 	end
+
+	-- Switch active swordsman ability with keys 1, 2, 3 (and gamepad D-pad left/right).
+	ContextActionService:BindActionAtPriority("AbilitySlot1", function(_, state: Enum.UserInputState)
+		if state ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		selectAbilitySlot(1)
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.One)
+
+	ContextActionService:BindActionAtPriority("AbilitySlot2", function(_, state: Enum.UserInputState)
+		if state ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		selectAbilitySlot(2)
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Two)
+
+	ContextActionService:BindActionAtPriority("AbilitySlot3", function(_, state: Enum.UserInputState)
+		if state ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		selectAbilitySlot(3)
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Three)
+
+	ContextActionService:BindActionAtPriority("AbilityCyclePrev", function(_, state: Enum.UserInputState)
+		if state ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		updateAbilityTouchTitle(AbilityStore.cycle(-1))
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.DPadLeft)
+
+	ContextActionService:BindActionAtPriority("AbilityCycleNext", function(_, state: Enum.UserInputState)
+		if state ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		updateAbilityTouchTitle(AbilityStore.cycle(1))
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.DPadRight)
 
 	-- Attack: tap fires the basic combo immediately; holding continuously for HEAVY_CHARGE_SECONDS
 	-- (3 s) charges and unleashes the Heavy Attack. Releasing early cancels the charge cleanly.
@@ -531,6 +687,8 @@ function CombatInput.start()
 		lastSwingAt = -math.huge
 		dashReadyAt = 0
 		spinReadyAt = 0
+		stingerReadyAt = 0
+		overDriveReadyAt = 0
 		blockReadyAt = 0
 		heavyReadyAt = 0
 		blocking = false

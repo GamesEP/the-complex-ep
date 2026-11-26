@@ -62,10 +62,32 @@ Config.DASH_DURATION = 0.18
 Config.DASH_COOLDOWN = 0.7
 Config.DASH_IFRAMES = 0.25
 
--- The slice's one ability (plans/gdd/scope.md): hits everything around the player.
+-- Active ability kit (3 switchable slots via keys 1, 2, 3; cast with E / Y / R1 / touch):
+Config.ABILITY_SLOTS = 3
+
+-- Slot 1 — Giro (Spin): 360-degree tornado cleave around the player.
 Config.SPIN_DAMAGE = 25
 Config.SPIN_RADIUS = 12
 Config.SPIN_COOLDOWN = 4
+
+-- Slot 2 — Stinger (DMC-style piercing thrust): explosive forward lunge skewering every enemy
+-- along a narrow corridor ahead.
+Config.STINGER_DAMAGE = 35
+Config.STINGER_DISTANCE = 26
+Config.STINGER_DURATION = 0.24
+Config.STINGER_WIDTH = 6.5
+Config.STINGER_COOLDOWN = 5.5
+
+-- Slot 3 — Over Drive (DMC-style Ultimate): longest cooldown; channels energy into the blade
+-- then unleashes 3 devastating piercing crescent slash waves downrange.
+Config.OVERDRIVE_COOLDOWN = 14.0
+Config.OVERDRIVE_CHARGE_SECONDS = 0.75
+Config.OVERDRIVE_CHARGE_MOVE_MULTIPLIER = 0.35
+Config.OVERDRIVE_WAVES = 3
+Config.OVERDRIVE_WAVE_INTERVAL = 0.22
+Config.OVERDRIVE_WAVE_DAMAGE = { 38, 42, 55 }
+Config.OVERDRIVE_WAVE_RANGE = 56
+Config.OVERDRIVE_WAVE_WIDTH = 9.0
 
 -- Guard & Parry: holding Block cuts incoming damage by BLOCK_DAMAGE_REDUCTION while slowing
 -- movement; raising Block right before impact (within PARRY_WINDOW) negates all damage,

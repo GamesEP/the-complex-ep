@@ -29,6 +29,8 @@ return {
 	HeavyAttack = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
 	Dash = { rate = Config.ACTION_RATE },
 	Spin = { rate = Config.ACTION_RATE },
+	Stinger = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
+	OverDrive = { rate = Config.ACTION_RATE, args = { Validate.vector3 } },
 	-- Boolean press/release for guard & parry (`true` raises guard, `false` lowers it).
 	Block = { rate = Config.ACTION_RATE, args = { Validate.boolean } },
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses

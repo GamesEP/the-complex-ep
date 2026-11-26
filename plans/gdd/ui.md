@@ -15,12 +15,10 @@ Revivir del grupo) se diseñarán cuando arranque su hito.
 **En pantalla cuando:** el jugador está dentro de una sala o run activa.
 
 **Muestra:**
-- Barra de vida del jugador (valor actual / máximo y aviso visual breve al recibir daño).
-- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes.
+- Barra de vida roja del jugador en la esquina superior izquierda (valor actual / máximo) y debajo los indicadores temporales de buffs recogidos solo mientras están activos.
+- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central, junto con alertas breves de ataques especiales (agarre / Sandevistan).
 - Barra de vida del jefe en la parte superior central cuando la sala actual tiene jefe.
-- Barra de habilidades y movimientos con recarga visible: dash y los 3 huecos de habilidades
-  activas (`Config.ABILITY_SLOTS`), mostrando tecla/botón asignado en PC y mando, además de
-  indicadores discretos para pasivas de movimiento activas (doble salto, doble dash).
+- Iconos recargables de las 3 habilidades activas (`Config.ABILITY_SLOTS`) en la esquina inferior izquierda, intercambiables con `1`, `2` y `3` (o clic/toque / cruceta en mando) y lanzables con `E` / `Y` / `R1`: **`1` Giro** (`4 s`), **`2` Stinger** (`5,5 s`) y **`3` Over Drive** (definitiva, `14 s`), cada uno con barrido de recarga y cuenta atrás. Sin barras para el Dash ni para Bloqueo/Parry por su recarga rápida.
 
 **El jugador puede:**
 - Leer su vida, sus recargas y el avance de la sala de un vistazo sin quitar la vista del centro.

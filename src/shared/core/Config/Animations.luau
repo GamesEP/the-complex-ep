@@ -40,6 +40,20 @@ Config.ANIMATIONS = {
 		blendIn = 0.12,
 		blendOut = 0.28,
 	},
+	-- DMC-style Stinger: explosive forward lance thrust with sword extended straight ahead.
+	stinger = {
+		duration = 0.36,
+		priority = 4,
+		blendIn = 0.08,
+		blendOut = 0.3,
+	},
+	-- DMC-style Over Drive: rapid 3-slash ranged shockwave barrage (steps 1..3).
+	overdriveWave = {
+		duration = 0.24,
+		priority = 4,
+		blendIn = 0.08,
+		blendOut = 0.28,
+	},
 	-- Charged 3-second heavy attack: massive full-body lunge and crushing cleave.
 	heavyAttack = {
 		duration = 0.52,
@@ -67,6 +81,8 @@ Config.ANIMATIONS = {
 Config.ANIM_BLOCK_WEIGHT = 0.9
 -- Continuous charged heavy windup pose weight while holding Attack to charge.
 Config.ANIM_CHARGE_WEIGHT = 0.92
+-- Continuous Over Drive energy-channeling stance weight before unleashing the 3 waves.
+Config.ANIM_OVERDRIVE_CHARGE_WEIGHT = 0.95
 
 -- Airborne jump pose blending (driven from HumanoidStateType + root vertical velocity).
 Config.ANIM_JUMP_WEIGHT = 0.85

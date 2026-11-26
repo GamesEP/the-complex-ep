@@ -73,6 +73,28 @@ function Melee.inRadius(origin: Vector3, target: Vector3, radius: number): boole
 	return Melee.distance(origin, target) <= radius
 end
 
+-- Inside a forward corridor/capsule (used by Stinger piercing lunges and Over Drive ranged slash
+-- waves): checks flat distance from `target` to the line segment `[origin, origin + forward * length]`.
+function Melee.inCorridor(
+	origin: Vector3,
+	facing: Vector3,
+	target: Vector3,
+	length: number,
+	halfWidth: number
+): boolean
+	if length <= 0 or halfWidth <= 0 then
+		return false
+	end
+	local forward = Melee.flat(facing)
+	if not forward then
+		return false
+	end
+	local offset = Vector3.new(target.X - origin.X, 0, target.Z - origin.Z)
+	local along = math.clamp(offset:Dot(forward), 0, length)
+	local closest = forward * along
+	return (offset - closest).Magnitude <= halfWidth + 1e-6
+end
+
 -- Picks the best enemy in front of `facing` (within `cone` degrees and `range` studs + enemy
 -- radius) to snap a basic attack onto. Prioritises enemies aligned with where the player is
 -- looking, breaking ties by proximity so a nearby aligned enemy beats a far dead-ahead one.
@@ -228,6 +250,15 @@ function Melee.selfTest()
 	assert(Melee.inRadius(origin, Vector3.new(0, 0, 11), 12), "inside the spin is hit")
 	assert(Melee.inRadius(origin, Vector3.new(-11, 0, 0), 12), "the spin hits behind too")
 	assert(not Melee.inRadius(origin, Vector3.new(13, 0, 0), 12), "outside the spin is not hit")
+
+	-- Forward corridor (Stinger & Over Drive waves).
+	assert(Melee.inCorridor(origin, north, Vector3.new(0, 0, -20), 26, 3.25), "center of corridor is hit")
+	assert(Melee.inCorridor(origin, north, Vector3.new(3.0, 4, -12), 26, 3.25), "within half-width ignores height and hits")
+	assert(Melee.inCorridor(origin, north, origin, 26, 3.25), "point-blank origin is hit")
+	assert(not Melee.inCorridor(origin, north, Vector3.new(5.0, 0, -12), 26, 3.25), "outside lateral half-width misses")
+	assert(not Melee.inCorridor(origin, north, Vector3.new(0, 0, -35), 26, 3.25), "beyond corridor length + cap misses")
+	assert(not Melee.inCorridor(origin, north, Vector3.new(0, 0, 8), 26, 3.25), "far behind origin misses")
+	assert(not Melee.inCorridor(origin, Vector3.new(0, -1, 0), Vector3.new(0, 0, -5), 26, 3.25), "vertical facing misses")
 
 	assert(Melee.flat(Vector3.new(0, -3, 0)) == nil, "a vertical direction has no flat part")
 

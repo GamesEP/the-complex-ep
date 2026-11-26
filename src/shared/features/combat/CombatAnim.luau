@@ -256,7 +256,61 @@ local function evaluateHeavyAttack(u: number): { [string]: CFrame }
 	}
 end
 
--- Evaluates an active one-shot action (`attack`, `heavyAttack`, `dash`, `spin`, `parry`, `land`) at `elapsed` seconds.
+-- Iconic DMC Stinger pose: deep forward thrust lunge with torso twisted right-shoulder-forward,
+-- sword arm driven straight ahead like a lance, and left arm swept behind for balance.
+local function evaluateStinger(u: number): { [string]: CFrame }
+	local burst = easeOutCubic(math.min(u / 0.22, 1))
+	local settle = if u > 0.72 then (u - 0.72) / 0.28 else 0
+	local thrust = burst * (1 - 0.35 * settle)
+	return {
+		Root = CFrame.new(0, -0.48 * thrust, 0) * CFrame.Angles(-0.52 * thrust, 0.42 * thrust, 0),
+		Waist = CFrame.Angles(-0.26 * thrust, 0.48 * thrust, 0),
+		Neck = CFrame.Angles(0.55 * thrust, -0.75 * thrust, 0),
+		RightShoulder = CFrame.Angles(1.62 * thrust, -0.22 * thrust, 0.08 * thrust),
+		RightElbow = CFrame.Angles(0.08 * thrust, 0, 0),
+		LeftShoulder = CFrame.Angles(-1.15 * thrust, 0.25 * thrust, -0.75 * thrust),
+		LeftElbow = CFrame.Angles(0.35 * thrust, 0, 0),
+		RightHip = CFrame.Angles(1.05 * thrust, 0, 0),
+		RightKnee = CFrame.Angles(-1.15 * thrust, 0, 0),
+		LeftHip = CFrame.Angles(-1.05 * thrust, 0, 0),
+		LeftKnee = CFrame.Angles(-0.28 * thrust, 0, 0),
+	}
+end
+
+-- DMC Over Drive 3-wave ranged slash cadence: alternating wide crescent arcs (steps 1 & 2)
+-- finishing with a devastating two-handed vertical-diagonal energy cleave (step 3).
+local function evaluateOverDriveWave(step: number, u: number): { [string]: CFrame }
+	if step >= 3 then
+		local s = swingPhase(u, 0.24)
+		local p = (s + 1) * 0.5
+		return {
+			Root = CFrame.new(0, lerpNumber(0.14, -0.34, p), 0) * CFrame.Angles(lerpNumber(0.24, -0.36, p), lerpNumber(-0.42, 0.52, p), 0),
+			Waist = CFrame.Angles(lerpNumber(0.28, -0.46, p), lerpNumber(-0.55, 0.85, p), 0),
+			Neck = CFrame.Angles(lerpNumber(-0.18, 0.32, p), lerpNumber(0.45, -0.55, p), 0),
+			RightShoulder = CFrame.Angles(lerpNumber(2.55, 0.32, p), lerpNumber(-0.25, 0.85, p), lerpNumber(0.55, -0.55, p)),
+			RightElbow = CFrame.Angles(0.28, 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(2.15, -0.45, p), lerpNumber(0.2, -0.35, p), -0.45),
+			LeftElbow = CFrame.Angles(0.45, 0, 0),
+		}
+	end
+	local dir = if step % 2 == 1 then 1 else -1
+	local s = swingPhase(u, 0.2)
+	local p = (s + 1) * 0.5
+	local waistYaw = dir * lerpNumber(-0.85, 1.05, p)
+	local armSweepY = dir * lerpNumber(-1.05, 1.35, p)
+	return {
+		Root = CFrame.new(0, -0.18, 0) * CFrame.Angles(-0.16, waistYaw * 0.3, 0),
+		Waist = CFrame.Angles(-0.22, waistYaw, -dir * 0.16 * s),
+		Neck = CFrame.Angles(0.2, -waistYaw * 0.6, 0),
+		RightShoulder = CFrame.Angles(1.32, armSweepY, if dir > 0 then lerpNumber(1.35, -0.65, p) else lerpNumber(-0.65, 1.45, p)),
+		RightElbow = CFrame.Angles(0.3, 0, 0),
+		LeftShoulder = CFrame.Angles(-0.45 * dir * s, -armSweepY * 0.35, -0.75),
+		LeftElbow = CFrame.Angles(0.55, 0, 0),
+	}
+end
+
+-- Evaluates an active one-shot action (`attack`, `heavyAttack`, `dash`, `spin`, `stinger`,
+-- `overdriveWave`, `parry`, `land`) at `elapsed` seconds.
 function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Pose
 	local key = CombatAnim.specKey(action, step)
 	local spec = Config.ANIMATIONS[key]
@@ -275,6 +329,10 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 		joints = evaluateDash(u)
 	elseif action == "spin" then
 		joints = evaluateSpin(u)
+	elseif action == "stinger" then
+		joints = evaluateStinger(u)
+	elseif action == "overdriveWave" then
+		joints = evaluateOverDriveWave(step or 1, u)
 	elseif action == "parry" then
 		joints = evaluateParry(u)
 	elseif action == "land" then
@@ -287,6 +345,29 @@ function CombatAnim.evaluate(action: string, step: number?, elapsed: number): Po
 		active = true,
 		weight = weight,
 		joints = joints,
+	}
+end
+
+-- Continuous power-channeling stance while charging the DMC Over Drive ultimate: deep planted
+-- stance with blade drawn low-back, coiling intensely as `progress` rises 0..1.
+function CombatAnim.overdriveChargePose(progress: number): Pose
+	local p = easeOutCubic(clamp01(progress))
+	return {
+		active = true,
+		weight = Config.ANIM_OVERDRIVE_CHARGE_WEIGHT,
+		joints = {
+			Root = CFrame.new(0, lerpNumber(-0.18, -0.36, p), 0) * CFrame.Angles(lerpNumber(-0.08, -0.22, p), lerpNumber(-0.4, -0.82, p), 0),
+			Waist = CFrame.Angles(lerpNumber(-0.05, 0.14, p), lerpNumber(-0.45, -0.92, p), 0),
+			Neck = CFrame.Angles(lerpNumber(0.08, 0.18, p), lerpNumber(0.65, 1.15, p), 0),
+			RightShoulder = CFrame.Angles(lerpNumber(0.85, 1.85, p), lerpNumber(-0.55, -0.95, p), lerpNumber(0.65, 1.05, p)),
+			RightElbow = CFrame.Angles(lerpNumber(0.65, 0.42, p), 0, 0),
+			LeftShoulder = CFrame.Angles(lerpNumber(1.15, 1.55, p), lerpNumber(0.4, 0.65, p), lerpNumber(-0.25, -0.45, p)),
+			LeftElbow = CFrame.Angles(0.85, 0, 0),
+			RightHip = CFrame.Angles(lerpNumber(0.32, 0.58, p), 0, 0.12),
+			RightKnee = CFrame.Angles(lerpNumber(-0.55, -0.92, p), 0, 0),
+			LeftHip = CFrame.Angles(lerpNumber(-0.28, -0.48, p), 0, -0.12),
+			LeftKnee = CFrame.Angles(lerpNumber(-0.35, -0.58, p), 0, 0),
+		},
 	}
 end
 
@@ -416,8 +497,20 @@ function CombatAnim.selfTest()
 	local hvy = CombatAnim.evaluate("heavyAttack", nil, Config.ANIMATIONS.heavyAttack.duration * 0.5)
 	assert(hvy.active and hvy.joints.Root ~= nil and hvy.joints.RightShoulder ~= nil, "heavyAttack drives full-body slam cleave")
 
+	-- Stinger thrust and Over Drive charge/waves.
+	local stg = CombatAnim.evaluate("stinger", nil, Config.ANIMATIONS.stinger.duration * 0.35)
+	assert(stg.active and stg.joints.Root ~= nil and stg.joints.RightShoulder ~= nil, "stinger drives forward lance thrust")
+	local odChg0 = CombatAnim.overdriveChargePose(0)
+	local odChg1 = CombatAnim.overdriveChargePose(1)
+	assert(odChg0.active and odChg1.active and odChg0.joints.Waist ~= odChg1.joints.Waist, "overdrive charge pose coils deeper")
+	local odW1 = CombatAnim.evaluate("overdriveWave", 1, Config.ANIMATIONS.overdriveWave.duration * 0.4)
+	local odW2 = CombatAnim.evaluate("overdriveWave", 2, Config.ANIMATIONS.overdriveWave.duration * 0.4)
+	local odW3 = CombatAnim.evaluate("overdriveWave", 3, Config.ANIMATIONS.overdriveWave.duration * 0.4)
+	assert(odW1.active and odW2.active and odW3.active, "all 3 overdrive wave animations are active")
+	assert(odW1.joints.Waist ~= odW2.joints.Waist, "overdrive waves 1 and 2 alternate sweep direction")
+
 	-- Every required action spec exists with valid positive duration.
-	for _, key in ipairs({ "attack", "attackHeavy", "heavyAttack", "dash", "spin", "parry", "land" }) do
+	for _, key in ipairs({ "attack", "attackHeavy", "heavyAttack", "dash", "spin", "stinger", "overdriveWave", "parry", "land" }) do
 		local spec = Config.ANIMATIONS[key]
 		assert(spec ~= nil and spec.duration > 0, `Config.ANIMATIONS.{key} must exist with positive duration`)
 	end

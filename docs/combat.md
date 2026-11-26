@@ -46,7 +46,9 @@ Each action is predicted on the client and confirmed by the server:
 | Attack | Picks the best enemy in the forward cone, turns and lunges in if needed, plays swing anim/SFX, fires `Attack(aim)` | Checks the swing interval, advances the combo, damages every enemy in the arc |
 | Heavy Attack (hold Attack 3 s) | Tap still swings immediately; holding past `HEAVY_CHARGE_DELAY` starts charge ring/SFX and fires `HeavyCharge(true)`. At `HEAVY_CHARGE_SECONDS` (3 s) lunges, draws shockwave, plays `heavyAttack` anim/SFX, fires `HeavyAttack(aim)` | Tracks server-side charge clock (`ChargingHeavy`, `HeavyChargeStart`), slows `WalkSpeed`, verifies full charge (`Melee.isChargeReady`), damages every enemy in the wide `HEAVY_ATTACK_ARC` |
 | Dash | Applies the dash velocity, fires `Dash()` | Checks the cooldown, sets `DashReadyAt`, grants `InvulnerableUntil` |
-| Spin | Draws the ring, fires `Spin()` | Checks the cooldown, sets `SpinReadyAt`, damages everything in the radius |
+| Spin (`1` + `E`) | Draws the ring, fires `Spin()` | Checks `SpinReadyAt`, damages everything in `SPIN_RADIUS` |
+| Stinger (`2` + `E`) | Applies high-speed forward thrust `LinearVelocity`, draws lance streak & anim, fires `Stinger(aim)` | Checks `StingerReadyAt`, pierces every enemy along `Melee.inCorridor` (`STINGER_DISTANCE` × `STINGER_WIDTH`) |
+| Over Drive (`3` + `E`, Ult) | Faces target, fires `OverDrive(aim)` | Checks `OverDriveReadyAt` (`14 s`), enters `OverDriveCharging` (`0.75 s`), then fires 3 sequential piercing ranged waves (`Melee.inCorridor`, `56` studs) synced via `CombatVfx`/`CombatAnim`/`CombatSfx` |
 
 **The attack sends its aim.** The server could read the character's facing instead, but that
 facing arrives by physics replication, which is not ordered with remotes — the remote announcing
@@ -281,7 +283,10 @@ muscular grabber windup/lunge/hold, and client death collapses at 60 FPS without
     buff, and plays `playerBlock`.
 - **Visuals and HUD:** `DropVisuals` bobs/spins pickups on `RenderStepped`, `PlayerAnimator`
   renders the continuous `blockPose` whenever `Blocking == true` (plus the one-shot `parry` sweep),
-  and `CombatHud` renders Block/Parry state and active buff countdown bars via `React.useBinding`.
+  and `CombatHud` renders a top-left red health bar (+ active buff countdown bars only when active),
+  top-center wave/telegraph banners, and a bottom-left 3-slot switchable ability bar (`1` Giro,
+  `2` Stinger, `3` Over Drive, backed by `AbilityStore` and omitting Dash and Block/Parry bars) via
+  `React.useBinding`.
 
 ## What is not verified offline
 

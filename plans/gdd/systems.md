@@ -155,7 +155,9 @@ Valores de prueba del corte de combate, para ajustar jugando:
 | Distancia del dash | 18 studs en 0,18 s (`Config.DASH_DISTANCE`, `Config.DASH_DURATION`) |
 | Recarga del dash | 0,7 s (`Config.DASH_COOLDOWN`) |
 | Invulnerabilidad del dash | 0,25 s: se puede atravesar un ataque con el dash (`Config.DASH_IFRAMES`) |
-| Ataque giratorio | 25 de daño, radio 12, recarga 4 s (`Config.SPIN_DAMAGE`, `Config.SPIN_RADIUS`, `Config.SPIN_COOLDOWN`) |
+| Ataque giratorio (`1`) | 25 de daño, radio 12, recarga 4 s (`Config.SPIN_DAMAGE`, `Config.SPIN_RADIUS`, `Config.SPIN_COOLDOWN`) |
+| Stinger (`2`) | Embestida perforante de 26 studs en 0,24 s, 35 de daño en corredor de 6,5 studs, recarga 5,5 s (`Config.STINGER_DAMAGE`, `Config.STINGER_DISTANCE`, `Config.STINGER_COOLDOWN`) |
+| Over Drive (`3`, Definitiva) | Carga energía 0,75 s y desata 3 ondas crecientes a distancia (56 studs, ancho 9, daño 38 / 42 / 55), recarga 14 s (`Config.OVERDRIVE_COOLDOWN`, `Config.OVERDRIVE_WAVE_DAMAGE`) |
 | Probabilidad de drop al matar enemigo | 30% (`Config.DROP_CHANCE`), reparto 40/30/30 entre curación, daño y velocidad (`Config.DROP_WEIGHTS`) |
 | Curación de drop | +25 vida (`Config.DROP_HEAL_AMOUNT`) |
 | Buff de ataque | ×1,5 daño durante 10 s (`Config.BUFF_DAMAGE_MULTIPLIER`, `Config.BUFF_DAMAGE_DURATION`) |

@@ -38,6 +38,7 @@ local enemies: Enemies = nil :: any
 -- `os.clock()`, which a client cannot move. Forgotten in `forget`, from PlayerRemoving.
 local swings: { [Player]: { step: number, lastAt: number } } = {}
 local heavyCharges: { [Player]: number } = {}
+local overDriveTokens: { [Player]: number } = {}
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -128,6 +129,11 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 	if not targetHumanoid or targetHumanoid.Health <= 0 then
 		return
 	end
+	local chargingOverDrive = player:GetAttribute("OverDriveCharging") == true
+	local chargingHeavy = player:GetAttribute("ChargingHeavy") == true
+	local chargeMultiplier = if chargingOverDrive
+		then Config.OVERDRIVE_CHARGE_MOVE_MULTIPLIER
+		else Config.HEAVY_CHARGE_MOVE_MULTIPLIER
 	targetHumanoid.WalkSpeed = Defense.walkSpeed(
 		Config.MOVE_SPEED,
 		player:GetAttribute("SpeedBuffUntil"),
@@ -136,9 +142,18 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 		now(),
 		Config.BUFF_SPEED_MULTIPLIER,
 		Config.BLOCK_MOVE_MULTIPLIER,
-		player:GetAttribute("ChargingHeavy") == true,
-		Config.HEAVY_CHARGE_MOVE_MULTIPLIER
+		chargingOverDrive or chargingHeavy,
+		chargeMultiplier
 	)
+end
+
+local function cancelOverDrive(player: Player)
+	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
+	if player:GetAttribute("OverDriveCharging") == true then
+		player:SetAttribute("OverDriveCharging", false)
+		player:SetAttribute("OverDriveChargeStart", 0)
+		refreshWalkSpeed(player)
+	end
 end
 
 local function cancelCharge(player: Player)
@@ -169,8 +184,13 @@ local function onCharacter(player: Player, character: Model)
 
 	swings[player] = nil
 	heavyCharges[player] = nil
+	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
 	player:SetAttribute("DashReadyAt", 0)
 	player:SetAttribute("SpinReadyAt", 0)
+	player:SetAttribute("StingerReadyAt", 0)
+	player:SetAttribute("OverDriveReadyAt", 0)
+	player:SetAttribute("OverDriveCharging", false)
+	player:SetAttribute("OverDriveChargeStart", 0)
 	player:SetAttribute("BlockReadyAt", 0)
 	player:SetAttribute("Blocking", false)
 	player:SetAttribute("ParryUntil", 0)
@@ -219,6 +239,7 @@ end
 function CombatService.forget(player: Player)
 	swings[player] = nil
 	heavyCharges[player] = nil
+	overDriveTokens[player] = nil
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -324,6 +345,9 @@ function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: nu
 		heavyCharges[player] = nil
 		player:SetAttribute("ChargingHeavy", false)
 		player:SetAttribute("HeavyChargeStart", 0)
+		overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
+		player:SetAttribute("OverDriveCharging", false)
+		player:SetAttribute("OverDriveChargeStart", 0)
 	else
 		player:SetAttribute("GrabImmuneUntil", t + Config.GRAB_IMMUNITY_SECONDS)
 	end
@@ -563,7 +587,11 @@ end
 
 -- Remote "Spin". Everything around the player, once per cooldown.
 function CombatService.spin(player: Player)
-	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true then
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("Blocking") == true
+		or player:GetAttribute("OverDriveCharging") == true
+	then
 		return
 	end
 	local root = rootOf(player)
@@ -591,6 +619,141 @@ function CombatService.spin(player: Player)
 	if hitAt then
 		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
 	end
+end
+
+-- Remote "Stinger" (Slot 2): DMC-style piercing forward thrust hitting every enemy in the lunge corridor.
+function CombatService.stinger(player: Player, aim: Vector3)
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("Blocking") == true
+		or player:GetAttribute("OverDriveCharging") == true
+	then
+		return
+	end
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local facing = Melee.flat(aim) or Melee.flat(root.CFrame.LookVector)
+	if not facing then
+		return
+	end
+	local t = now()
+	local readyAt = player:GetAttribute("StingerReadyAt") or 0
+	if t < readyAt - COOLDOWN_SLACK then
+		return
+	end
+	cancelCharge(player)
+	player:SetAttribute("StingerReadyAt", t + Config.STINGER_COOLDOWN)
+	broadcastOthers(player, "playerDash", root.Position)
+	broadcastOthers(player, "playerAttackHeavy", root.Position)
+	broadcastAnimOthers(player, "stinger")
+	Remotes.CombatVfx:FireAllClients("stinger", player, root.Position, facing)
+
+	local damage = Config.STINGER_DAMAGE
+		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
+	local halfWidth = Config.STINGER_WIDTH / 2
+	local hitAt: Vector3? = nil
+	for _, enemy in ipairs(enemies.list()) do
+		if Melee.inCorridor(root.Position, facing, enemy.body.Position, Config.STINGER_DISTANCE, halfWidth + enemy.radius) then
+			hitAt = hitAt or enemy.body.Position
+			enemies.damage(enemy, damage)
+		end
+	end
+	if hitAt then
+		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+	end
+end
+
+-- Remote "OverDrive" (Slot 3, Ultimate): channels energy into the blade for OVERDRIVE_CHARGE_SECONDS,
+-- then unleashes 3 devastating piercing crescent slash waves downrange.
+function CombatService.overDrive(player: Player, aim: Vector3)
+	if
+		player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("Blocking") == true
+		or player:GetAttribute("OverDriveCharging") == true
+	then
+		return
+	end
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local initialFacing = Melee.flat(aim) or Melee.flat(root.CFrame.LookVector)
+	if not initialFacing then
+		return
+	end
+	local t = now()
+	local readyAt = player:GetAttribute("OverDriveReadyAt") or 0
+	if t < readyAt - COOLDOWN_SLACK then
+		return
+	end
+	cancelCharge(player)
+	player:SetAttribute("OverDriveReadyAt", t + Config.OVERDRIVE_COOLDOWN)
+
+	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
+	local myToken = overDriveTokens[player]
+	player:SetAttribute("OverDriveCharging", true)
+	player:SetAttribute("OverDriveChargeStart", t)
+	refreshWalkSpeed(player)
+	Remotes.CombatSfx:FireAllClients("playerHeavyCharge", root.Position)
+	Remotes.CombatVfx:FireAllClients("overdriveCharge", player, Config.OVERDRIVE_CHARGE_SECONDS)
+
+	task.spawn(function()
+		task.wait(Config.OVERDRIVE_CHARGE_SECONDS)
+		if overDriveTokens[player] ~= myToken then
+			return
+		end
+		if player:GetAttribute("Grabbed") == true or not rootOf(player) then
+			cancelOverDrive(player)
+			return
+		end
+		player:SetAttribute("OverDriveCharging", false)
+		player:SetAttribute("OverDriveChargeStart", 0)
+		refreshWalkSpeed(player)
+
+		local waveCount = Config.OVERDRIVE_WAVES
+		local halfWidth = Config.OVERDRIVE_WAVE_WIDTH / 2
+		for wave = 1, waveCount do
+			if overDriveTokens[player] ~= myToken or player:GetAttribute("Grabbed") == true then
+				return
+			end
+			local waveRoot = rootOf(player)
+			if not waveRoot then
+				return
+			end
+			local waveFacing = Melee.flat(waveRoot.CFrame.LookVector) or initialFacing
+			local baseDmg = Config.OVERDRIVE_WAVE_DAMAGE[wave] or Config.OVERDRIVE_WAVE_DAMAGE[#Config.OVERDRIVE_WAVE_DAMAGE] or 45
+			local waveDmg = baseDmg
+				* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), now(), Config.BUFF_DAMAGE_MULTIPLIER)
+
+			Remotes.CombatAnim:FireAllClients(player, "overdriveWave", wave)
+			Remotes.CombatSfx:FireAllClients("playerHeavyAttack", waveRoot.Position, wave)
+			Remotes.CombatVfx:FireAllClients("overdriveWave", waveRoot.Position, waveFacing, wave)
+
+			local hitAt: Vector3? = nil
+			for _, enemy in ipairs(enemies.list()) do
+				if
+					Melee.inCorridor(
+						waveRoot.Position,
+						waveFacing,
+						enemy.body.Position,
+						Config.OVERDRIVE_WAVE_RANGE,
+						halfWidth + enemy.radius
+					)
+				then
+					hitAt = hitAt or enemy.body.Position
+					enemies.damage(enemy, waveDmg)
+				end
+			end
+			if hitAt then
+				Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			end
+			if wave < waveCount then
+				task.wait(Config.OVERDRIVE_WAVE_INTERVAL)
+			end
+		end
+	end)
 end
 
 return CombatService

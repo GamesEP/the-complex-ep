@@ -32,6 +32,8 @@ return {
 	HeavyAttack = remote("HeavyAttack"),
 	Dash = remote("Dash"),
 	Spin = remote("Spin"),
+	Stinger = remote("Stinger"),
+	OverDrive = remote("OverDrive"),
 	Block = remote("Block"),
 	GrabEscape = remote("GrabEscape"),
 
@@ -39,6 +41,10 @@ return {
 	-- No Contract entry: the contract governs what a client is allowed to send, not server
 	-- broadcasts (docs/net-contract.md).
 	CombatSfx = remote("CombatSfx"),
+
+	-- Server -> client combat VFX cues (Over Drive ranged energy slash waves, co-op Stinger
+	-- bursts). No Contract entry: server broadcast only (docs/net-contract.md).
+	CombatVfx = remote("CombatVfx"),
 
 	-- Server -> client combat animation cues for co-op teammates (attack, dash, spin). The local
 	-- player animates immediately on input; jump is driven from each character's replicated

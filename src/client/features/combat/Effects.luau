@@ -6,12 +6,14 @@
 ]]
 
 local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Remotes = require(Shared.core.Net.Remotes)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
 
 local PlayerAnimator = require(script.Parent.PlayerAnimator)
@@ -153,5 +155,410 @@ function Effects.heavyAttack(root: BasePart, direction: Vector3)
 	SoundPlayer.play("playerHeavyAttack")
 	PlayerAnimator.playLocal("heavyAttack")
 end
+
+-- Spawns a smooth tapered ellipsoid part (zero boxy edges) for razor slashes and spear tips.
+local function smoothPart(size: Vector3, cframe: CFrame, color: Color3, transparency: number): Part
+	local part = Instance.new("Part")
+	part.Shape = Enum.PartType.Block
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Transparency = transparency
+	part.Size = size
+	part.CFrame = cframe
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = part
+	part.Parent = workspace
+	return part
+end
+
+-- Spawns a translucent neon silhouette echo of a character's current pose (clean afterimage wake).
+local function spawnCharacterEcho(character: Model, tint: Color3, startTransparency: number, fadeSeconds: number)
+	local folder = Instance.new("Model")
+	folder.Name = "AbilityEcho"
+	for _, desc in ipairs(character:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" and desc.Transparency < 0.9 then
+			local copy = Instance.new("Part")
+			if desc:IsA("Part") then
+				copy.Shape = desc.Shape
+			end
+			copy.Anchored = true
+			copy.CanCollide = false
+			copy.CanQuery = false
+			copy.CanTouch = false
+			copy.CastShadow = false
+			copy.Material = Enum.Material.Neon
+			copy.Color = tint
+			copy.Transparency = startTransparency
+			copy.Size = desc.Size
+			copy.CFrame = desc.CFrame
+			copy.Parent = folder
+			TweenService:Create(
+				copy,
+				TweenInfo.new(fadeSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Transparency = 1 }
+			):Play()
+		end
+	end
+	folder.Parent = workspace
+	Debris:AddItem(folder, fadeSeconds + 0.05)
+end
+
+-- DMC-style Stinger piercing thrust: leaves crisp character afterimage echoes, a silky tapered
+-- ribbon trail, a slim needle-tip glint ahead of the blade, and faint floor skid marks (no boxes).
+function Effects.stinger(root: BasePart, direction: Vector3, isLocal: boolean?)
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	if flat.Magnitude < 1e-3 then
+		flat = Vector3.new(0, 0, -1)
+	end
+	local dir = flat.Unit
+	local duration = Config.STINGER_DURATION
+	local character = root.Parent
+
+	-- Attach a clean, tapered ribbon Trail to the lunging character for the duration of the thrust.
+	if root.Parent then
+		local topAtt = Instance.new("Attachment")
+		topAtt.Position = Vector3.new(0, 1.35, 0)
+		topAtt.Parent = root
+
+		local botAtt = Instance.new("Attachment")
+		botAtt.Position = Vector3.new(0, -1.35, 0)
+		botAtt.Parent = root
+
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = topAtt
+		trail.Attachment1 = botAtt
+		trail.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 190)),
+			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 110, 60)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(220, 40, 80)),
+		})
+		trail.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(0.6, 0.68),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		trail.WidthScale = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0.05),
+		})
+		trail.Lifetime = 0.28
+		trail.LightEmission = 1
+		trail.FaceCamera = false
+		trail.Parent = root
+
+		task.delay(duration + 0.02, function()
+			if trail.Parent then
+				trail.Enabled = false
+			end
+		end)
+		Debris:AddItem(trail, duration + 0.36)
+		Debris:AddItem(topAtt, duration + 0.36)
+		Debris:AddItem(botAtt, duration + 0.36)
+	end
+
+	-- Slim tapered energy needle gliding right at the blade tip during the thrust.
+	local needle = smoothPart(
+		Vector3.new(0.48, 0.48, 5.2),
+		CFrame.lookAt(root.Position + dir * 3.0, root.Position + dir * 10),
+		Color3.fromRGB(255, 225, 155),
+		0.14
+	)
+	local halo = smoothPart(
+		Vector3.new(1.15, 0.85, 6.2),
+		CFrame.lookAt(root.Position + dir * 2.6, root.Position + dir * 10),
+		Color3.fromRGB(255, 90, 55),
+		0.48
+	)
+
+	-- Sample clean translucent silhouette echoes + faint floor skid marks along the thrust path.
+	local startedAt = os.clock()
+	local lastEchoAt = -1
+	local echoIndex = 0
+	local echoColors = {
+		Color3.fromRGB(255, 145, 70),
+		Color3.fromRGB(255, 90, 65),
+		Color3.fromRGB(255, 60, 105),
+	}
+
+	local conn: RBXScriptConnection
+	conn = RunService.RenderStepped:Connect(function()
+		local elapsed = os.clock() - startedAt
+		if elapsed >= duration or not root.Parent then
+			conn:Disconnect()
+			TweenService:Create(
+				needle,
+				TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Size = Vector3.new(0.08, 0.08, 7.5), Transparency = 1 }
+			):Play()
+			TweenService:Create(
+				halo,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Size = Vector3.new(0.2, 0.2, 8.5), Transparency = 1 }
+			):Play()
+			Debris:AddItem(needle, 0.18)
+			Debris:AddItem(halo, 0.2)
+			return
+		end
+
+		local curPos = root.Position
+		local curDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		local aimDir = if curDir.Magnitude > 1e-3 then curDir.Unit else dir
+		needle.CFrame = CFrame.lookAt(curPos + aimDir * 3.2, curPos + aimDir * 12)
+		halo.CFrame = CFrame.lookAt(curPos + aimDir * 2.8, curPos + aimDir * 12)
+
+		if elapsed - lastEchoAt >= 0.048 then
+			lastEchoAt = elapsed
+			echoIndex += 1
+			local tint = echoColors[((echoIndex - 1) % #echoColors) + 1]
+			if character and character:IsA("Model") then
+				spawnCharacterEcho(character, tint, 0.52, 0.28)
+			end
+			-- Faint ground footprint / skid streak left behind the lunge.
+			local skid = smoothPart(
+				Vector3.new(0.85, 0.06, 2.8),
+				CFrame.lookAt(curPos - Vector3.new(0, 2.45, 0), curPos - Vector3.new(0, 2.45, 0) + aimDir),
+				tint,
+				0.55
+			)
+			TweenService:Create(
+				skid,
+				TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Size = Vector3.new(0.3, 0.04, 3.6), Transparency = 1 }
+			):Play()
+			Debris:AddItem(skid, 0.36)
+		end
+	end)
+
+	if isLocal ~= false then
+		SoundPlayer.play("playerDash")
+		SoundPlayer.play("playerAttackHeavy")
+		PlayerAnimator.playLocal("stinger")
+	end
+end
+
+-- DMC-style Over Drive channeling aura: sleek converging energy rings around the swordsman.
+function Effects.playOverDriveCharge(root: BasePart, duration: number)
+	local startedAt = os.clock()
+	local dur = math.max(duration, 0.1)
+	local ring = ghost(
+		Vector3.new(0.2, 6, 6),
+		CFrame.new(root.Position - Vector3.new(0, 2.45, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(215, 65, 255),
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.48
+
+	local innerRing = ghost(
+		Vector3.new(0.16, 3.5, 3.5),
+		CFrame.new(root.Position - Vector3.new(0, 2.4, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(255, 195, 255),
+		Enum.PartType.Cylinder
+	)
+	innerRing.Transparency = 0.35
+
+	local conn: RBXScriptConnection
+	conn = RunService.RenderStepped:Connect(function()
+		local elapsed = os.clock() - startedAt
+		if elapsed >= dur or not root.Parent or not ring.Parent then
+			conn:Disconnect()
+			ring:Destroy()
+			innerRing:Destroy()
+			return
+		end
+		local p = math.clamp(elapsed / dur, 0, 1)
+		local diam = 7.5 - p * 3.2 + math.sin(elapsed * 28) * 0.65
+		ring.Size = Vector3.new(0.18, diam, diam)
+		ring.CFrame = CFrame.new(root.Position - Vector3.new(0, 2.45, 0)) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Color = Color3.fromRGB(255, math.round(65 + p * 85), math.round(245 - p * 165))
+		ring.Transparency = 0.52 - p * 0.28
+
+		local innerDiam = 2.6 + p * 3.6 + math.cos(elapsed * 32) * 0.35
+		innerRing.Size = Vector3.new(0.14, innerDiam, innerDiam)
+		innerRing.CFrame = CFrame.new(root.Position - Vector3.new(0, 2.4, 0)) * CFrame.Angles(0, 0, math.rad(90))
+		innerRing.Transparency = 0.45 - p * 0.25
+	end)
+end
+
+-- Curved razor-sharp DMC Over Drive crescent energy slash rocketing downrange (composed of
+-- smooth tapered ellipsoid arc segments + silky Trail ribbon — zero rectangular blocks).
+function Effects.overDriveWave(origin: Vector3, direction: Vector3, waveIndex: number)
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	if flat.Magnitude < 1e-3 then
+		return
+	end
+	local dir = flat.Unit
+	local range = Config.OVERDRIVE_WAVE_RANGE
+	local isFinal = waveIndex >= Config.OVERDRIVE_WAVES
+	local scale = if isFinal then 1.32 else (0.94 + waveIndex * 0.08)
+	-- Wave 1: diagonal right slash, Wave 2: diagonal left slash, Wave 3: towering vertical cleave.
+	local roll = if waveIndex == 1 then math.rad(34) elseif waveIndex == 2 then math.rad(-34) else math.rad(6)
+	local primaryColor = if isFinal
+		then Color3.fromRGB(255, 65, 95)
+		elseif waveIndex == 2 then Color3.fromRGB(255, 75, 200)
+		else Color3.fromRGB(185, 70, 255)
+	local coreColor = if isFinal then Color3.fromRGB(255, 240, 150) else Color3.fromRGB(255, 225, 255)
+
+	local arcRadius = 4.6 * scale
+	local halfSpan = math.rad(58)
+	local segmentCount = 7
+	local travelTime = 0.46
+
+	local waveModel = Instance.new("Model")
+	waveModel.Name = "OverDriveCrescent"
+	waveModel.Parent = workspace
+
+	-- Invisible anchor carrier for the crescent's silky ribbon Trail from upper tip to lower tip.
+	local carrier = Instance.new("Part")
+	carrier.Anchored = true
+	carrier.CanCollide = false
+	carrier.CanQuery = false
+	carrier.CanTouch = false
+	carrier.CastShadow = false
+	carrier.Transparency = 1
+	carrier.Size = Vector3.one * 0.2
+	carrier.Parent = waveModel
+
+	local topTip = Instance.new("Attachment")
+	topTip.Position = Vector3.new(0, math.sin(halfSpan) * arcRadius * 0.92, (1 - math.cos(halfSpan)) * arcRadius)
+	topTip.Parent = carrier
+
+	local botTip = Instance.new("Attachment")
+	botTip.Position = Vector3.new(0, -math.sin(halfSpan) * arcRadius * 0.92, (1 - math.cos(halfSpan)) * arcRadius)
+	botTip.Parent = carrier
+
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = topTip
+	trail.Attachment1 = botTip
+	trail.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, coreColor),
+		ColorSequenceKeypoint.new(0.35, primaryColor),
+		ColorSequenceKeypoint.new(1, primaryColor),
+	})
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(0.65, 0.78),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.Lifetime = 0.16
+	trail.LightEmission = 1
+	trail.Parent = carrier
+
+	-- Build the smooth curved crescent moon slash: 7 overlapping tapered razor ellipsoids (outer
+	-- glow + incandescent leading cutting edge), widest at the bow and needle-sharp at both tips.
+	type Segment = {
+		outer: Part,
+		core: Part,
+		localCf: CFrame,
+	}
+	local segments: { Segment } = {}
+	local stepRad = (halfSpan * 2) / math.max(segmentCount - 1, 1)
+	local segChord = arcRadius * stepRad * 1.48
+
+	for i = 1, segmentCount do
+		local frac = (i - 1) / math.max(segmentCount - 1, 1) -- 0..1
+		local theta = -halfSpan + frac * (halfSpan * 2)
+		-- Smooth bell taper: full depth in the center of the crescent, razor-thin at both tips.
+		local taper = math.max(math.cos(theta * 1.35), 0.18)
+		local localY = math.sin(theta) * arcRadius
+		local localZ = (1 - math.cos(theta)) * arcRadius
+		-- Tilt each segment tangent to the curve in the Y-Z plane (leading bow faces -Z).
+		local localCf = CFrame.new(0, localY, localZ) * CFrame.Angles(-theta, 0, 0)
+
+		local outer = smoothPart(
+			Vector3.new(0.28 * scale, segChord, 2.3 * scale * taper),
+			CFrame.identity,
+			primaryColor,
+			0.18
+		)
+		outer.Parent = waveModel
+
+		local core = smoothPart(
+			Vector3.new(0.14 * scale, segChord * 0.94, 1.05 * scale * taper),
+			CFrame.identity,
+			coreColor,
+			0.04
+		)
+		core.Parent = waveModel
+
+		table.insert(segments, {
+			outer = outer,
+			core = core,
+			localCf = localCf,
+		})
+	end
+
+	-- Position immediately on frame 0 so the Trail never stretches from world origin.
+	local function placeAt(distance: number, fade: number)
+		local pos = origin + dir * distance + Vector3.new(0, 0.35, 0)
+		local baseCf = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(0, 0, roll)
+		carrier.CFrame = baseCf
+		for _, seg in ipairs(segments) do
+			local worldCf = baseCf * seg.localCf
+			seg.outer.CFrame = worldCf
+			seg.core.CFrame = worldCf * CFrame.new(0, 0, -0.35 * scale)
+			if fade > 0 then
+				seg.outer.Transparency = 0.18 + 0.82 * fade
+				seg.core.Transparency = 0.04 + 0.96 * fade
+			end
+		end
+	end
+
+	placeAt(3.0, 0)
+
+	local startedAt = os.clock()
+	local conn: RBXScriptConnection
+	conn = RunService.RenderStepped:Connect(function()
+		local u = (os.clock() - startedAt) / travelTime
+		if u >= 1 or not waveModel.Parent then
+			conn:Disconnect()
+			trail.Enabled = false
+			for _, seg in ipairs(segments) do
+				seg.outer.Transparency = 1
+				seg.core.Transparency = 1
+			end
+			Debris:AddItem(waveModel, 0.2)
+			return
+		end
+		-- Explosive initial slash velocity easing smoothly across the arena.
+		local ease = 1 - (1 - u) * (1 - u)
+		local dist = 3.0 + (range - 3.0) * ease
+		local fade = if u > 0.62 then (u - 0.62) / 0.38 else 0
+		placeAt(dist, fade)
+	end)
+end
+
+Remotes.CombatVfx.OnClientEvent:Connect(function(kind: string, arg1: any, arg2: any, arg3: any)
+	if kind == "stinger" then
+		-- Local player already predicted their own Stinger trail & echoes immediately on input.
+		if typeof(arg1) == "Instance" and arg1 == Players.LocalPlayer then
+			return
+		end
+		if typeof(arg1) == "Instance" and arg1:IsA("Player") and typeof(arg3) == "Vector3" then
+			local char = arg1.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") then
+				Effects.stinger(root, arg3, false)
+			end
+		end
+	elseif kind == "overdriveCharge" then
+		if typeof(arg1) == "Instance" and arg1:IsA("Player") and type(arg2) == "number" then
+			local char = arg1.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") then
+				Effects.playOverDriveCharge(root, arg2)
+			end
+		end
+	elseif kind == "overdriveWave" then
+		if typeof(arg1) == "Vector3" and typeof(arg2) == "Vector3" and type(arg3) == "number" then
+			Effects.overDriveWave(arg1, arg2, arg3)
+		end
+	end
+end)
 
 return Effects

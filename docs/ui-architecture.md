@@ -146,7 +146,8 @@ reads.
 
 `ui/theme/Palette.luau` keeps the values and two imperative helpers for exactly those draw loops.
 `ui/theme/Widgets.luau` is the component half, re-exporting the palette so a colour is defined
-once however a thing is built.
+once however a thing is built. The visual tokens, shape grammar and HUD layout rules live in
+[ui-design-system.md](ui-design-system.md).
 
 Keep `Widgets.luau` small. It is for the three or four shapes every screen repeats. A widget only
 one screen uses belongs in that screen's folder, where it can change without anybody auditing the

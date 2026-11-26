@@ -6,6 +6,19 @@ Este documento cubre en detalle las pantallas del corto plazo (**Corte jugable**
 planta**). Las pantallas de hitos posteriores (Hub, Lista de jugadores, Árbol de progresión y
 Revivir del grupo) se diseñarán cuando arranque su hito.
 
+## Dirección visual: Hazard Arc
+
+Toda la interfaz sigue un mismo sistema visual híbrido (**Hazard Arc**, especificado en detalle en
+[docs/ui-design-system.md](../../docs/ui-design-system.md)):
+
+- **Forma = función:** las placas informativas y tickets de mejora usan geometría arquitectónica
+  afilada (esquinas de `2 px`, hormigón/acero oscuro `#181B1F`, bordes finos y franja de acento
+  amarillo peligro `#F5C400` con telemetría monoespaciada); los controles de combate y nodos
+  interactivos usan actuadores circulares de acero mecanizado con anillos de color semántico.
+- **Sin colisiones entre zonas:** la parte superior central queda reservada al estado del sector y
+  al banner de mejoras 1-de-3; la barra de vida del jefe se ancla en la parte inferior central para
+  no chocar nunca con elecciones pendientes ni con los controles táctiles laterales.
+
 ---
 
 ## CombatHud
@@ -15,10 +28,23 @@ Revivir del grupo) se diseñarán cuando arranque su hito.
 **En pantalla cuando:** el jugador está dentro de una sala o run activa.
 
 **Muestra:**
-- Barra de vida roja del jugador en la esquina superior izquierda (valor actual / máximo) y debajo los indicadores temporales de buffs recogidos solo mientras están activos.
-- Progreso de la sala actual: planta/sala (en Hito 2) y oleada o enemigos restantes en la parte superior central (los avisos de habilidades enemigas —agarrador y Paso Fantasma— aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo, sin carteles de texto invasivos).
-- Barra de vida del jefe en la parte superior central cuando la sala actual tiene jefe.
-- Iconos recargables de las 3 habilidades activas (`Config.ABILITY_SLOTS`) en la esquina inferior izquierda, intercambiables con `1`, `2` y `3` (o clic/toque / cruceta en mando) y lanzables con `E` / `Y` / `R1`: **`1` Giro** (`4 s`), **`2` Stinger** (`5,5 s`) y **`3` Over Drive** (definitiva, `14 s`), cada uno con barrido de recarga y cuenta atrás. Sin barras para el Dash ni para Bloqueo/Parry por su recarga rápida.
+- Placa compacta de vida del jugador en la esquina superior izquierda (valor actual / máximo,
+  marcas de cuarto y aviso visual al bajar la vida), con los buffs temporales recogidos apilados
+  debajo (barra y cuenta atrás en segundos) solo mientras están activos.
+- Pastilla de sector/progreso de la sala en la parte superior central: planta/sala (en Hito 2) y
+  oleada o enemigos restantes (los avisos de habilidades enemigas —agarrador y Paso Fantasma—
+  aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo,
+  sin carteles de texto invasivos).
+- Barra de vida del jefe en la parte inferior central cuando la sala actual tiene jefe (libre de
+  colisiones con el banner superior de `UpgradeChoice` y fuera de las zonas táctiles), junto a las
+  placas urgentes de carga pesada, aturdimiento o escape de agarre.
+- Arco radial de actuadores circulares en la esquina inferior derecha con recarga visible: ataque
+  (con anillo de carga del ataque pesado y pulso de escape al estar atrapado), dash, bloqueo/parry
+  y las 3 habilidades activas (`Config.ABILITY_SLOTS`) con emblema, barrido de recarga y cuenta
+  atrás — **`1` Giro** (`4 s`), **`2` Stinger** (`5,5 s`) y **`3` Over Drive** (`14 s`) —
+  intercambiables con `1`/`2`/`3` (o clic / cruceta en mando) y lanzables con `E` / `Y` / `R1`
+  (o toque directo en móvil), además de indicadores discretos para pasivas de movimiento activas
+  (doble salto, doble dash).
 
 **El jugador puede:**
 - Leer su vida, sus recargas y el avance de la sala de un vistazo sin quitar la vista del centro.

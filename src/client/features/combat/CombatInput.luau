@@ -336,6 +336,9 @@ local function releaseHeavyAttack()
 end
 
 local function beginAttackHold()
+	if attackHeld then
+		return
+	end
 	attack()
 	if player:GetAttribute("Grabbed") == true or blocking or player:GetAttribute("Blocking") == true then
 		return
@@ -566,19 +569,23 @@ local function overDrive()
 	Remotes.OverDrive:FireServer(aim)
 end
 
-local ABILITY_TITLES = { "Giro", "Stinger", "Over Drive" }
-
-local function updateAbilityTouchTitle(slot: number)
-	ContextActionService:SetTitle("Ability", ABILITY_TITLES[slot] or "Habilidad")
-end
-
 local function selectAbilitySlot(slot: number)
-	local chosen = AbilityStore.select(slot)
-	updateAbilityTouchTitle(chosen)
+	AbilityStore.select(slot)
 end
 
 local function useActiveAbility()
 	local slot = AbilityStore.current()
+	if slot == 2 then
+		stinger()
+	elseif slot == 3 then
+		overDrive()
+	else
+		spin()
+	end
+end
+
+local function castAbilitySlot(slot: number)
+	AbilityStore.select(slot)
 	if slot == 2 then
 		stinger()
 	elseif slot == 3 then
@@ -625,7 +632,7 @@ local ACTIONS = {
 	},
 	Ability = {
 		run = useActiveAbility,
-		title = ABILITY_TITLES[1],
+		title = "Giro",
 		inputs = { Enum.KeyCode.E, Enum.KeyCode.ButtonY, Enum.KeyCode.ButtonR1 },
 	},
 }
@@ -633,16 +640,53 @@ local ACTIONS = {
 local ATTACK_INPUTS = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonR2 }
 local BLOCK_INPUTS = { Enum.UserInputType.MouseButton2, Enum.KeyCode.F, Enum.KeyCode.ButtonL1 }
 
+function CombatInput.beginAttack()
+	beginAttackHold()
+end
+
+function CombatInput.endAttack()
+	cancelHeavyCharge(true)
+end
+
+function CombatInput.dash()
+	dash()
+end
+
+function CombatInput.spin()
+	castAbilitySlot(1)
+end
+
+function CombatInput.stinger()
+	castAbilitySlot(2)
+end
+
+function CombatInput.overDrive()
+	castAbilitySlot(3)
+end
+
+function CombatInput.useAbility()
+	useActiveAbility()
+end
+
+function CombatInput.beginBlock()
+	setBlock(true)
+end
+
+function CombatInput.endBlock()
+	setBlock(false)
+end
+
 function CombatInput.start()
 	for name, action in pairs(ACTIONS) do
+		-- `createTouchButton = false`: mobile touch buttons are rendered by CombatHud's machined
+		-- radial Hazard Arc (docs/ui-design-system.md) and call the public hooks above directly.
 		ContextActionService:BindActionAtPriority(name, function(_, state: Enum.UserInputState)
 			if state ~= Enum.UserInputState.Begin then
 				return Enum.ContextActionResult.Pass
 			end
 			action.run()
 			return Enum.ContextActionResult.Sink
-		end, true, Enum.ContextActionPriority.High.Value, table.unpack(action.inputs))
-		ContextActionService:SetTitle(name, action.title)
+		end, false, Enum.ContextActionPriority.High.Value, table.unpack(action.inputs))
 	end
 
 	-- Switch active swordsman ability with keys 1, 2, 3 (and gamepad D-pad left/right).
@@ -674,7 +718,7 @@ function CombatInput.start()
 		if state ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Pass
 		end
-		updateAbilityTouchTitle(AbilityStore.cycle(-1))
+		AbilityStore.cycle(-1)
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.DPadLeft)
 
@@ -682,7 +726,7 @@ function CombatInput.start()
 		if state ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Pass
 		end
-		updateAbilityTouchTitle(AbilityStore.cycle(1))
+		AbilityStore.cycle(1)
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.DPadRight)
 
@@ -697,8 +741,7 @@ function CombatInput.start()
 			return Enum.ContextActionResult.Sink
 		end
 		return Enum.ContextActionResult.Pass
-	end, true, Enum.ContextActionPriority.High.Value, table.unpack(ATTACK_INPUTS))
-	ContextActionService:SetTitle("Attack", "Atacar")
+	end, false, Enum.ContextActionPriority.High.Value, table.unpack(ATTACK_INPUTS))
 
 	-- Hold-to-block action: Begin raises guard (and opens the Parry window), End/Cancel lowers it.
 	ContextActionService:BindActionAtPriority("Block", function(_, state: Enum.UserInputState)
@@ -710,8 +753,7 @@ function CombatInput.start()
 			return Enum.ContextActionResult.Sink
 		end
 		return Enum.ContextActionResult.Pass
-	end, true, Enum.ContextActionPriority.High.Value, table.unpack(BLOCK_INPUTS))
-	ContextActionService:SetTitle("Block", "Bloquear")
+	end, false, Enum.ContextActionPriority.High.Value, table.unpack(BLOCK_INPUTS))
 
 	-- Clear local charge visuals immediately if a grabber catches or a mace stuns the player.
 	player:GetAttributeChangedSignal("Grabbed"):Connect(function()

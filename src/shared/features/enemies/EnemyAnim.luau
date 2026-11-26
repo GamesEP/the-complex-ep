@@ -12,6 +12,9 @@
 local EnemyAnim = {}
 
 export type LimbPose = {
+	-- Optional whole-body transform around `Body`'s center (used by dual-blade tornado spin so
+	-- the entire warrior spins as one connected body rather than each limb spinning in place).
+	root: CFrame?,
 	torso: CFrame,
 	head: CFrame,
 	leftLeg: CFrame,
@@ -46,6 +49,7 @@ end
 
 function EnemyAnim.neutral(): LimbPose
 	return {
+		root = CFrame.identity,
 		torso = CFrame.identity,
 		head = CFrame.identity,
 		leftLeg = CFrame.identity,
@@ -57,7 +61,10 @@ end
 
 function EnemyAnim.blend(a: LimbPose, b: LimbPose, alpha: number): LimbPose
 	local t = clamp01(alpha)
+	local rootA = a.root or CFrame.identity
+	local rootB = b.root or CFrame.identity
 	return {
+		root = rootA:Lerp(rootB, t),
 		torso = a.torso:Lerp(b.torso, t),
 		head = a.head:Lerp(b.head, t),
 		leftLeg = a.leftLeg:Lerp(b.leftLeg, t),
@@ -69,6 +76,8 @@ end
 
 -- Locomotion pose: adapts stride and stance per enemy kind & weapon (`melee`, `ranged`,
 -- `exploder`, `grabber`), transitioning smoothly to mechanical idle breathing when stationary.
+-- Head, leftArm, and rightArm inherit `torso` hierarchically in `EnemyAnimator`, so `head` only
+-- carries neck rotation (no duplicate torso translation).
 function EnemyAnim.walkPose(phase: number, speedFactor: number, weapon: string?, kind: string?): LimbPose
 	local s = clamp01(speedFactor)
 	local stride = math.sin(phase)
@@ -80,20 +89,20 @@ function EnemyAnim.walkPose(phase: number, speedFactor: number, weapon: string?,
 		local fast = math.sin(phase * 1.45)
 		local fastBounce = math.abs(math.cos(phase * 1.45))
 		return {
-			torso = CFrame.new(0, fastBounce * 0.18 * s + idleBreath, 0) * CFrame.Angles(-0.26 * s, fast * 0.16 * s, -fast * 0.08 * s),
-			head = CFrame.new(0, fastBounce * 0.14 * s, 0) * CFrame.Angles(0.18 * s, -fast * 0.1 * s, 0),
+			torso = CFrame.new(0, fastBounce * 0.16 * s + idleBreath, 0) * CFrame.Angles(-0.26 * s, fast * 0.14 * s, -fast * 0.07 * s),
+			head = CFrame.Angles(0.22 * s, -fast * 0.1 * s, 0),
 			leftLeg = CFrame.Angles(fast * 0.78 * s, 0, 0),
 			rightLeg = CFrame.Angles(-fast * 0.78 * s, 0, 0),
-			leftArm = CFrame.Angles(-0.35 - fast * 0.55 * s, 0, -0.22),
-			rightArm = CFrame.Angles(-0.35 + fast * 0.55 * s, 0, 0.22),
+			leftArm = CFrame.Angles(-0.35 - fast * 0.52 * s, 0, -0.2),
+			rightArm = CFrame.Angles(-0.35 + fast * 0.52 * s, 0, 0.2),
 		}
 	elseif kind == "grabber" then
 		-- Heavy stomping juggernaut gait with wide muscular shoulder sway.
 		local stomp = math.sin(phase * 0.75)
 		local thud = math.abs(math.cos(phase * 0.75))
 		return {
-			torso = CFrame.new(0, thud * 0.18 * s + idleBreath, 0) * CFrame.Angles(-0.14 * s, stomp * 0.18 * s, -stomp * 0.09 * s),
-			head = CFrame.new(0, thud * 0.14 * s, 0) * CFrame.Angles(0.08 * s, -stomp * 0.12 * s, 0),
+			torso = CFrame.new(0, thud * 0.16 * s + idleBreath, 0) * CFrame.Angles(-0.14 * s, stomp * 0.16 * s, -stomp * 0.08 * s),
+			head = CFrame.Angles(0.1 * s, -stomp * 0.12 * s, 0),
 			leftLeg = CFrame.Angles(stomp * 0.48 * s, 0, 0),
 			rightLeg = CFrame.Angles(-stomp * 0.48 * s, 0, 0),
 			leftArm = CFrame.Angles(-stomp * 0.34 * s + 0.12, -0.1, -0.14),
@@ -103,7 +112,7 @@ function EnemyAnim.walkPose(phase: number, speedFactor: number, weapon: string?,
 		-- Steady braced aim stance: weapon stays level toward the target while legs march/strafe.
 		return {
 			torso = CFrame.new(0, bounce * 0.08 * s + idleBreath, 0) * CFrame.Angles(-0.06 * s, -0.12, 0),
-			head = CFrame.new(0, bounce * 0.06 * s, 0) * CFrame.Angles(0.04 * s, 0.12, 0),
+			head = CFrame.Angles(0.05 * s, 0.12, 0),
 			leftLeg = CFrame.Angles(stride * 0.52 * s, 0, 0),
 			rightLeg = CFrame.Angles(-stride * 0.52 * s, 0, 0),
 			leftArm = CFrame.Angles(0.06 + bounce * 0.05 * s, 0.08, 0),
@@ -115,11 +124,11 @@ function EnemyAnim.walkPose(phase: number, speedFactor: number, weapon: string?,
 	local leftLeg = CFrame.Angles(stride * legAmp, 0, 0)
 	local rightLeg = CFrame.Angles(-stride * legAmp, 0, 0)
 
-	local torsoY = bounce * 0.14 * s + idleBreath
+	local torsoY = bounce * 0.12 * s + idleBreath
 	local torsoPitch = -0.1 * s
 	local torsoYaw = stride * 0.12 * s
 	local torso = CFrame.new(0, torsoY, 0) * CFrame.Angles(torsoPitch, torsoYaw, -stride * 0.04 * s)
-	local head = CFrame.new(0, torsoY * 0.9, 0) * CFrame.Angles(-torsoPitch * 0.5, -torsoYaw * 0.65, 0)
+	local head = CFrame.Angles(-torsoPitch * 0.6, -torsoYaw * 0.7, 0)
 
 	local leftArm: CFrame
 	local rightArm: CFrame
@@ -155,43 +164,43 @@ function EnemyAnim.windupPose(progress: number, weapon: string?): LimbPose
 	if weapon == "dual" then
 		-- Flare both blades wide out to the sides and raised for a twin forward scissor cross-slash.
 		return {
-			torso = CFrame.new(0, 0.08 * p, 0) * CFrame.Angles(0.18 * p, 0, 0),
-			head = CFrame.new(0, 0.08 * p, 0) * CFrame.Angles(-0.12 * p, 0, 0),
+			torso = CFrame.new(0, 0.06 * p, 0) * CFrame.Angles(0.16 * p, 0, 0),
+			head = CFrame.Angles(-0.14 * p, 0, 0),
 			leftLeg = CFrame.Angles(-0.22 * p, 0, 0),
 			rightLeg = CFrame.Angles(0.25 * p, 0, 0),
-			leftArm = CFrame.Angles(0.62 * p, 0.78 * p, -0.35 * p),
-			rightArm = CFrame.Angles(0.62 * p, -0.78 * p, 0.35 * p),
+			leftArm = CFrame.Angles(0.58 * p, 0.72 * p, -0.32 * p),
+			rightArm = CFrame.Angles(0.58 * p, -0.72 * p, 0.32 * p),
 		}
 	elseif weapon == "axe" then
 		-- Hoist heavy battle-axe high and wide to the right with a deep torso coil.
 		return {
-			torso = CFrame.new(0, 0.1 * p, 0) * CFrame.Angles(0.22 * p, -0.58 * p, 0),
-			head = CFrame.new(0, 0.1 * p, 0) * CFrame.Angles(-0.14 * p, 0.48 * p, 0),
+			torso = CFrame.new(0, 0.08 * p, 0) * CFrame.Angles(0.18 * p, -0.52 * p, 0),
+			head = CFrame.Angles(-0.14 * p, 0.46 * p, 0),
 			leftLeg = CFrame.Angles(0.25 * p, 0, 0),
 			rightLeg = CFrame.Angles(-0.32 * p, 0, 0),
-			leftArm = CFrame.Angles(0.35 * p, 0.42 * p, -0.22 * p),
-			rightArm = CFrame.Angles(1.18 * p, -0.78 * p, 0.35 * p),
+			leftArm = CFrame.Angles(0.32 * p, 0.38 * p, -0.2 * p),
+			rightArm = CFrame.Angles(1.12 * p, -0.52 * p, 0.28 * p),
 		}
 	elseif weapon == "mace" then
 		-- Lift crusher mace straight overhead for a heavy forward downward smash.
 		return {
-			torso = CFrame.new(0, 0.14 * p, 0) * CFrame.Angles(0.26 * p, -0.16 * p, 0),
-			head = CFrame.new(0, 0.14 * p, 0) * CFrame.Angles(-0.16 * p, 0.12 * p, 0),
+			torso = CFrame.new(0, 0.1 * p, 0) * CFrame.Angles(0.22 * p, -0.14 * p, 0),
+			head = CFrame.Angles(-0.16 * p, 0.12 * p, 0),
 			leftLeg = CFrame.Angles(0.2 * p, 0, 0),
 			rightLeg = CFrame.Angles(-0.28 * p, 0, 0),
-			leftArm = CFrame.Angles(0.85 * p, 0.25 * p, -0.18 * p),
-			rightArm = CFrame.Angles(1.45 * p, -0.15 * p, 0.12 * p),
+			leftArm = CFrame.Angles(0.8 * p, 0.22 * p, -0.16 * p),
+			rightArm = CFrame.Angles(1.38 * p, -0.12 * p, 0.1 * p),
 		}
 	end
 
 	-- Default `sword`: lift plasma blade high right-side while bracing left buckler.
 	return {
-		torso = CFrame.new(0, 0.08 * p, 0) * CFrame.Angles(0.16 * p, -0.45 * p, 0),
-		head = CFrame.new(0, 0.08 * p, 0) * CFrame.Angles(-0.12 * p, 0.36 * p, 0),
+		torso = CFrame.new(0, 0.06 * p, 0) * CFrame.Angles(0.14 * p, -0.4 * p, 0),
+		head = CFrame.Angles(-0.12 * p, 0.34 * p, 0),
 		leftLeg = CFrame.Angles(0.22 * p, 0, 0),
 		rightLeg = CFrame.Angles(-0.26 * p, 0, 0),
-		leftArm = CFrame.Angles(0.28 * p, 0.42 * p, -0.15 * p),
-		rightArm = CFrame.Angles(0.95 * p, -0.68 * p, 0.25 * p),
+		leftArm = CFrame.Angles(0.26 * p, 0.36 * p, -0.14 * p),
+		rightArm = CFrame.Angles(0.92 * p, -0.48 * p, 0.22 * p),
 	}
 end
 
@@ -206,42 +215,42 @@ function EnemyAnim.strikePose(progress: number, weapon: string?): LimbPose
 	if weapon == "dual" then
 		-- Forward twin X-slash crossing sharply in front of the chest.
 		impactPose = {
-			torso = CFrame.new(0, -0.14, -0.12) * CFrame.Angles(-0.24, 0, 0),
-			head = CFrame.new(0, -0.12, -0.1) * CFrame.Angles(0.18, 0, 0),
+			torso = CFrame.new(0, -0.12, -0.1) * CFrame.Angles(-0.22, 0, 0),
+			head = CFrame.Angles(0.18, 0, 0),
 			leftLeg = CFrame.Angles(0.32, 0, 0),
 			rightLeg = CFrame.Angles(-0.32, 0, 0),
-			leftArm = CFrame.Angles(-0.16, -0.72, 0.3),
-			rightArm = CFrame.Angles(-0.16, 0.72, -0.3),
+			leftArm = CFrame.Angles(-0.14, -0.68, 0.28),
+			rightArm = CFrame.Angles(-0.14, 0.68, -0.28),
 		}
 	elseif weapon == "axe" then
 		-- Heavy forward diagonal cleave sweeping right-to-left across the front.
 		impactPose = {
-			torso = CFrame.new(0, -0.18, -0.14) * CFrame.Angles(-0.26, 0.68, -0.1),
-			head = CFrame.new(0, -0.16, -0.12) * CFrame.Angles(0.18, -0.5, 0),
+			torso = CFrame.new(0, -0.15, -0.12) * CFrame.Angles(-0.24, 0.56, -0.08),
+			head = CFrame.Angles(0.18, -0.46, 0),
 			leftLeg = CFrame.Angles(-0.28, 0, 0),
 			rightLeg = CFrame.Angles(0.38, 0, 0),
-			leftArm = CFrame.Angles(-0.2, -0.3, -0.35),
-			rightArm = CFrame.Angles(-0.26, 0.82, -0.38),
+			leftArm = CFrame.Angles(-0.18, -0.26, -0.3),
+			rightArm = CFrame.Angles(-0.22, 0.62, -0.32),
 		}
 	elseif weapon == "mace" then
 		-- Crushing forward vertical smash driving the mace head into the floor ahead (`-Z`).
 		impactPose = {
-			torso = CFrame.new(0, -0.26, -0.18) * CFrame.Angles(-0.38, 0.18, 0),
-			head = CFrame.new(0, -0.22, -0.14) * CFrame.Angles(0.28, -0.14, 0),
+			torso = CFrame.new(0, -0.22, -0.15) * CFrame.Angles(-0.34, 0.16, 0),
+			head = CFrame.Angles(0.28, -0.14, 0),
 			leftLeg = CFrame.Angles(0.36, 0, 0),
 			rightLeg = CFrame.Angles(-0.38, 0, 0),
-			leftArm = CFrame.Angles(-0.28, -0.18, -0.22),
-			rightArm = CFrame.Angles(-0.36, 0.16, -0.08),
+			leftArm = CFrame.Angles(-0.24, -0.16, -0.2),
+			rightArm = CFrame.Angles(-0.32, 0.14, -0.08),
 		}
 	else
 		-- Crisp forward slash sweeping right-to-left across the player in front.
 		impactPose = {
-			torso = CFrame.new(0, -0.14, -0.12) * CFrame.Angles(-0.22, 0.56, -0.08),
-			head = CFrame.new(0, -0.12, -0.1) * CFrame.Angles(0.16, -0.42, 0),
+			torso = CFrame.new(0, -0.12, -0.1) * CFrame.Angles(-0.2, 0.48, -0.06),
+			head = CFrame.Angles(0.16, -0.4, 0),
 			leftLeg = CFrame.Angles(-0.22, 0, 0),
 			rightLeg = CFrame.Angles(0.32, 0, 0),
-			leftArm = CFrame.Angles(0.1, -0.28, -0.22),
-			rightArm = CFrame.Angles(-0.18, 0.72, -0.22),
+			leftArm = CFrame.Angles(0.1, -0.24, -0.2),
+			rightArm = CFrame.Angles(-0.16, 0.58, -0.2),
 		}
 	end
 
@@ -258,12 +267,12 @@ end
 -- plasma sword drawn out to the side ready to slice the instant the final hop lands.
 function EnemyAnim.phantomStepPose(): LimbPose
 	return {
-		torso = CFrame.new(0, -0.32, -0.25) * CFrame.Angles(-0.42, -0.45, 0),
-		head = CFrame.new(0, -0.24, -0.18) * CFrame.Angles(0.34, 0.38, 0),
-		leftLeg = CFrame.Angles(0.75, 0, 0),
-		rightLeg = CFrame.Angles(-0.88, 0, 0),
-		leftArm = CFrame.Angles(0.25, 0.45, -0.35),
-		rightArm = CFrame.Angles(0.15, -1.15, 0.35),
+		torso = CFrame.new(0, -0.26, -0.18) * CFrame.Angles(-0.38, -0.38, 0),
+		head = CFrame.Angles(0.32, 0.34, 0),
+		leftLeg = CFrame.Angles(0.7, 0, 0),
+		rightLeg = CFrame.Angles(-0.82, 0, 0),
+		leftArm = CFrame.Angles(0.25, 0.42, -0.3),
+		rightArm = CFrame.Angles(0.15, -0.85, 0.3),
 	}
 end
 
@@ -271,29 +280,31 @@ end
 -- slightly at peak charge before bringing it crashing down in front onto the arena floor.
 function EnemyAnim.slamWindupPose(progress: number, clock: number): LimbPose
 	local p = easeOutCubic(progress)
-	local tremble = math.sin(clock * 42) * 0.05 * p
+	local tremble = math.sin(clock * 42) * 0.04 * p
 	return {
-		torso = CFrame.new(0, 0.24 * p, 0) * CFrame.Angles(0.34 * p, tremble, 0),
-		head = CFrame.new(0, 0.24 * p, 0) * CFrame.Angles(-0.22 * p, -tremble, 0),
-		leftLeg = CFrame.Angles(0.28 * p, 0, 0),
-		rightLeg = CFrame.Angles(-0.36 * p, 0, 0),
-		leftArm = CFrame.Angles(1.45 * p + tremble, 0.25 * p, -0.2 * p),
-		rightArm = CFrame.Angles(1.68 * p - tremble, -0.18 * p, 0.16 * p),
+		torso = CFrame.new(0, 0.16 * p, 0) * CFrame.Angles(0.28 * p, tremble, 0),
+		head = CFrame.Angles(-0.22 * p, -tremble, 0),
+		leftLeg = CFrame.Angles(0.26 * p, 0, 0),
+		rightLeg = CFrame.Angles(-0.34 * p, 0, 0),
+		leftArm = CFrame.Angles(1.38 * p + tremble, 0.22 * p, -0.18 * p),
+		rightArm = CFrame.Angles(1.6 * p - tremble, -0.16 * p, 0.14 * p),
 	}
 end
 
 -- Continuous tornado spin pose for dual-blade melee units executing their high-DPS spin attack:
--- extends both blades horizontally out to the sides while whirling at high speed.
+-- rotates the ENTIRE warrior cleanly around its vertical center via `root` while holding both
+-- blades extended horizontally out to the sides in a braced warrior stance (no detached spinning limbs).
 function EnemyAnim.spinPose(clock: number): LimbPose
-	local spinAngle = -clock * 20
-	local sway = math.sin(clock * 14) * 0.08
+	local spinAngle = -clock * 15
+	local sway = math.sin(clock * 12) * 0.06
 	return {
-		torso = CFrame.new(0, -0.18, 0) * CFrame.Angles(-0.14, spinAngle, sway),
-		head = CFrame.new(0, -0.16, 0) * CFrame.Angles(0.1, spinAngle, 0),
-		leftLeg = CFrame.Angles(0.32, spinAngle, -0.18),
-		rightLeg = CFrame.Angles(-0.32, spinAngle, 0.18),
-		leftArm = CFrame.Angles(0.15, spinAngle + 0.35, -1.25),
-		rightArm = CFrame.Angles(0.15, spinAngle - 0.35, 1.25),
+		root = CFrame.new(0, -0.14, 0) * CFrame.Angles(0, spinAngle, 0),
+		torso = CFrame.Angles(-0.18, 0, sway),
+		head = CFrame.Angles(0.14, 0, -sway * 0.5),
+		leftLeg = CFrame.Angles(0.34, 0, -0.22),
+		rightLeg = CFrame.Angles(-0.34, 0, 0.22),
+		leftArm = CFrame.Angles(0.12, 0.28, -1.28),
+		rightArm = CFrame.Angles(0.12, -0.28, 1.28),
 	}
 end
 
@@ -301,14 +312,14 @@ end
 -- trembling faster as energy approaches full charge.
 function EnemyAnim.beamChargePose(clock: number, progress: number): LimbPose
 	local p = clamp01(progress)
-	local vib = math.sin(clock * (24 + p * 30)) * (0.015 + p * 0.045)
+	local vib = math.sin(clock * (24 + p * 30)) * (0.012 + p * 0.038)
 	return {
-		torso = CFrame.new(0, -0.1 * p, 0.14 * p) * CFrame.Angles(0.08 * p, -0.18 + vib, vib * 0.5),
-		head = CFrame.new(0, -0.08 * p, 0.1 * p) * CFrame.Angles(-0.04 * p, 0.18 - vib, 0),
-		leftLeg = CFrame.Angles(0.28 * p, 0, -0.14 * p),
-		rightLeg = CFrame.Angles(-0.34 * p, 0, 0.14 * p),
-		leftArm = CFrame.Angles(0.18 * p + vib, 0.24 * p, 0),
-		rightArm = CFrame.Angles(0.12 * p - vib, -0.08 * p, vib),
+		torso = CFrame.new(0, -0.08 * p, 0.12 * p) * CFrame.Angles(0.08 * p, -0.16 + vib, vib * 0.4),
+		head = CFrame.Angles(-0.05 * p, 0.16 - vib, 0),
+		leftLeg = CFrame.Angles(0.26 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(-0.32 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(0.16 * p + vib, 0.22 * p, 0),
+		rightArm = CFrame.Angles(0.1 * p - vib, -0.08 * p, vib),
 	}
 end
 
@@ -317,43 +328,86 @@ end
 function EnemyAnim.evadeJumpPose(progress: number): LimbPose
 	local u = clamp01(progress)
 	local air = math.sin(math.pi * u)
-	local leanBack = 0.36 * air
+	local leanBack = 0.32 * air
 	return {
-		torso = CFrame.new(0, 0.12 * air, 0) * CFrame.Angles(leanBack, -0.14 * air, 0),
-		head = CFrame.Angles(-leanBack * 0.65, 0.14 * air, 0),
-		leftLeg = CFrame.Angles(0.85 * air, 0, -0.12 * air),
-		rightLeg = CFrame.Angles(0.55 * air, 0, 0.12 * air),
-		leftArm = CFrame.Angles(-0.25 * air, 0.2 * air, -0.35 * air),
-		rightArm = CFrame.Angles(-0.18 * air, -0.1 * air, 0.22 * air),
+		torso = CFrame.new(0, 0.1 * air, 0) * CFrame.Angles(leanBack, -0.12 * air, 0),
+		head = CFrame.Angles(-leanBack * 0.65, 0.12 * air, 0),
+		leftLeg = CFrame.Angles(0.8 * air, 0, -0.12 * air),
+		rightLeg = CFrame.Angles(0.52 * air, 0, 0.12 * air),
+		leftArm = CFrame.Angles(-0.22 * air, 0.18 * air, -0.3 * air),
+		rightArm = CFrame.Angles(-0.16 * air, -0.1 * air, 0.2 * air),
 	}
 end
 
--- Ranged weapon recoil pose (`progress` in [0, 1]): crisp barrel kick upward & backward on fire.
+-- Ranged weapon recoil pose (`progress` in [0, 1]): crisp, unmistakably visible barrel kick
+-- upward & backward on every shot, with heavier punch for shotgun and plasma cannon.
+-- Because head and arms inherit `torso`'s backward kick hierarchically, limbs stay cleanly bolted
+-- to the shoulders while kicking upward with the barrel.
 function EnemyAnim.firePose(progress: number, weapon: string?): LimbPose
 	local u = clamp01(progress)
-	local kick = if u < 0.25 then easeOutCubic(u / 0.25) else 1 - easeInOutQuad((u - 0.25) / 0.75)
-	local power = if weapon == "shotgun" or weapon == "plasma" then 1.35 else 0.95
+	local kick: number
+	if u < 0.18 then
+		kick = easeOutCubic(u / 0.18)
+	elseif u < 0.36 then
+		kick = 1 - 0.12 * ((u - 0.18) / 0.18)
+	else
+		kick = 0.88 * (1 - easeInOutQuad((u - 0.36) / 0.64))
+	end
+	local power = if weapon == "shotgun"
+		then 1.45
+		elseif weapon == "plasma" then 1.32
+		elseif weapon == "minigun" then 0.8
+		else 1.1
 	return {
-		torso = CFrame.new(0, 0, 0.16 * kick * power) * CFrame.Angles(0.18 * kick * power, -0.14 * kick, 0),
-		head = CFrame.new(0, 0, 0.1 * kick) * CFrame.Angles(-0.1 * kick, 0.12 * kick, 0),
-		leftLeg = CFrame.Angles(0.14 * kick, 0, 0),
-		rightLeg = CFrame.Angles(-0.18 * kick, 0, 0),
-		leftArm = CFrame.Angles(0.32 * kick * power, 0.12 * kick, 0),
-		rightArm = CFrame.Angles(0.45 * kick * power, -0.08 * kick, 0.08 * kick),
+		torso = CFrame.new(0, -0.05 * kick * power, 0.28 * kick * power) * CFrame.Angles(0.28 * kick * power, -0.18 * kick * power, 0),
+		head = CFrame.Angles(-0.2 * kick * power, 0.16 * kick * power, 0),
+		leftLeg = CFrame.Angles(0.24 * kick * power, 0, -0.08 * kick),
+		rightLeg = CFrame.Angles(-0.3 * kick * power, 0, 0.08 * kick),
+		leftArm = CFrame.new(0, 0.04 * kick * power, 0.1 * kick * power) * CFrame.Angles(0.46 * kick * power, 0.14 * kick, -0.04 * kick),
+		rightArm = CFrame.new(0, 0.06 * kick * power, 0.14 * kick * power) * CFrame.Angles(0.62 * kick * power, -0.12 * kick, 0.1 * kick),
+	}
+end
+
+-- Axe throw windup pose (`progress` in [0, 1]): draws the heavy battle-axe far behind the right
+-- shoulder while the left hand aims forward at the target.
+function EnemyAnim.axeThrowWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local tremble = math.sin(clock * 36) * 0.035 * p
+	return {
+		torso = CFrame.new(0, 0.08 * p, 0.12 * p) * CFrame.Angles(0.22 * p, -0.68 * p + tremble, 0),
+		head = CFrame.Angles(-0.16 * p, 0.62 * p, 0),
+		leftLeg = CFrame.Angles(0.32 * p, 0, 0),
+		rightLeg = CFrame.Angles(-0.38 * p, 0, 0),
+		leftArm = CFrame.Angles(0.55 * p, 0.28 * p, -0.16 * p),
+		rightArm = CFrame.Angles(1.48 * p + tremble, -0.65 * p, 0.34 * p),
+	}
+end
+
+-- Unarmed sprint pose while the axe enemy scrambles across the floor to retrieve its dropped axe.
+function EnemyAnim.axeRetrievePose(phase: number): LimbPose
+	local fast = math.sin(phase * 1.45)
+	local bounce = math.abs(math.cos(phase * 1.45))
+	return {
+		torso = CFrame.new(0, bounce * 0.14 - 0.12, -0.1) * CFrame.Angles(-0.3, fast * 0.16, -fast * 0.07),
+		head = CFrame.Angles(0.24, -fast * 0.12, 0),
+		leftLeg = CFrame.Angles(fast * 0.8, 0, 0),
+		rightLeg = CFrame.Angles(-fast * 0.8, 0, 0),
+		leftArm = CFrame.Angles(-0.42 - fast * 0.6, 0.1, -0.14),
+		rightArm = CFrame.Angles(0.32 + fast * 0.52, -0.1, 0.14),
 	}
 end
 
 -- Exploder fuse pose: hunched vibrating detonation crouch with arms thrown high as C4/TNT primes.
 function EnemyAnim.fusePose(clock: number, progress: number): LimbPose
 	local p = clamp01(progress)
-	local shake = math.sin(clock * (28 + p * 26)) * (0.08 + p * 0.14)
+	local shake = math.sin(clock * (28 + p * 26)) * (0.07 + p * 0.12)
 	return {
-		torso = CFrame.new(shake * 0.5, -0.22 * p, 0) * CFrame.Angles(-0.3 * p, shake, shake * 0.7),
-		head = CFrame.Angles(0.25 * p, -shake, 0),
-		leftLeg = CFrame.Angles(0.28 * p, 0, -0.15 * p),
-		rightLeg = CFrame.Angles(0.28 * p, 0, 0.15 * p),
-		leftArm = CFrame.Angles(1.35 * p + shake, 0, -0.65 * p),
-		rightArm = CFrame.Angles(1.35 * p - shake, 0, 0.65 * p),
+		torso = CFrame.new(shake * 0.4, -0.2 * p, 0) * CFrame.Angles(-0.26 * p, shake, shake * 0.6),
+		head = CFrame.Angles(0.22 * p, -shake, 0),
+		leftLeg = CFrame.Angles(0.26 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(0.26 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(1.3 * p + shake, 0, -0.6 * p),
+		rightArm = CFrame.Angles(1.3 * p - shake, 0, 0.6 * p),
 	}
 end
 
@@ -362,24 +416,24 @@ end
 function EnemyAnim.grabWindupPose(progress: number): LimbPose
 	local p = easeOutCubic(progress)
 	return {
-		torso = CFrame.new(0, -0.26 * p, 0.22 * p) * CFrame.Angles(0.22 * p, 0, 0),
-		head = CFrame.new(0, -0.2 * p, 0.15 * p) * CFrame.Angles(-0.18 * p, 0, 0),
-		leftLeg = CFrame.Angles(0.38 * p, 0, -0.12 * p),
-		rightLeg = CFrame.Angles(-0.42 * p, 0, 0.12 * p),
-		leftArm = CFrame.Angles(0.65 * p, 0.62 * p, -0.58 * p),
-		rightArm = CFrame.Angles(0.65 * p, -0.62 * p, 0.58 * p),
+		torso = CFrame.new(0, -0.22 * p, 0.18 * p) * CFrame.Angles(0.2 * p, 0, 0),
+		head = CFrame.Angles(-0.18 * p, 0, 0),
+		leftLeg = CFrame.Angles(0.36 * p, 0, -0.12 * p),
+		rightLeg = CFrame.Angles(-0.4 * p, 0, 0.12 * p),
+		leftArm = CFrame.Angles(0.6 * p, 0.56 * p, -0.52 * p),
+		rightArm = CFrame.Angles(0.6 * p, -0.56 * p, 0.52 * p),
 	}
 end
 
 -- Grabber lunge pose: aggressive bull-rush lean with both massive arms reaching forward to catch.
 function EnemyAnim.grabLungePose(): LimbPose
 	return {
-		torso = CFrame.new(0, -0.22, -0.35) * CFrame.Angles(-0.36, 0, 0),
-		head = CFrame.new(0, -0.18, -0.3) * CFrame.Angles(0.24, 0, 0),
-		leftLeg = CFrame.Angles(-0.65, 0, 0),
-		rightLeg = CFrame.Angles(0.55, 0, 0),
-		leftArm = CFrame.Angles(0.75, -0.35, -0.25),
-		rightArm = CFrame.Angles(0.75, 0.35, 0.25),
+		torso = CFrame.new(0, -0.2, -0.28) * CFrame.Angles(-0.34, 0, 0),
+		head = CFrame.Angles(0.24, 0, 0),
+		leftLeg = CFrame.Angles(-0.62, 0, 0),
+		rightLeg = CFrame.Angles(0.52, 0, 0),
+		leftArm = CFrame.Angles(0.7, -0.32, -0.22),
+		rightArm = CFrame.Angles(0.7, 0.32, 0.22),
 	}
 end
 
@@ -390,12 +444,12 @@ function EnemyAnim.rushWindupPose(progress: number, clock: number): LimbPose
 	local p = easeOutCubic(progress)
 	local scrape = math.sin(clock * 14) * 0.35 * p
 	return {
-		torso = CFrame.new(0, -0.42 * p, 0.08 * p) * CFrame.Angles(-0.32 * p, 0.3 * p, 0),
-		head = CFrame.new(0, -0.15 * p, -0.1 * p) * CFrame.Angles(0.3 * p, -0.2 * p, 0),
-		leftLeg = CFrame.Angles(0.45 * p, 0, -0.1 * p),
-		rightLeg = CFrame.Angles(-0.35 * p + scrape, 0, 0.1 * p),
-		leftArm = CFrame.Angles(0.35 * p, 0.2 * p, -0.3 * p),
-		rightArm = CFrame.Angles(0.55 * p, -0.25 * p, 0.2 * p),
+		torso = CFrame.new(0, -0.38 * p, 0.06 * p) * CFrame.Angles(-0.3 * p, 0.26 * p, 0),
+		head = CFrame.Angles(0.28 * p, -0.2 * p, 0),
+		leftLeg = CFrame.Angles(0.42 * p, 0, -0.1 * p),
+		rightLeg = CFrame.Angles(-0.32 * p + scrape, 0, 0.1 * p),
+		leftArm = CFrame.Angles(0.32 * p, 0.2 * p, -0.28 * p),
+		rightArm = CFrame.Angles(0.52 * p, -0.22 * p, 0.18 * p),
 	}
 end
 
@@ -403,12 +457,12 @@ end
 function EnemyAnim.rushPose(clock: number): LimbPose
 	local stride = math.sin(clock * 22)
 	return {
-		torso = CFrame.new(0, -0.3, -0.25) * CFrame.Angles(-0.5, 0.35, 0),
-		head = CFrame.new(0, -0.12, -0.2) * CFrame.Angles(0.38, -0.25, 0),
-		leftLeg = CFrame.Angles(0.75 * stride, 0, 0),
-		rightLeg = CFrame.Angles(-0.75 * stride, 0, 0),
-		leftArm = CFrame.Angles(0.45, 0.35, -0.2),
-		rightArm = CFrame.Angles(0.85, -0.3, 0.15),
+		torso = CFrame.new(0, -0.26, -0.2) * CFrame.Angles(-0.44, 0.3, 0),
+		head = CFrame.Angles(0.36, -0.24, 0),
+		leftLeg = CFrame.Angles(0.72 * stride, 0, 0),
+		rightLeg = CFrame.Angles(-0.72 * stride, 0, 0),
+		leftArm = CFrame.Angles(0.42, 0.3, -0.18),
+		rightArm = CFrame.Angles(0.78, -0.26, 0.14),
 	}
 end
 
@@ -427,17 +481,73 @@ function EnemyAnim.grabHoldPose(clock: number): LimbPose
 	}
 end
 
+-- Boss Oh frontal cone smash windup: coils right and hoists the Titanic Maul overhead.
+function EnemyAnim.bossConeWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local quake = math.sin(clock * 24) * 0.04 * p
+	return {
+		torso = CFrame.new(0, 0.25 * p, 0.22 * p) * CFrame.Angles(0.24 * p, -0.58 * p + quake, 0),
+		head = CFrame.Angles(-0.18 * p, 0.45 * p, 0),
+		leftLeg = CFrame.Angles(0.35 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(-0.4 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(0.55 * p, -0.35 * p, -0.45 * p),
+		rightArm = CFrame.Angles(1.38 * p + quake, -0.25 * p, 0.35 * p),
+	}
+end
+
+-- Boss Oh seismic leap windup: deep coiled hydraulic crouch bracing both legs before launch.
+function EnemyAnim.bossLeapWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local hum = math.sin(clock * 28) * 0.04 * p
+	return {
+		torso = CFrame.new(0, -0.78 * p, 0.2 * p) * CFrame.Angles(-0.38 * p, hum, 0),
+		head = CFrame.Angles(0.32 * p, -hum, 0),
+		leftLeg = CFrame.Angles(0.62 * p, 0, -0.18 * p),
+		rightLeg = CFrame.Angles(0.62 * p, 0, 0.18 * p),
+		leftArm = CFrame.Angles(-0.42 * p, 0, -0.5 * p),
+		rightArm = CFrame.Angles(-0.32 * p, 0, 0.5 * p),
+	}
+end
+
+-- Boss Oh airborne meteor leap: raises Titanic Maul high while ascending, plunges forward on descent.
+function EnemyAnim.bossLeapAirPose(progress: number): LimbPose
+	local u = clamp01(progress)
+	local slam = easeInOutQuad(math.max((u - 0.55) / 0.45, 0))
+	return {
+		torso = CFrame.new(0, 0.25 * (1 - slam), -0.35 * slam) * CFrame.Angles(lerpNumber(0.32, -0.52, slam), 0, 0),
+		head = CFrame.Angles(lerpNumber(-0.22, 0.35, slam), 0, 0),
+		leftLeg = CFrame.Angles(lerpNumber(0.58, -0.35, slam), 0, -0.15),
+		rightLeg = CFrame.Angles(lerpNumber(-0.45, 0.45, slam), 0, 0.15),
+		leftArm = CFrame.Angles(lerpNumber(1.05, 0.35, slam), 0, -0.45),
+		rightArm = CFrame.Angles(lerpNumber(1.45, -0.32, slam), 0, 0.2),
+	}
+end
+
+-- Boss Oh 360-deg plasma nova charge: plants wide and throws both arms out exposing the chest reactor.
+function EnemyAnim.bossNovaWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local vibe = math.sin(clock * 38) * 0.06 * p
+	return {
+		torso = CFrame.new(vibe, -0.18 * p, 0.15 * p) * CFrame.Angles(0.28 * p, vibe, 0),
+		head = CFrame.Angles(-0.32 * p, -vibe, 0),
+		leftLeg = CFrame.Angles(0.28 * p, 0, -0.24 * p),
+		rightLeg = CFrame.Angles(0.28 * p, 0, 0.24 * p),
+		leftArm = CFrame.Angles(0.35 * p, 0.55 * p, -1.25 * p),
+		rightArm = CFrame.Angles(0.35 * p, -0.55 * p, 1.25 * p),
+	}
+end
+
 -- Dazed stagger pose while stunned (Tank war cry, Support shockwave, heavy slams).
 function EnemyAnim.stunPose(clock: number): LimbPose
 	local sway = math.sin(clock * 5.2)
 	local wobble = math.cos(clock * 7.4)
 	return {
-		torso = CFrame.new(sway * 0.14, -0.26, 0.12) * CFrame.Angles(-0.28 + wobble * 0.06, sway * 0.16, sway * 0.14),
-		head = CFrame.new(0, -0.1, 0) * CFrame.Angles(-0.32 + wobble * 0.1, -sway * 0.32, sway * 0.22),
+		torso = CFrame.new(sway * 0.12, -0.22, 0.1) * CFrame.Angles(-0.24 + wobble * 0.06, sway * 0.14, sway * 0.12),
+		head = CFrame.Angles(-0.28 + wobble * 0.1, -sway * 0.28, sway * 0.18),
 		leftLeg = CFrame.Angles(0.24, 0, -0.14),
 		rightLeg = CFrame.Angles(-0.22, 0, 0.14),
-		leftArm = CFrame.Angles(-0.25 + wobble * 0.14, 0, -0.32 - sway * 0.12),
-		rightArm = CFrame.Angles(-0.25 - wobble * 0.14, 0, 0.32 - sway * 0.12),
+		leftArm = CFrame.Angles(-0.22 + wobble * 0.14, 0, -0.3 - sway * 0.12),
+		rightArm = CFrame.Angles(-0.22 - wobble * 0.14, 0, 0.3 - sway * 0.12),
 	}
 end
 
@@ -501,10 +611,13 @@ function EnemyAnim.selfTest()
 	assert(root1.Position.Z > root0.Position.Z + 1, "death collapse knocks body backward")
 	assert(limbs1.rightArm ~= CFrame.identity and fade0 == 0 and fade1 == 1, "death splays limbs and fades out")
 
-	-- Dual-blade tornado spin, single-sword Paso Fantasma dash, ranged beam charge, evade leap, recoil...
+	-- Dual-blade tornado spin rotates the whole body cleanly via `root` rather than spinning
+	-- each limb independently around its own shoulder/hip pivot.
 	local spA = EnemyAnim.spinPose(0)
 	local spB = EnemyAnim.spinPose(0.1)
-	assert(spA.rightArm ~= spB.rightArm and spA.leftArm ~= spB.leftArm, "dual spin whirls both arms continuously")
+	assert(spA.root ~= nil and spB.root ~= nil and spA.root ~= spB.root, "dual spin rotates whole body via root")
+	assert(spA.leftLeg == spB.leftLeg and spA.rightLeg == spB.rightLeg, "dual spin keeps legs braced instead of spinning in place")
+	assert(spA.leftArm == spB.leftArm and spA.rightArm == spB.rightArm, "dual spin holds blades wide instead of helicoptering arms")
 	local ps = EnemyAnim.phantomStepPose()
 	assert(ps.torso.Position.Y < -0.2 and ps.rightArm ~= CFrame.identity, "phantom step leans forward in dash pose")
 	local slm = EnemyAnim.slamWindupPose(0.9, 1.0)
@@ -513,8 +626,11 @@ function EnemyAnim.selfTest()
 	assert(bm.leftLeg ~= CFrame.identity and bm.torso.Position.Z > 0.05, "beam charge braces torso and legs")
 	local ev = EnemyAnim.evadeJumpPose(0.5)
 	assert(ev.leftLeg ~= CFrame.identity and ev.torso ~= CFrame.identity, "evade jump tucks legs and leans back mid-air")
-	local rKick = EnemyAnim.firePose(0.25, "shotgun")
-	assert(rKick.rightArm ~= CFrame.identity and rKick.torso.Position.Z > 0.05, "ranged fire kicks weapon and torso back")
+	local rKick = EnemyAnim.firePose(0.2, "shotgun")
+	assert(rKick.rightArm ~= CFrame.identity and rKick.torso.Position.Z > 0.2, "ranged fire kicks weapon and torso back strongly")
+	local axeWind = EnemyAnim.axeThrowWindupPose(1, 0.5)
+	local axeRet = EnemyAnim.axeRetrievePose(1.2)
+	assert(axeWind.rightArm ~= CFrame.identity and axeRet.leftLeg ~= axeRet.rightLeg, "axe throw windup and unarmed retrieve poses work")
 	local fPose = EnemyAnim.fusePose(1.5, 0.8)
 	assert(fPose.leftArm ~= CFrame.identity and fPose.rightArm ~= CFrame.identity, "exploder fuse raises arms while trembling")
 	local gWind = EnemyAnim.grabWindupPose(1)
@@ -531,6 +647,10 @@ function EnemyAnim.selfTest()
 	local stA = EnemyAnim.stunPose(0)
 	local stB = EnemyAnim.stunPose(0.25)
 	assert(stA.head ~= stB.head and stA.torso.Position.Y < -0.1, "stun pose hunches and sways dazedly")
+	assert(EnemyAnim.bossConeWindupPose(1, 0).rightArm ~= CFrame.identity, "boss cone windup hoists maul")
+	assert(EnemyAnim.bossLeapWindupPose(1, 0).torso.Position.Y < -0.5, "boss leap windup crouches low")
+	assert(EnemyAnim.bossLeapAirPose(0.2).rightArm ~= EnemyAnim.bossLeapAirPose(0.95).rightArm, "boss leap air transitions to slam")
+	assert(EnemyAnim.bossNovaWindupPose(1, 0).leftArm ~= CFrame.identity, "boss nova spreads arms wide")
 
 	for _, name in ipairs(GROUPS) do
 		assert((walkA :: any)[name] ~= nil, `walk pose must include {name}`)

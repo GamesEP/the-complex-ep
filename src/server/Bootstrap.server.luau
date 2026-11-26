@@ -28,6 +28,7 @@ local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
 local Classes = require(Shared.features.classes.Classes)
+local Difficulty = require(Shared.features.enemies.Difficulty)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
 local Tactics = require(Shared.features.enemies.Tactics)
 local Tonemapper = require(Shared.features.tonemapping.Tonemapper)
@@ -62,6 +63,7 @@ if RunService:IsStudio() then
 	Melee.selfTest()
 	Brain.selfTest()
 	Classes.selfTest()
+	Difficulty.selfTest()
 	EnemyAnim.selfTest()
 	Tactics.selfTest()
 	Tonemapper.selfTest()
@@ -82,7 +84,13 @@ Lighting.ClockTime = Config.LIGHTING_CLOCK_TIME
 local world = WorldBuilder.build()
 
 -- Before anybody joins: every player starts with `Class = ""` and the board waits on it.
-ClassService.start({ applyClass = CombatService.applyClass })
+ClassService.start({
+	applyClass = CombatService.applyClass,
+	world = world,
+	onDifficultyChanged = function()
+		WaveDirector.reset()
+	end,
+})
 -- Each takes the other through its `start` rather than by path (CLAUDE.md): enemies hurt players
 -- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
 CombatService.start({ enemies = EnemyService, isPaused = ClassService.isPaused })
@@ -102,6 +110,7 @@ EnemyService.start({
 -- After EnemyService, DropService and CombatService, whose state it resets on room wipe.
 WaveDirector.start({
 	world = world,
+	getDifficulty = ClassService.getDifficulty,
 	onReset = function()
 		DropService.clear()
 		CombatService.clear()
@@ -155,6 +164,7 @@ Dispatcher.connect("OverDrive", CombatService.overDrive)
 Dispatcher.connect("Block", CombatService.block)
 Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
 Dispatcher.connect("ChooseClass", ClassService.choose)
+Dispatcher.connect("ChooseDifficulty", ClassService.chooseDifficulty)
 Dispatcher.connect("UseAbility", CombatService.useAbility)
 Dispatcher.connect("Diagnostic", LogSink.onClientReport)
 

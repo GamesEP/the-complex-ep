@@ -31,13 +31,14 @@ Toda la interfaz sigue un mismo sistema visual híbrido (**Hazard Arc**, especif
 - Placa compacta de vida del jugador en la esquina superior izquierda (valor actual / máximo,
   marcas de cuarto y aviso visual al bajar la vida), con los buffs temporales recogidos apilados
   debajo (barra y cuenta atrás en segundos) solo mientras están activos.
-- Pastilla de sector/progreso de la sala en la parte superior central: planta/sala (en Hito 2) y
-  oleada o enemigos restantes (los avisos de habilidades enemigas —Coloso y Paso Fantasma—
-  aparecen como un icono triangular amarillo con `!` directamente sobre la cabeza de cada enemigo,
-  sin carteles de texto invasivos).
-- Barra de vida del jefe en la parte inferior central cuando la sala actual tiene jefe (libre de
-  colisiones con el banner superior de `UpgradeChoice` y fuera de las zonas táctiles), junto a las
-  placas urgentes de carga pesada, aturdimiento o escape de agarre.
+- Pastilla de sector/progreso de la sala en la parte superior central: dificultad activa (`FÁCIL` /
+  `NORMAL` / `DIFÍCIL` / `ZONA MUERTA`), planta/sala (en Hito 2) y oleada o enemigos restantes (los
+  avisos de habilidades enemigas —Coloso, Paso Fantasma y Oh— aparecen como un icono triangular
+  amarillo con `!` directamente sobre la cabeza de cada enemigo, sin carteles de texto invasivos).
+- Barra de vida del jefe (`UNIT // OH — TITÁN DEL SECTOR`) en la parte inferior central cuando el
+  jefe está vivo en la sala (libre de colisiones con el banner superior de `UpgradeChoice` y fuera
+  de las zonas táctiles); cuando está visible, las placas urgentes de carga pesada, aturdimiento o
+  escape de agarre se apilan justo encima sin solaparse.
 - Arco radial de actuadores circulares en la esquina inferior derecha con recarga visible: ataque
   (con anillo de carga del ataque pesado y pulso de escape al estar atrapado), dash, bloqueo/parry
   y las 3 habilidades activas de la clase elegida (`Config.ABILITY_SLOTS`; ver Clases en
@@ -122,11 +123,15 @@ run o al limpiar una sala). Nunca pausa el juego ni bloquea el movimiento ni los
 elegido clase. Mientras está abierta, los enemigos están quietos.
 
 **Muestra:**
-- Las 3 clases (Tanque, Daño, Apoyo) como tarjetas, cada una con su arma, sus estadísticas en
+- Selector de dificultad en la franja superior (`Fácil`, `Normal`, `Difícil` y `Zona Muerta`), con
+  el resumen de multiplicadores activos (`Cantidad`, `Daño`, `Velocidad`, `Vida`) sincronizado por
+  servidor (`ChooseDifficulty` -> `World.Difficulty`).
+- Las 3 clases (Tanque, Daño, Apoyo) como tarjetas debajo, cada una con su arma, sus estadísticas en
   pocas cifras, sus 3 habilidades y su pasiva.
 
 **El jugador puede:**
-- Elegir una clase con clic, toque o mando, y empezar a pelear.
+- Cambiar la dificultad de la sala mientras las oleadas están en pausa, elegir una clase con clic,
+  toque o mando, y empezar a pelear.
 
 **En pantalla pequeña (móvil):**
 - Las 3 tarjetas pasan de estar en fila a apiladas en columna, con desplazamiento vertical.

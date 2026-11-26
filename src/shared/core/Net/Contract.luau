@@ -36,9 +36,9 @@ return {
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
 	-- feel responsive without opening an unbounded channel.
 	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
-	-- Class selection: a person picks once, so a low rate costs nobody anything. Whether the id
-	-- names a real class is ClassService's to decide.
+	-- Class & difficulty selection on the start screen.
 	ChooseClass = { rate = 2, args = { Validate.string } },
+	ChooseDifficulty = { rate = 4, args = { Validate.string } },
 	-- Every class ability added with the classes. Which id the player's class owns, and its
 	-- cooldown, are CombatService's to decide.
 	UseAbility = { rate = Config.ACTION_RATE, args = { Validate.string, Validate.vector3 } },

@@ -25,6 +25,7 @@ local Config = require(Shared.core.Config)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
+local Difficulty = require(Shared.features.enemies.Difficulty)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -39,7 +40,7 @@ local ui = require(Client.ui.theme.Widgets)
 local AbilityStore = require(script.Parent.Parent.stores.AbilityStore)
 local CombatInput = require(script.Parent.Parent.CombatInput)
 
-local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState" }
+local ROOM_ATTRIBUTES = { "Wave", "WaveCount", "EnemiesLeft", "RoomState", "Difficulty", "BossName", "BossHealth", "BossMaxHealth" }
 
 -- 0 just used, 1 ready, from a ready-at time in server seconds and the cooldown's length.
 local function charge(readyAt: any, cooldown: number, now: number): number
@@ -67,123 +68,136 @@ local function healthColor(ratio: number): Color3
 end
 
 local function roomLabel(room: { [string]: any }, compact: boolean): (string, Color3)
+	local diff = Difficulty.get(room.Difficulty)
 	if room.RoomState == "cleared" then
-		return if compact then "SALA LIMPIA" else "SEC-01  //  SALA LIMPIA", ui.VITAL
+		return if compact then "SALA LIMPIA" else `SEC-01  //  {diff.shortName}  //  SALA LIMPIA`, ui.VITAL
 	end
 	if room.RoomState ~= "fighting" then
-		return if compact then "PREPARANDO..." else "SEC-01  //  PREPARANDO SECTOR", ui.MUTED
+		return if compact then "PREPARANDO..." else `SEC-01  //  {diff.shortName}  //  PREPARANDO SECTOR`, ui.MUTED
 	end
 	local wave = room.Wave or 1
 	local waveCount = room.WaveCount or 1
 	local left = room.EnemiesLeft or 0
 	if compact then
-		return `O{wave}/{waveCount}  |  {left} HOST.`, ui.HAZARD
+		return `{diff.shortName}  |  O{wave}/{waveCount}  |  {left}`, diff.color
 	end
-	return `SEC-01  //  OLEADA {wave}/{waveCount}  |  {left} HOSTILES`, ui.HAZARD
+	return `SEC-01  //  {diff.shortName}  //  OLEADA {wave}/{waveCount}  |  {left} HOSTILES`, diff.color
 end
 
-local function buildAbilityEmblem(kind: string, diameter: number, accentColor: any)
+local ICON_READY = Color3.fromRGB(255, 255, 255)
+local ICON_COOLDOWN = Color3.fromRGB(150, 162, 178)
+
+local function buildAbilityEmblem(kind: string, diameter: number, iconColor: any)
+	-- Every ability emblem renders in crisp pure white (dimming to cool silver on cooldown) with
+	-- dark-ink contrast rims so the silhouette pops cleanly over any colored actuator fill.
 	if kind == "stinger" then
-		-- Stinger lance emblem: forward thrust arrow + twin speed streaks.
-		local shaftLen = math.round(diameter * 0.48)
-		local headSz = math.round(diameter * 0.2)
+		-- Estocada (Damage forward thrust): bold white spear shaft + arrowhead + speed streaks.
+		local shaftLen = math.round(diameter * 0.5)
+		local headSz = math.round(diameter * 0.22)
 		return {
 			Shaft = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.46, 0.54),
-				Size = UDim2.fromOffset(shaftLen, 4),
+				Position = UDim2.fromScale(0.45, 0.55),
+				Size = UDim2.fromOffset(shaftLen, 5),
 				Rotation = -45,
-				BackgroundColor3 = accentColor,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", {
+					Color = ui.INK,
+					Thickness = 1.4,
+				}),
 			}),
 			SpearHead = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.66, 0.34),
 				Size = UDim2.fromOffset(headSz, headSz),
 				Rotation = 45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 3,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.5,
+					Color = ui.INK,
+					Thickness = 1.6,
 				}),
 			}),
 			StreakTop = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.34, 0.38),
-				Size = UDim2.fromOffset(math.round(diameter * 0.28), 2),
+				Position = UDim2.fromScale(0.32, 0.36),
+				Size = UDim2.fromOffset(math.round(diameter * 0.28), 3),
 				Rotation = -45,
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.28,
+				BackgroundColor3 = iconColor,
+				BackgroundTransparency = 0.12,
 				BorderSizePixel = 0,
-			}),
+			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
 			StreakBottom = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.6, 0.66),
-				Size = UDim2.fromOffset(math.round(diameter * 0.28), 2),
+				Position = UDim2.fromScale(0.62, 0.68),
+				Size = UDim2.fromOffset(math.round(diameter * 0.28), 3),
 				Rotation = -45,
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.28,
+				BackgroundColor3 = iconColor,
+				BackgroundTransparency = 0.12,
 				BorderSizePixel = 0,
-			}),
+			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
 		}
 	elseif kind == "overdrive" then
-		-- Over Drive ultimate emblem: 3 stacked crescent energy waves + bright core.
-		local waveW = math.round(diameter * 0.48)
-		local coreSz = math.round(diameter * 0.14)
+		-- Corte Final (Damage 3 piercing slash waves): 3 crisp white stacked crescent waves + core.
+		local waveW = math.round(diameter * 0.52)
+		local coreSz = math.round(diameter * 0.16)
 		return {
 			Wave1 = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.3),
-				Size = UDim2.fromOffset(math.round(waveW * 0.78), 4),
+				Position = UDim2.fromScale(0.5, 0.29),
+				Size = UDim2.fromOffset(math.round(waveW * 0.8), 4),
 				Rotation = -16,
-				BackgroundColor3 = accentColor,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
 			}),
 			Wave2 = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromOffset(waveW, 5),
+				Size = UDim2.fromOffset(waveW, 6),
 				Rotation = -16,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 2,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.5,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.4 }),
 			}),
 			Wave3 = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.7),
-				Size = UDim2.fromOffset(math.round(waveW * 0.86), 4),
+				Position = UDim2.fromScale(0.5, 0.71),
+				Size = UDim2.fromOffset(math.round(waveW * 0.88), 4),
 				Rotation = -16,
-				BackgroundColor3 = accentColor,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
 			}),
 			Core = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(coreSz, coreSz),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 3,
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.4 }),
 			}),
 		}
 	elseif kind == "taunt" then
-		-- Rugido (Tank war-cry stun): bright roaring core + 3 radiating sonic shock rings + stun spark.
+		-- Rugido (Tank war-cry stun): bold white radiating sonic shock rings + diamond core + rays.
 		local outerSz = math.round(diameter * 0.62)
-		local midSz = math.round(diameter * 0.42)
+		local midSz = math.round(diameter * 0.4)
 		local coreSz = math.round(diameter * 0.2)
 		return {
 			OuterWave = React.createElement("Frame", {
@@ -194,9 +208,9 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 2.2,
-					Transparency = 0.12,
+					Color = iconColor,
+					Thickness = 2.6,
+					Transparency = 0.05,
 				}),
 			}),
 			MidWave = React.createElement("Frame", {
@@ -207,9 +221,8 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = ui.TEXT,
-					Thickness = 2,
-					Transparency = 0.1,
+					Color = iconColor,
+					Thickness = 2.2,
 				}),
 			}),
 			RoarCore = React.createElement("Frame", {
@@ -217,89 +230,87 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 				Position = UDim2.fromScale(0.5, 0.52),
 				Size = UDim2.fromOffset(coreSz, coreSz),
 				Rotation = 45,
-				BackgroundColor3 = accentColor,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 3,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = ui.TEXT,
-					Thickness = 1.5,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.6 }),
 			}),
 			ShockRayL = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.24, 0.34),
-				Size = UDim2.fromOffset(math.round(diameter * 0.16), 3),
+				Position = UDim2.fromScale(0.24, 0.32),
+				Size = UDim2.fromOffset(math.round(diameter * 0.18), 4),
 				Rotation = 35,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 3,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 			ShockRayR = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.76, 0.34),
-				Size = UDim2.fromOffset(math.round(diameter * 0.16), 3),
+				Position = UDim2.fromScale(0.76, 0.32),
+				Size = UDim2.fromOffset(math.round(diameter * 0.18), 4),
 				Rotation = -35,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 3,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 		}
 	elseif kind == "bulwark" then
-		-- Coraza (Tank -75% armored shell): high-contrast armored shield crest + bright inner chevron core.
-		local shieldW = math.round(diameter * 0.44)
+		-- Coraza (Tank -75% armored shell): solid pure-white shield crest with dark inner armor cross.
+		local shieldW = math.round(diameter * 0.46)
 		local shieldH = math.round(diameter * 0.34)
-		local tipSz = math.round(diameter * 0.3)
+		local tipSz = math.round(diameter * 0.32)
 		return {
 			ShieldTop = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.42),
+				Position = UDim2.fromScale(0.5, 0.41),
 				Size = UDim2.fromOffset(shieldW, shieldH),
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.18,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 4 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = ui.TEXT,
-					Thickness = 2,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.8 }),
 			}),
 			ShieldBase = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.56),
 				Size = UDim2.fromOffset(tipSz, tipSz),
 				Rotation = 45,
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.18,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 3 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = ui.TEXT,
-					Thickness = 1.8,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.8 }),
 			}),
 			CoreVert = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(4, math.round(diameter * 0.34)),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = ui.INK,
 				BorderSizePixel = 0,
 				ZIndex = 3,
 			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
 			CoreHoriz = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.44),
+				Position = UDim2.fromScale(0.5, 0.43),
 				Size = UDim2.fromOffset(math.round(diameter * 0.26), 4),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = ui.INK,
 				BorderSizePixel = 0,
 				ZIndex = 3,
 			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
 		}
 	elseif kind == "execute" then
-		-- Vórtice (Damage boomerang twin daggers): spinning orbital ring + opposing crimson-white blades.
-		local ringSz = math.round(diameter * 0.56)
-		local bladeLen = math.round(diameter * 0.44)
-		local hubSz = math.round(diameter * 0.15)
+		-- Vórtice (Damage boomerang twin daggers): bright white orbital ring + bold opposing white blades.
+		local ringSz = math.round(diameter * 0.58)
+		local bladeLen = math.round(diameter * 0.46)
+		local hubSz = math.round(diameter * 0.16)
 		return {
 			OrbitRing = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -309,147 +320,146 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 2.2,
-					Transparency = 0.08,
+					Color = iconColor,
+					Thickness = 2.6,
 				}),
 			}),
 			DaggerTop = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.58, 0.38),
+				Position = UDim2.fromScale(0.57, 0.38),
 				Size = UDim2.fromOffset(bladeLen, 5),
 				Rotation = -30,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 2,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.5,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
 			}),
 			DaggerBottom = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.42, 0.62),
+				Position = UDim2.fromScale(0.43, 0.62),
 				Size = UDim2.fromOffset(bladeLen, 5),
 				Rotation = -30,
-				BackgroundColor3 = accentColor,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
+				ZIndex = 2,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = ui.TEXT,
-					Thickness = 1.2,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
 			}),
 			Hub = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(hubSz, hubSz),
 				Rotation = 45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
+			}),
 		}
 	elseif kind == "healPulse" then
-		-- Santuario (Support 10 s healing zone): glowing emerald zone halo + bold medical cross (+).
-		local haloSz = math.round(diameter * 0.6)
-		local armLen = math.round(diameter * 0.36)
-		local armThick = math.max(math.round(diameter * 0.13), 6)
+		-- Santuario (Support 10 s healing zone): crisp white zone halo + bold solid white medical cross (+).
+		local haloSz = math.round(diameter * 0.62)
+		local armLen = math.round(diameter * 0.38)
+		local armThick = math.max(math.round(diameter * 0.14), 7)
 		return {
 			ZoneHalo = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(haloSz, haloSz),
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.82,
+				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 2.2,
+					Color = iconColor,
+					Thickness = 2.4,
 				}),
 			}),
 			CrossV = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(armThick, armLen),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.5,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
 			}),
 			CrossH = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(armLen, armThick),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
 			}, {
 				Round = React.createElement(ui.Round, { radius = 2 }),
-				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.5,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
 			}),
 		}
 	elseif kind == "protectField" then
-		-- Barrera (Support squad defense buff): bright cyan barrier dome protecting 3 white squad nodes.
-		local domeSz = math.round(diameter * 0.6)
-		local pipSz = math.max(math.round(diameter * 0.11), 5)
+		-- Barrera (Support squad defense buff): crisp white barrier dome protecting 3 bold white squad nodes.
+		local domeSz = math.round(diameter * 0.62)
+		local pipSz = math.max(math.round(diameter * 0.13), 6)
 		return {
 			Dome = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(domeSz, domeSz),
-				BackgroundColor3 = accentColor,
-				BackgroundTransparency = 0.78,
+				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 2.5,
+					Color = iconColor,
+					Thickness = 2.8,
 				}),
 			}),
 			PipCenter = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.42),
+				Position = UDim2.fromScale(0.5, 0.41),
 				Size = UDim2.fromOffset(pipSz + 2, pipSz + 2),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
-			}, { Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }) }),
+			}, {
+				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.4 }),
+			}),
 			PipLeft = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.36, 0.58),
+				Position = UDim2.fromScale(0.35, 0.58),
 				Size = UDim2.fromOffset(pipSz, pipSz),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
-			}, { Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }) }),
+			}, {
+				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.3 }),
+			}),
 			PipRight = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.64, 0.58),
+				Position = UDim2.fromScale(0.65, 0.58),
 				Size = UDim2.fromOffset(pipSz, pipSz),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
-			}, { Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }) }),
+			}, {
+				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.3 }),
+			}),
 		}
 	elseif kind == "shockwave" then
-		-- Repulsión (Support push + stun shockwave): expanding burst ring + 4 radial blast rays + white core.
-		local ringSz = math.round(diameter * 0.52)
-		local rayLen = math.round(diameter * 0.22)
-		local coreSz = math.round(diameter * 0.18)
+		-- Repulsión (Support push + stun shockwave): bright white burst ring + 4 bold blast rays + core.
+		local ringSz = math.round(diameter * 0.54)
+		local rayLen = math.round(diameter * 0.24)
+		local coreSz = math.round(diameter * 0.19)
 		return {
 			BlastRing = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -459,64 +469,77 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 2.4,
+					Color = iconColor,
+					Thickness = 2.6,
 				}),
 			}),
 			RayTL = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.3, 0.3),
-				Size = UDim2.fromOffset(rayLen, 3),
+				Position = UDim2.fromScale(0.29, 0.29),
+				Size = UDim2.fromOffset(rayLen, 4),
 				Rotation = 45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 2,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 			RayTR = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.7, 0.3),
-				Size = UDim2.fromOffset(rayLen, 3),
+				Position = UDim2.fromScale(0.71, 0.29),
+				Size = UDim2.fromOffset(rayLen, 4),
 				Rotation = -45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 2,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 			RayBL = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.3, 0.7),
-				Size = UDim2.fromOffset(rayLen, 3),
+				Position = UDim2.fromScale(0.29, 0.71),
+				Size = UDim2.fromOffset(rayLen, 4),
 				Rotation = -45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 2,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 			RayBR = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.7, 0.7),
-				Size = UDim2.fromOffset(rayLen, 3),
+				Position = UDim2.fromScale(0.71, 0.71),
+				Size = UDim2.fromOffset(rayLen, 4),
 				Rotation = 45,
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
-			}, { Round = React.createElement(ui.Round, { radius = 2 }) }),
+				ZIndex = 2,
+			}, {
+				Round = React.createElement(ui.Round, { radius = 2 }),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.2 }),
+			}),
 			Core = React.createElement("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromOffset(coreSz, coreSz),
-				BackgroundColor3 = ui.TEXT,
+				BackgroundColor3 = iconColor,
 				BorderSizePixel = 0,
 				ZIndex = 3,
 			}, {
 				Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
-				Stroke = React.createElement("UIStroke", {
-					Color = accentColor,
-					Thickness = 1.6,
-				}),
+				Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.6 }),
 			}),
 		}
 	end
 
-	-- Default / Torbellino (`spin`): vibrant cyclone vortex emblem.
-	local outerRing = math.round(diameter * 0.5)
-	local innerRing = math.round(diameter * 0.28)
-	local slashLen = math.round(diameter * 0.54)
-	local coreSize = math.round(diameter * 0.13)
+	-- Default / Torbellino (`spin`): crisp pure-white cyclone vortex + crossed spin blades + core.
+	local outerRing = math.round(diameter * 0.56)
+	local innerRing = math.round(diameter * 0.3)
+	local slashLen = math.round(diameter * 0.56)
+	local coreSize = math.round(diameter * 0.16)
 	return {
 		OuterRing = React.createElement("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -526,9 +549,8 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 		}, {
 			Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 			Stroke = React.createElement("UIStroke", {
-				Color = accentColor,
-				Thickness = 2.5,
-				Transparency = 0.15,
+				Color = iconColor,
+				Thickness = 2.8,
 			}),
 		}),
 		InnerRing = React.createElement("Frame", {
@@ -539,39 +561,45 @@ local function buildAbilityEmblem(kind: string, diameter: number, accentColor: a
 		}, {
 			Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
 			Stroke = React.createElement("UIStroke", {
-				Color = accentColor,
-				Thickness = 1.5,
-				Transparency = 0.35,
+				Color = iconColor,
+				Thickness = 1.8,
+				Transparency = 0.2,
 			}),
 		}),
 		BladeA = React.createElement("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(slashLen, 4),
+			Size = UDim2.fromOffset(slashLen, 5),
 			Rotation = 38,
-			BackgroundColor3 = accentColor,
+			BackgroundColor3 = iconColor,
 			BorderSizePixel = 0,
+			ZIndex = 2,
 		}, {
 			Round = React.createElement(ui.Round, { radius = 2 }),
+			Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.4 }),
 		}),
 		BladeB = React.createElement("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(slashLen, 4),
+			Size = UDim2.fromOffset(slashLen, 5),
 			Rotation = -38,
-			BackgroundColor3 = accentColor,
+			BackgroundColor3 = iconColor,
 			BorderSizePixel = 0,
+			ZIndex = 2,
 		}, {
 			Round = React.createElement(ui.Round, { radius = 2 }),
+			Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.4 }),
 		}),
 		Core = React.createElement("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(coreSize, coreSize),
-			BackgroundColor3 = ui.TEXT,
+			BackgroundColor3 = iconColor,
 			BorderSizePixel = 0,
+			ZIndex = 3,
 		}, {
 			Circle = React.createElement(ui.Round, { radius = ui.CORNER_ROUND }),
+			Stroke = React.createElement("UIStroke", { Color = ui.INK, Thickness = 1.5 }),
 		}),
 	}
 end
@@ -837,9 +865,9 @@ local function CombatHud(props)
 		end)
 	end
 
-	local function abilityEmblemColor(chargeBinding, readyColor: Color3)
+	local function abilityEmblemColor(chargeBinding)
 		return chargeBinding:map(function(v: number)
-			return if v >= 0.995 then readyColor else ui.MUTED
+			return if v >= 0.995 then ICON_READY else ICON_COOLDOWN
 		end)
 	end
 
@@ -876,6 +904,14 @@ local function CombatHud(props)
 	local slot1Color = slotColor(1, ui.ABILITY_1)
 	local slot2Color = slotColor(2, ui.BUFF_DAMAGE)
 	local slot3Color = slotColor(3, ui.ABILITY_3)
+
+	local bossName = if type(room.BossName) == "string" and room.BossName ~= "" then room.BossName else nil
+	local bossHealth = if type(room.BossHealth) == "number" then room.BossHealth else 0
+	local bossMaxHealth = if type(room.BossMaxHealth) == "number" and room.BossMaxHealth > 0 then room.BossMaxHealth else 0
+	local showBossBar = bossName ~= nil and bossMaxHealth > 0 and bossHealth > 0
+	local bossRatio = if showBossBar then math.clamp(bossHealth / bossMaxHealth, 0, 1) else 0
+	local bossWidth = math.min(if metrics.compact then 280 else 440, metrics.room.X - 2 * ui.MARGIN)
+	local urgentOffset = if showBossBar then urgentBottom - 62 else urgentBottom
 
 	return React.createElement(Scaled.Frame, nil, {
 		-- Top-left: sharp Sector Hazard vitals plate + timed drop buffs stacked underneath so
@@ -1024,8 +1060,62 @@ local function CombatHud(props)
 			}),
 		}),
 
-		-- Bottom-center: urgent Heavy Charge, Stun & Grab Escape plates (same zone future Boss HP
-		-- bars occupy so top-center UpgradeChoice banners never collide with combat bars).
+		-- Bottom-center: Boss HP plate (UNIT // OH) plus urgent Heavy Charge / Stun / Grab Escape
+		-- stacked cleanly above it so nothing collides with top-center banners or side controls.
+		BossBar = if showBossBar
+			then React.createElement(ui.Panel, {
+				name = "BossBar",
+				width = bossWidth,
+				padding = 9,
+				accentColor = ui.STRIKE,
+				accent = "left",
+				accentWidth = 4,
+				strokeColor = ui.STRIKE,
+				strokeThickness = 2,
+				anchorPoint = Vector2.new(0.5, 1),
+				position = UDim2.new(0.5, 0, 1, urgentBottom),
+			}, {
+				List = React.createElement("UIListLayout", {
+					Padding = UDim.new(0, 5),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+				Header = React.createElement("Frame", {
+					Size = UDim2.new(1, 0, 0, 16),
+					BackgroundTransparency = 1,
+					LayoutOrder = 1,
+				}, {
+					Title = React.createElement("TextLabel", {
+						Size = UDim2.fromScale(0.7, 1),
+						BackgroundTransparency = 1,
+						Font = ui.DISPLAY_FONT,
+						TextSize = if metrics.compact then 12 else 14,
+						TextColor3 = ui.STRIKE,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						Text = `UNIT // {bossName}`,
+					}),
+					Hp = React.createElement("TextLabel", {
+						AnchorPoint = Vector2.new(1, 0),
+						Position = UDim2.fromScale(1, 0),
+						Size = UDim2.fromScale(0.35, 1),
+						BackgroundTransparency = 1,
+						Font = ui.MONO_FONT,
+						TextSize = 12,
+						TextColor3 = ui.TEXT,
+						TextXAlignment = Enum.TextXAlignment.Right,
+						Text = `{math.ceil(bossHealth)} / {math.ceil(bossMaxHealth)}`,
+					}),
+				}),
+				Track = React.createElement(ProgressTrack, {
+					name = "BossHealthBar",
+					order = 2,
+					height = 12,
+					color = ui.STRIKE,
+					fill = UDim2.fromScale(bossRatio, 1),
+					ticks = 3,
+				}),
+			})
+			else nil,
+
 		HeavyCharge = if chargingHeavy and not grabbed
 			then React.createElement(ui.Panel, {
 				name = "HeavyCharge",
@@ -1035,7 +1125,7 @@ local function CombatHud(props)
 				accent = "left",
 				strokeColor = ui.HEAVY,
 				anchorPoint = Vector2.new(0.5, 1),
-				position = UDim2.new(0.5, 0, 1, urgentBottom),
+				position = UDim2.new(0.5, 0, 1, urgentOffset),
 			}, {
 				List = React.createElement("UIListLayout", {
 					Padding = UDim.new(0, 5),
@@ -1094,7 +1184,7 @@ local function CombatHud(props)
 			strokeColor = ui.HEAVY,
 			strokeThickness = 2,
 			anchorPoint = Vector2.new(0.5, 1),
-			position = UDim2.new(0.5, 0, 1, urgentBottom),
+			position = UDim2.new(0.5, 0, 1, urgentOffset),
 			visible = activeOf(stunRemaining),
 		}, {
 			Label = React.createElement("TextLabel", {
@@ -1120,7 +1210,7 @@ local function CombatHud(props)
 				strokeColor = ui.GRAB,
 				strokeThickness = 2,
 				anchorPoint = Vector2.new(0.5, 1),
-				position = UDim2.new(0.5, 0, 1, urgentBottom),
+				position = UDim2.new(0.5, 0, 1, urgentOffset),
 			}, {
 				List = React.createElement("UIListLayout", {
 					Padding = UDim.new(0, 5),
@@ -1231,7 +1321,7 @@ local function CombatHud(props)
 				fillColor = slot1Color,
 				fill = spinCharge,
 				selected = activeSlot == 1,
-				emblem = buildAbilityEmblem(slotAbility[1] or "spin", skillSize, abilityEmblemColor(spinCharge, slot1Color)),
+				emblem = buildAbilityEmblem(slotAbility[1] or "spin", skillSize, abilityEmblemColor(spinCharge)),
 				subLabel = abilityTimer(spinRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,
@@ -1252,7 +1342,7 @@ local function CombatHud(props)
 				fillColor = slot2Color,
 				fill = stingerCharge,
 				selected = activeSlot == 2,
-				emblem = buildAbilityEmblem(slotAbility[2] or "stinger", skillSize, abilityEmblemColor(stingerCharge, slot2Color)),
+				emblem = buildAbilityEmblem(slotAbility[2] or "stinger", skillSize, abilityEmblemColor(stingerCharge)),
 				subLabel = abilityTimer(stingerRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,
@@ -1273,7 +1363,7 @@ local function CombatHud(props)
 				fillColor = slot3Color,
 				fill = overDriveCharge,
 				selected = activeSlot == 3,
-				emblem = buildAbilityEmblem(slotAbility[3] or "overdrive", skillSize, abilityEmblemColor(overDriveCharge, slot3Color)),
+				emblem = buildAbilityEmblem(slotAbility[3] or "overdrive", skillSize, abilityEmblemColor(overDriveCharge)),
 				subLabel = abilityTimer(overDriveRemain),
 				subTextSize = if touch then 17 else 16,
 				subColor = ui.TEXT,

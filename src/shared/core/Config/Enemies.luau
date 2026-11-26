@@ -36,14 +36,30 @@ export type EnemyVariant = {
 	slamCooldown: number?,
 	slamDamage: number?,
 	slamStunDuration: number?,
-	-- Ranged burst / tracer-line / charged rail-beam fire overrides.
+	-- Melee axe throw ability: hurls axe at mid-range; on miss it embeds in the floor and the
+	-- enemy must sprint over to pick it up before fighting with it again.
+	canAxeThrow: boolean?,
+	axeThrowMinRange: number?,
+	axeThrowMaxRange: number?,
+	axeThrowWindup: number?,
+	axeThrowSpeed: number?,
+	axeThrowDamage: number?,
+	axeThrowCooldown: number?,
+	axeThrowMaxDistance: number?,
+	axePickupRadius: number?,
+	axeRetrieveSpeedFactor: number?,
+	-- Ranged burst / shotgun spread / tracer-line / charged rail-beam fire overrides.
 	burstCount: number?,
 	burstInterval: number?,
 	burstSpreadDeg: number?,
+	pelletCount: number?,
+	pelletSpreadDeg: number?,
 	fireEvery: number?,
 	projectileStyle: ("orb" | "tracer")?,
 	projectileSpeed: number?,
 	projectileDamage: number?,
+	-- Set false on rapid-fire tracer specialists (minigun) so Parry cannot deflect their hail.
+	canParry: boolean?,
 	canBeam: boolean?,
 	beamCharge: number?,
 	beamLockTime: number?,
@@ -60,6 +76,8 @@ export type EnemyKind = {
 	-- `ranged`, ...) stay as internal ids: they name the role in code, Brain and the waves, and
 	-- renaming them would touch every module for no visible change.
 	displayName: string,
+	bossTitle: string?,
+	isBoss: boolean?,
 	model: string?,
 	variants: { EnemyVariant }?,
 	health: number,
@@ -73,6 +91,28 @@ export type EnemyKind = {
 	recover: number?,
 	damage: number?,
 	grabDamagePerSecond: number?,
+	-- Boss Oh heavy titan attacks
+	coneRange: number?,
+	coneArc: number?,
+	coneWindup: number?,
+	coneDamage: number?,
+	coneStunDuration: number?,
+	leapMinRange: number?,
+	leapMaxRange: number?,
+	leapWindup: number?,
+	leapDuration: number?,
+	leapArcHeight: number?,
+	leapRadius: number?,
+	leapHeight: number?,
+	leapDamage: number?,
+	leapStunDuration: number?,
+	leapCooldown: number?,
+	novaWindup: number?,
+	novaCooldown: number?,
+	novaWaves: number?,
+	novaOrbCount: number?,
+	novaOrbSpeed: number?,
+	novaDamage: number?,
 	canRush: boolean?,
 	rushMinRange: number?,
 	rushMaxRange: number?,
@@ -145,7 +185,21 @@ Config.ENEMY_KINDS = {
 				spinCooldown = 6.5,
 				spinMoveFactor = 0.65,
 			},
-			{ model = "EnemyMeleeAxe", weapon = "axe", health = 42 },
+			{
+				model = "EnemyMeleeAxe",
+				weapon = "axe",
+				health = 42,
+				canAxeThrow = true,
+				axeThrowMinRange = 13,
+				axeThrowMaxRange = 42,
+				axeThrowWindup = 0.65,
+				axeThrowSpeed = 54,
+				axeThrowDamage = 18,
+				axeThrowCooldown = 6.5,
+				axeThrowMaxDistance = 40,
+				axePickupRadius = 4.2,
+				axeRetrieveSpeedFactor = 1.28,
+			},
 			{
 				model = "EnemyMeleeMace",
 				weapon = "mace",
@@ -200,10 +254,14 @@ Config.ENEMY_KINDS = {
 				weapon = "shotgun",
 				health = 26,
 				weight = 3,
-				burstCount = 2,
-				burstInterval = 0.2,
-				burstSpreadDeg = 3,
-				projectileStyle = "orb",
+				burstCount = 1,
+				pelletCount = 4,
+				pelletSpreadDeg = 36,
+				fireEvery = 2.0,
+				projectileStyle = "tracer",
+				projectileSpeed = 62,
+				projectileDamage = 7,
+				canParry = true,
 			},
 			{
 				model = "EnemyRangedCarbine",
@@ -236,6 +294,7 @@ Config.ENEMY_KINDS = {
 				projectileStyle = "tracer",
 				projectileSpeed = 72,
 				projectileDamage = 3.5,
+				canParry = false,
 			},
 		},
 		health = 20,
@@ -308,6 +367,42 @@ Config.ENEMY_KINDS = {
 		rushKnockbackUp = 28,
 		rushStunDuration = 1.3,
 	},
+	-- Boss "Oh" (Oleada 6 — first part of OhMyGon): colossal heavy mechanical titan with three
+	-- telegraphed signature attacks: frontal cone smash, seismic meteor leap, and 360-deg plasma nova.
+	bossOh = {
+		displayName = "Oh",
+		bossTitle = "OH — TITÁN DEL SECTOR",
+		isBoss = true,
+		model = "BossOh",
+		health = 650,
+		speed = 13.5,
+		size = Vector3.new(6.8, 11.0, 6.2),
+		color = Color3.fromRGB(165, 42, 48),
+		reach = 18,
+		recover = 1.25,
+		damage = 26,
+		coneRange = 24,
+		coneArc = 115,
+		coneWindup = 0.85,
+		coneDamage = 26,
+		coneStunDuration = 0.9,
+		leapMinRange = 16,
+		leapMaxRange = 55,
+		leapWindup = 0.65,
+		leapDuration = 0.72,
+		leapArcHeight = 16,
+		leapRadius = 18,
+		leapHeight = 5.0,
+		leapDamage = 32,
+		leapStunDuration = 1.2,
+		leapCooldown = 7.5,
+		novaWindup = 1.0,
+		novaCooldown = 9.0,
+		novaWaves = 2,
+		novaOrbCount = 10,
+		novaOrbSpeed = 34,
+		novaDamage = 18,
+	},
 } :: { [string]: EnemyKind }
 
 -- Grabber escape & damage tuning (plans/gdd/content.md).
@@ -330,14 +425,15 @@ Config.PROJECTILE_HIT_HEIGHT = 2.6
 -- (exploder blast damage and crowd separation) without scanning every enemy in the room.
 Config.ENEMY_GRID_CELL_SIZE = 12
 
--- One table per wave: kind -> count. Grabber enters starting on wave 4. When the last wave is
--- cleared the room is clean, and after ROOM_RESTART_SECONDS it starts over from wave 1.
+-- One table per wave: kind -> count. Grabber enters starting on wave 4; Wave 6 is the first
+-- boss encounter ("Oh"). Counts of non-boss kinds are scaled by the chosen difficulty.
 Config.WAVES = {
 	{ melee = 3 },
 	{ melee = 3, ranged = 2 },
 	{ melee = 3, ranged = 2, exploder = 2 },
 	{ melee = 3, ranged = 2, exploder = 1, grabber = 1 },
 	{ melee = 4, ranged = 3, exploder = 2, grabber = 2 },
+	{ bossOh = 1 },
 } :: { { [string]: number } }
 
 Config.WAVE_GAP_SECONDS = 2

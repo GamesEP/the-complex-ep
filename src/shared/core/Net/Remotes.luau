@@ -38,9 +38,10 @@ return {
 	GrabEscape = remote("GrabEscape"),
 
 	-- The test classes (plans/gdd/systems.md, "Clases"). `ChooseClass(id)` from the selection
-	-- screen; `UseAbility(id, aim)` for every class ability added with them. Spin, Stinger and
-	-- Over Drive keep their own remotes above, which predate the classes.
+	-- screen; `ChooseDifficulty(id)` sets the room's difficulty before combat starts;
+	-- `UseAbility(id, aim)` for every class ability added with them.
 	ChooseClass = remote("ChooseClass"),
+	ChooseDifficulty = remote("ChooseDifficulty"),
 	UseAbility = remote("UseAbility"),
 
 	-- Server -> client combat sound cues (enemy attacks, explosions, hit confirms, co-op swings).

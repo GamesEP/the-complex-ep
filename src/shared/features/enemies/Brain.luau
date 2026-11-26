@@ -25,6 +25,8 @@ export type Phase =
 	| "spin"
 	| "phantomStep"
 	| "slamWindup"
+	| "axeThrowWindup"
+	| "axeRetrieve"
 	| "beamCharge"
 	| "evade"
 	| "lunge"
@@ -34,6 +36,10 @@ export type Phase =
 	| "holding"
 	| "rushWindup"
 	| "rush"
+	| "bossConeWindup"
+	| "bossLeapWindup"
+	| "bossLeap"
+	| "bossNovaWindup"
 
 export type State = {
 	phase: Phase,
@@ -49,16 +55,20 @@ export type State = {
 	pendingPhantomStep: boolean?,
 	phantomStepFinisher: boolean?,
 	nextSlamAt: number?,
+	nextAxeThrowAt: number?,
 	nextRushAt: number?,
+	nextLeapAt: number?,
+	nextNovaAt: number?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "evade" | "rush",
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "axeRetrieve" | "evade" | "rush" | "bossLeap",
 	action: (
 		"strike"
 		| "spinTick"
 		| "phantomStepHop"
 		| "slam"
+		| "axeThrow"
 		| "fire"
 		| "beamStart"
 		| "beamFire"
@@ -69,6 +79,10 @@ export type Intent = {
 		| "grabCheck"
 		| "rushLaunch"
 		| "rushCheck"
+		| "bossConeSmash"
+		| "bossLeapLaunch"
+		| "bossLeapLand"
+		| "bossNovaFire"
 	)?,
 }
 
@@ -96,6 +110,11 @@ export type Kind = {
 	slamRange: number?,
 	slamWindup: number?,
 	slamCooldown: number?,
+	canAxeThrow: boolean?,
+	axeThrowMinRange: number?,
+	axeThrowMaxRange: number?,
+	axeThrowWindup: number?,
+	axeThrowCooldown: number?,
 	canBeam: boolean?,
 	beamCharge: number?,
 	beamCooldown: number?,
@@ -111,6 +130,14 @@ export type Kind = {
 	rushDuration: number?,
 	rushCooldown: number?,
 	rushRecover: number?,
+	coneWindup: number?,
+	leapMinRange: number?,
+	leapMaxRange: number?,
+	leapWindup: number?,
+	leapDuration: number?,
+	leapCooldown: number?,
+	novaWindup: number?,
+	novaCooldown: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -137,9 +164,12 @@ function Brain.initial(now: number): State
 		pendingPhantomStep = false,
 		phantomStepFinisher = false,
 		nextSlamAt = now + 1.8,
+		nextAxeThrowAt = now + 2.2,
 		-- Later than the other abilities: a wave should open with the grabber walking in, not
 		-- with every grabber charging the moment it spawns.
 		nextRushAt = now + 2.5,
+		nextLeapAt = now + 3.0,
+		nextNovaAt = now + 5.5,
 	}
 end
 
@@ -157,7 +187,10 @@ local function with(
 	pendingPhantomStep: boolean?,
 	phantomStepFinisher: boolean?,
 	nextSlamAt: number?,
-	nextRushAt: number?
+	nextRushAt: number?,
+	nextLeapAt: number?,
+	nextNovaAt: number?,
+	nextAxeThrowAt: number?
 ): State
 	return {
 		phase = phase,
@@ -173,12 +206,28 @@ local function with(
 		pendingPhantomStep = if pendingPhantomStep ~= nil then pendingPhantomStep else false,
 		phantomStepFinisher = if phantomStepFinisher ~= nil then phantomStepFinisher else false,
 		nextSlamAt = if nextSlamAt ~= nil then nextSlamAt else state.nextSlamAt,
+		nextAxeThrowAt = if nextAxeThrowAt ~= nil then nextAxeThrowAt else state.nextAxeThrowAt,
 		nextRushAt = if nextRushAt ~= nil then nextRushAt else state.nextRushAt,
+		nextLeapAt = if nextLeapAt ~= nil then nextLeapAt else state.nextLeapAt,
+		nextNovaAt = if nextNovaAt ~= nil then nextNovaAt else state.nextNovaAt,
 	}
 end
 
 local function melee(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
 	local reach = kind.reach or 0
+	if state.phase == "axeRetrieve" then
+		-- Unarmed axe enemy sprints directly to its dropped axe on the arena floor.
+		return state, { move = "axeRetrieve" }
+	end
+	if state.phase == "axeThrowWindup" then
+		if now >= state.endsAt then
+			local cd = kind.axeThrowCooldown or 6.5
+			local rec = (kind.recover or 0.8) * 0.9
+			return with(state, "recover", now + rec, nil, nil, false, nil, nil, nil, 0, false, false, nil, nil, nil, nil, now + cd),
+				{ move = "hold", action = "axeThrow" }
+		end
+		return state, { move = "hold" }
+	end
 	if state.phase == "slamWindup" then
 		if now >= state.endsAt then
 			local slamCd = kind.slamCooldown or 6.5
@@ -242,6 +291,14 @@ local function melee(kind: Kind, state: State, distance: number, now: number, ca
 			return with(state, "chase", 0), { move = "hold" }
 		end
 		return state, { move = "hold" }
+	end
+	-- Axe Throw: mid-range melee specialist hurls its battle-axe at the player (on miss it drops
+	-- onto the floor and the enemy must sprint over to retrieve it).
+	local axeMin = kind.axeThrowMinRange or 13
+	local axeMax = kind.axeThrowMaxRange or 42
+	if kind.canAxeThrow == true and now >= (state.nextAxeThrowAt or 0) and distance >= axeMin and distance <= axeMax then
+		local throwWindup = kind.axeThrowWindup or 0.65
+		return with(state, "axeThrowWindup", now + throwWindup), { move = "hold" }
 	end
 	if not canAttack then
 		return state, { move = "flank" }
@@ -410,11 +467,63 @@ local function grabber(kind: Kind, state: State, distance: number, now: number, 
 	return state, { move = "toward" }
 end
 
+local function bossOh(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
+	if state.phase == "bossConeWindup" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.recover or 1.2)), { move = "hold", action = "bossConeSmash" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "bossLeapWindup" then
+		if now >= state.endsAt then
+			return with(state, "bossLeap", now + (kind.leapDuration or 0.72)), { move = "bossLeap", action = "bossLeapLaunch" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "bossLeap" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.recover or 1.25)), { move = "hold", action = "bossLeapLand" }
+		end
+		return state, { move = "bossLeap" }
+	end
+	if state.phase == "bossNovaWindup" then
+		if now >= state.endsAt then
+			return with(state, "recover", now + (kind.recover or 1.2)), { move = "hold", action = "bossNovaFire" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	-- 1. 360-deg plasma nova when off cooldown and within arena combat reach.
+	if now >= (state.nextNovaAt or 0) and distance <= 52 then
+		local nextNova = now + (kind.novaCooldown or 9.0)
+		return with(state, "bossNovaWindup", now + (kind.novaWindup or 1.0), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nextNova),
+			{ move = "hold" }
+	end
+	-- 2. Seismic meteor leap to close mid/long range gaps dramatically.
+	if now >= (state.nextLeapAt or 0) and distance >= (kind.leapMinRange or 16) and distance <= (kind.leapMaxRange or 55) then
+		local nextLeap = now + (kind.leapCooldown or 7.5)
+		return with(state, "bossLeapWindup", now + (kind.leapWindup or 0.65), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nextLeap, nil),
+			{ move = "hold" }
+	end
+	-- 3. Heavy frontal cone smash up close.
+	if distance <= (kind.reach or 18) then
+		return with(state, "bossConeWindup", now + (kind.coneWindup or 0.85)), { move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
 local BEHAVIOURS = {
 	melee = melee,
 	ranged = ranged,
 	exploder = exploder,
 	grabber = grabber,
+	bossOh = bossOh,
 }
 
 -- Transitions a grabber into `holding` once EnemyService confirms the target was caught.
@@ -430,6 +539,16 @@ end
 -- Ends a rush early (it hit a wall), straight into the grabber's post-rush recovery.
 function Brain.endRush(state: State, recover: number, now: number): State
 	return with(state, "recover", now + recover)
+end
+
+-- Transitions an axe enemy into `axeRetrieve` when its thrown axe misses and lands on the floor.
+function Brain.enterAxeRetrieve(state: State): State
+	return with(state, "axeRetrieve", 0)
+end
+
+-- Finishes retrieving a dropped axe from the floor, entering a brief recovery before resuming melee.
+function Brain.finishAxeRetrieve(state: State, recover: number, cooldown: number, now: number): State
+	return with(state, "recover", now + recover, nil, nil, false, nil, nil, nil, 0, false, false, nil, nil, nil, nil, now + cooldown)
 end
 
 -- Advances grab-escape progress (from the trapped player's presses or teammates' hits) and
@@ -527,6 +646,28 @@ function Brain.selfTest()
 	-- Without an attack token, a melee unit flanks instead of starting a dogpile windup.
 	local sf, intentF = Brain.step("melee", meleeKind, Brain.initial(0), 4, 1, false)
 	assert(is(sf.phase, "chase") and is(intentF.move, "flank") and is(intentF.action, nil), "melee without token flanks")
+
+	-- Axe Throw ability: mid-range windup -> throws axe -> on miss enters axeRetrieve until picked up.
+	local axeKind: Kind = {
+		reach = 6,
+		windup = 0.45,
+		recover = 0.8,
+		canAxeThrow = true,
+		axeThrowMinRange = 13,
+		axeThrowMaxRange = 42,
+		axeThrowWindup = 0.65,
+		axeThrowCooldown = 6.5,
+	}
+	local sa: any = Brain.initial(0)
+	sa, intent = Brain.step("melee", axeKind, sa, 24, 3.0)
+	assert(is(sa.phase, "axeThrowWindup") and is(intent.move, "hold"), "axe enemy winds up throw at mid-range")
+	sa, intent = Brain.step("melee", axeKind, sa, 24, 3.7)
+	assert(is(intent.action, "axeThrow") and is(sa.phase, "recover"), "axe enemy hurls axe when windup completes")
+	sa = Brain.enterAxeRetrieve(sa)
+	sa, intent = Brain.step("melee", axeKind, sa, 24, 4.0)
+	assert(is(sa.phase, "axeRetrieve") and is(intent.move, "axeRetrieve"), "unarmed axe enemy sprints to retrieve dropped axe")
+	sa = Brain.finishAxeRetrieve(sa, 0.45, 6.5, 5.0)
+	assert(is(sa.phase, "recover"), "picking up axe enters brief recovery")
 
 	-- Dual-blade spin DPS ability: telegraphs windup -> enters spin -> emits periodic spinTicks -> recovers.
 	local dualKind: Kind = {
@@ -758,6 +899,39 @@ function Brain.selfTest()
 	assert(is(mc.phase, "chase"), "mace does not re-slam before slamCooldown elapses")
 	mc, intent = Brain.step("melee", maceKind, mc, 11, 9.5, true)
 	assert(is(mc.phase, "slamWindup"), "mace slams again once slamCooldown expires")
+
+	-- Boss Oh cycles through cone smash, seismic leap, and 360-deg nova cleanly.
+	local bossKind: Kind = {
+		reach = 18,
+		recover = 1.2,
+		coneWindup = 0.85,
+		leapMinRange = 16,
+		leapMaxRange = 55,
+		leapWindup = 0.65,
+		leapDuration = 0.72,
+		leapCooldown = 7.5,
+		novaWindup = 1.0,
+		novaCooldown = 9.0,
+	}
+	local bo: any = Brain.initial(0)
+	bo, intent = Brain.step("bossOh", bossKind, bo, 12, 1.0, true)
+	assert(is(bo.phase, "bossConeWindup"), "boss Oh winds up frontal cone smash up close")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 12, 1.9, true)
+	assert(is(bo.phase, "recover") and is(intent.action, "bossConeSmash"), "boss Oh unleashes cone smash")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 28, 3.2, true)
+	assert(is(bo.phase, "chase"), "boss Oh exits recover")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 28, 3.3, true)
+	assert(is(bo.phase, "bossLeapWindup"), "boss Oh winds up seismic leap at mid range")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 28, 4.0, true)
+	assert(is(bo.phase, "bossLeap") and is(intent.action, "bossLeapLaunch"), "boss Oh launches leap")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 5, 4.8, true)
+	assert(is(bo.phase, "recover") and is(intent.action, "bossLeapLand"), "boss Oh lands seismic slam")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 20, 6.2, true)
+	assert(is(bo.phase, "chase"), "boss Oh exits leap recover")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 20, 6.3, true)
+	assert(is(bo.phase, "bossNovaWindup"), "boss Oh winds up 360 nova once cooldown is ready")
+	bo, intent = Brain.step("bossOh", bossKind, bo, 20, 7.4, true)
+	assert(is(bo.phase, "recover") and is(intent.action, "bossNovaFire"), "boss Oh fires 360 nova")
 end
 
 return Brain

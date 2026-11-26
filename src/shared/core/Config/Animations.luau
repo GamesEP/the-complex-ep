@@ -94,7 +94,7 @@ Config.ANIM_SPIN_TURNS = 1
 -- Procedural client-side animations for rigged `.rbxmx` enemies (walking, attacks, fire recoil, death).
 Config.ENEMY_WALK_CYCLE_HZ = 1.65
 Config.ENEMY_STRIKE_ANIM_SECONDS = 0.34
-Config.ENEMY_FIRE_ANIM_SECONDS = 0.24
+Config.ENEMY_FIRE_ANIM_SECONDS = 0.36
 Config.ENEMY_DEATH_ANIM_SECONDS = 0.65
 
 return Config

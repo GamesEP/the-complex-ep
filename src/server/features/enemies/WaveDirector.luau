@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Difficulty = require(Shared.features.enemies.Difficulty)
 local Waves = require(Shared.features.enemies.Waves)
 
 local EnemyService = require(script.Parent.EnemyService)
@@ -21,11 +22,12 @@ local WaveDirector = {}
 -- How often the director looks at the board. Waves change on a scale of seconds; checking every
 -- frame would only cost more.
 local POLL_SECONDS = 0.2
--- Spawns sit this far inside the walls.
-local SPAWN_INSET = 10
+-- Spawns sit this far inside the walls (clear of perimeter crates, cryo tanks, and consoles).
+local SPAWN_INSET = 13
 
 local world: Instance = nil :: any
 local onReset: (() -> ())? = nil
+local getDifficulty: (() -> string)? = nil
 
 -- Bumped by every reset. A loop holding an older generation stops at its next check, so a
 -- reset can never leave the old loop spawning into the new room.
@@ -43,9 +45,19 @@ local function anyoneAlive(): boolean
 end
 
 local function spawnWave(index: number)
-	local kinds = Waves.expand(Config.WAVES[index])
+	local diffId = if getDifficulty then getDifficulty() else Config.DEFAULT_DIFFICULTY
+	local scaled = Difficulty.scaleWave(Config.WAVES[index], diffId)
+	local kinds = Waves.expand(scaled)
 	for i, kind in ipairs(kinds) do
-		EnemyService.spawn(kind, Waves.spawnPoint(i, #kinds, Config.ROOM_SIZE, SPAWN_INSET, 0))
+		local rawPos: Vector3
+		if kind == "bossOh" then
+			-- Boss Oh enters dramatically from the North Blast Door bay!
+			rawPos = Vector3.new(0, 0, -(Config.ROOM_SIZE.Y / 2 - 18))
+		else
+			rawPos = Waves.spawnPoint(i, #kinds, Config.ROOM_SIZE, SPAWN_INSET, 0)
+		end
+		local safePos = Waves.avoidObstacles(rawPos, 3.5, Config.ARENA_PILLARS)
+		EnemyService.spawn(kind, safePos, diffId)
 	end
 end
 
@@ -112,9 +124,14 @@ local function watch(player: Player)
 	end
 end
 
-function WaveDirector.start(dependencies: { world: Instance, onReset: (() -> ())? })
+function WaveDirector.start(dependencies: {
+	world: Instance,
+	onReset: (() -> ())?,
+	getDifficulty: (() -> string)?,
+})
 	world = dependencies.world
 	onReset = dependencies.onReset
+	getDifficulty = dependencies.getDifficulty
 	world:SetAttribute("WaveCount", #Config.WAVES)
 	Players.PlayerAdded:Connect(watch)
 	for _, player in ipairs(Players:GetPlayers()) do

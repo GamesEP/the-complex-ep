@@ -49,6 +49,10 @@ type Rig = {
 	parryGlint: Part?,
 	slamOuter: Part?,
 	slamInner: Part?,
+	bossConeArc: { Part }?,
+	bossLeapOuter: Part?,
+	bossLeapInner: Part?,
+	bossNovaRing: Part?,
 	alertGui: BillboardGui?,
 	stunOrbs: { Part }?,
 	lastAfterimageAt: number,
@@ -113,10 +117,29 @@ local function collectJoints(model: Model, body: BasePart): { JointEntry }
 end
 
 local function applyPose(joints: { JointEntry }, pose: EnemyAnim.LimbPose)
+	local rootDelta = pose.root or CFrame.identity
+	-- Resolve the rig's torso pivot so head and shoulders follow `pose.torso` hierarchically
+	-- (preventing floating detached arms/heads during crouches, twists, leaps, and recoil).
+	local torsoPivot = CFrame.identity
+	for _, entry in ipairs(joints) do
+		if entry.group == "torso" then
+			torsoPivot = entry.restC0
+			break
+		end
+	end
+	local torsoShift = torsoPivot * pose.torso * torsoPivot:Inverse()
+	local hipDrop = CFrame.new(0, pose.torso.Position.Y * 0.45, 0)
+
 	for _, entry in ipairs(joints) do
 		local delta = (pose :: any)[entry.group]
 		if delta and entry.motor.Parent then
-			entry.motor.C0 = entry.restC0 * delta
+			if entry.group == "torso" then
+				entry.motor.C0 = rootDelta * entry.restC0 * delta
+			elseif entry.group == "head" or entry.group == "leftArm" or entry.group == "rightArm" then
+				entry.motor.C0 = rootDelta * torsoShift * entry.restC0 * delta
+			else
+				entry.motor.C0 = rootDelta * hipDrop * entry.restC0 * delta
+			end
 		end
 	end
 end
@@ -175,6 +198,26 @@ local function detachEnemy(inst: Instance)
 			rig.slamInner:Destroy()
 			rig.slamInner = nil
 		end
+		if rig.bossConeArc then
+			for _, p in ipairs(rig.bossConeArc) do
+				if p.Parent then
+					p:Destroy()
+				end
+			end
+			rig.bossConeArc = nil
+		end
+		if rig.bossLeapOuter then
+			rig.bossLeapOuter:Destroy()
+			rig.bossLeapOuter = nil
+		end
+		if rig.bossLeapInner then
+			rig.bossLeapInner:Destroy()
+			rig.bossLeapInner = nil
+		end
+		if rig.bossNovaRing then
+			rig.bossNovaRing:Destroy()
+			rig.bossNovaRing = nil
+		end
 		if rig.alertGui then
 			rig.alertGui:Destroy()
 			rig.alertGui = nil
@@ -227,6 +270,10 @@ local function attachEnemy(inst: Instance)
 			parryGlint = nil,
 			slamOuter = nil,
 			slamInner = nil,
+			bossConeArc = nil,
+			bossLeapOuter = nil,
+			bossLeapInner = nil,
+			bossNovaRing = nil,
 			alertGui = nil,
 			stunOrbs = nil,
 			lastAfterimageAt = 0,
@@ -623,6 +670,14 @@ local function onRenderStepped(dt: number)
 		local isStunned = phase == "stunned" or (type(stunnedUntil) == "number" and serverNow < stunnedUntil)
 		if isStunned then
 			targetPose = EnemyAnim.stunPose(clock)
+		elseif phase == "bossConeWindup" then
+			targetPose = EnemyAnim.bossConeWindupPose(phaseProgress, clock)
+		elseif phase == "bossLeapWindup" then
+			targetPose = EnemyAnim.bossLeapWindupPose(phaseProgress, clock)
+		elseif phase == "bossLeap" then
+			targetPose = EnemyAnim.bossLeapAirPose(phaseProgress)
+		elseif phase == "bossNovaWindup" then
+			targetPose = EnemyAnim.bossNovaWindupPose(phaseProgress, clock)
 		elseif phase == "holding" then
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "spin" then
@@ -631,6 +686,10 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.phantomStepPose()
 		elseif phase == "slamWindup" then
 			targetPose = EnemyAnim.slamWindupPose(phaseProgress, clock)
+		elseif phase == "axeThrowWindup" then
+			targetPose = EnemyAnim.axeThrowWindupPose(phaseProgress, clock)
+		elseif phase == "axeRetrieve" then
+			targetPose = EnemyAnim.axeRetrievePose(rig.walkPhase)
 		elseif phase == "evade" then
 			targetPose = EnemyAnim.evadeJumpPose(phaseProgress)
 		elseif phase == "beamCharge" then
@@ -813,6 +872,145 @@ local function onRenderStepped(dt: number)
 			rig.spinRing = nil
 		end
 
+		-- Boss Oh telegraphs: frontal cone smash fan, seismic leap red landing zone, and 360 nova charge ring.
+		if phase == "bossConeWindup" then
+			local dirAttr = model:GetAttribute("BossConeDir")
+			local coneRange = model:GetAttribute("BossConeRange")
+			local coneArc = model:GetAttribute("BossConeArc")
+			if typeof(dirAttr) == "Vector3" and dirAttr.Magnitude > 1e-3 then
+				local dir = Vector3.new(dirAttr.X, 0, dirAttr.Z).Unit
+				local range = if type(coneRange) == "number" then coneRange else 24
+				local halfArc = math.rad((if type(coneArc) == "number" then coneArc else 115) * 0.5)
+				local fan = rig.bossConeArc
+				if not fan then
+					fan = {}
+					for i = 1, 5 do
+						local ray = Instance.new("Part")
+						ray.Name = `BossConeGuide_{i}`
+						ray.Anchored = true
+						ray.CanCollide = false
+						ray.CanQuery = false
+						ray.CanTouch = false
+						ray.CastShadow = false
+						ray.Material = Enum.Material.Neon
+						ray.Color = if i == 1 or i == 5 then Color3.fromRGB(255, 70, 50) else Color3.fromRGB(255, 155, 50)
+						ray.Parent = getCorpseFolder()
+						table.insert(fan, ray)
+					end
+					rig.bossConeArc = fan
+				end
+				for i, ray in ipairs(fan) do
+					if ray.Parent then
+						local frac = (i - 1) / 4
+						local theta = -halfArc + frac * (halfArc * 2)
+						local c, s = math.cos(theta), math.sin(theta)
+						local rayDir = Vector3.new(dir.X * c - dir.Z * s, 0, dir.X * s + dir.Z * c)
+						local len = range * (0.45 + 0.55 * phaseProgress)
+						local mid = Vector3.new(pos.X, 0.18, pos.Z) + rayDir * (len * 0.5)
+						ray.Size = Vector3.new(if i == 1 or i == 5 then 0.55 else 1.4, 0.14, len)
+						ray.CFrame = CFrame.lookAt(mid, mid + rayDir)
+						ray.Transparency = 0.68 - 0.38 * phaseProgress
+					end
+				end
+			end
+		elseif rig.bossConeArc then
+			for _, p in ipairs(rig.bossConeArc) do
+				if p.Parent then
+					p:Destroy()
+				end
+			end
+			rig.bossConeArc = nil
+		end
+
+		local leapTarget = model:GetAttribute("BossLeapTarget")
+		if (phase == "bossLeapWindup" or phase == "bossLeap") and typeof(leapTarget) == "Vector3" then
+			local radiusAttr = model:GetAttribute("BossLeapRadius")
+			local leapDiam = (if type(radiusAttr) == "number" and radiusAttr > 0 then radiusAttr else 18) * 2
+			local outer = rig.bossLeapOuter
+			if not outer or not outer.Parent then
+				local disc = Instance.new("Part")
+				disc.Name = "BossLeapOuter"
+				disc.Shape = Enum.PartType.Cylinder
+				disc.Anchored = true
+				disc.CanCollide = false
+				disc.CanQuery = false
+				disc.CanTouch = false
+				disc.CastShadow = false
+				disc.Material = Enum.Material.Neon
+				disc.Color = Color3.fromRGB(255, 55, 65)
+				disc.Transparency = 0.68
+				disc.Parent = getCorpseFolder()
+				rig.bossLeapOuter = disc
+				outer = disc
+			end
+			local inner = rig.bossLeapInner
+			if not inner or not inner.Parent then
+				local fill = Instance.new("Part")
+				fill.Name = "BossLeapInner"
+				fill.Shape = Enum.PartType.Cylinder
+				fill.Anchored = true
+				fill.CanCollide = false
+				fill.CanQuery = false
+				fill.CanTouch = false
+				fill.CastShadow = false
+				fill.Material = Enum.Material.Neon
+				fill.Color = Color3.fromRGB(255, 165, 65)
+				fill.Transparency = 0.52
+				fill.Parent = getCorpseFolder()
+				rig.bossLeapInner = fill
+				inner = fill
+			end
+			if outer then
+				outer.Size = Vector3.new(0.18, leapDiam, leapDiam)
+				outer.CFrame = CFrame.new(leapTarget.X, 0.16, leapTarget.Z) * CFrame.Angles(0, 0, math.rad(90))
+				outer.Transparency = 0.72 - 0.16 * math.abs(math.sin(clock * 20))
+			end
+			if inner then
+				local fillFrac = if phase == "bossLeapWindup" then phaseProgress * 0.45 else 0.45 + phaseProgress * 0.55
+				local fillDiam = math.max(leapDiam * fillFrac, 2.5)
+				inner.Size = Vector3.new(0.24, fillDiam, fillDiam)
+				inner.CFrame = CFrame.new(leapTarget.X, 0.22, leapTarget.Z) * CFrame.Angles(0, 0, math.rad(90))
+				inner.Transparency = 0.62 - 0.34 * fillFrac
+			end
+		else
+			if rig.bossLeapOuter then
+				rig.bossLeapOuter:Destroy()
+				rig.bossLeapOuter = nil
+			end
+			if rig.bossLeapInner then
+				rig.bossLeapInner:Destroy()
+				rig.bossLeapInner = nil
+			end
+		end
+
+		if phase == "bossNovaWindup" then
+			local ring = rig.bossNovaRing
+			if not ring or not ring.Parent then
+				local disc = Instance.new("Part")
+				disc.Name = "BossNovaCharge"
+				disc.Shape = Enum.PartType.Cylinder
+				disc.Anchored = true
+				disc.CanCollide = false
+				disc.CanQuery = false
+				disc.CanTouch = false
+				disc.CastShadow = false
+				disc.Material = Enum.Material.Neon
+				disc.Color = Color3.fromRGB(220, 85, 255)
+				disc.Parent = getCorpseFolder()
+				rig.bossNovaRing = disc
+				ring = disc
+			end
+			if ring then
+				local diam = 14 + 14 * (1 - phaseProgress) + math.sin(clock * 28) * 0.8
+				ring.Size = Vector3.new(0.26, diam, diam)
+				ring.CFrame = CFrame.new(pos.X, 0.24, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+				ring.Transparency = 0.65 - 0.35 * phaseProgress
+			end
+		elseif rig.bossNovaRing then
+			rig.bossNovaRing:Destroy()
+			rig.bossNovaRing = nil
+		end
+
 		-- Overhead yellow warning triangle (`!`) for Grabber and single-sword Paso Fantasma abilities.
 		if model:GetAttribute("AlertIcon") == true then
 			local alert = rig.alertGui
@@ -874,8 +1072,21 @@ local function onRenderStepped(dt: number)
 			rig.stunOrbs = nil
 		end
 
-		-- Instant snap during high-speed spin or Paso Fantasma dash so pose never lags behind.
-		if phase == "spin" or phase == "phantomStep" then
+		-- Hide the axe enemy's in-hand battle-axe while its thrown axe is flying or lying on the floor.
+		if rig.weapon == "axe" then
+			local axeHidden = model:GetAttribute("AxeThrown") == true
+			local targetAlpha = if axeHidden then 1 else 0
+			for _, partName in ipairs({ "AxeShaft", "AxeCollar", "AxeHead", "AxeEdge", "AxeBackSpike" }) do
+				local p = model:FindFirstChild(partName)
+				if p and p:IsA("BasePart") and p.Transparency ~= targetAlpha then
+					p.Transparency = targetAlpha
+				end
+			end
+		end
+
+		-- Instant snap during high-speed spin, Paso Fantasma dash, or initial ranged recoil punch
+		-- so fast kickback and dashes never blur out.
+		if phase == "spin" or phase == "phantomStep" or (fireElapsed >= 0 and fireElapsed < 0.09) then
 			rig.currentPose = targetPose
 		else
 			rig.currentPose = EnemyAnim.blend(rig.currentPose, targetPose, blendRate)
@@ -989,6 +1200,19 @@ function EnemyAnimator.start()
 			end
 			if typeof(arg2) == "Vector3" and typeof(arg3) == "Vector3" and type(arg4) == "number" then
 				spawnBeamBlast(arg2, arg3, arg4)
+			end
+		elseif eventKind == "bossConeSmash" then
+			if typeof(arg1) == "Instance" and arg1:IsA("Model") then
+				local rig = rigs[arg1]
+				if rig then
+					rig.strikeStartedAt = os.clock()
+				end
+			end
+			if typeof(arg2) == "Vector3" and typeof(arg3) == "Vector3" and type(arg4) == "number" then
+				local flat = Vector3.new(arg3.X, 0, arg3.Z)
+				local dir = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+				local impact = Vector3.new(arg2.X, 0.25, arg2.Z) + dir * (arg4 * 0.45)
+				spawnSlamShockwave(impact, arg4 * 0.62)
 			end
 		elseif eventKind == "slamImpact" then
 			if typeof(arg1) == "Instance" and arg1:IsA("Model") then

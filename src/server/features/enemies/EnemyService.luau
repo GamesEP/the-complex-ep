@@ -20,7 +20,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local Brain = require(Shared.features.enemies.Brain)
+local Difficulty = require(Shared.features.enemies.Difficulty)
 local Hitbox = require(Shared.features.enemies.Hitbox)
+local Melee = require(Shared.features.combat.Melee)
 local SpatialGrid = require(Shared.features.enemies.SpatialGrid)
 local Tactics = require(Shared.features.enemies.Tactics)
 local Waves = require(Shared.features.enemies.Waves)
@@ -86,6 +88,14 @@ export type Enemy = {
 	phantomStartedAt: number,
 	phantomDuration: number,
 	phantomStepIndex: number,
+	bossConeDir: Vector3?,
+	bossLeapOrigin: Vector3?,
+	bossLeapTarget: Vector3?,
+	bossLeapStartedAt: number,
+	bossLeapDuration: number,
+	axeInFlight: boolean,
+	droppedAxePart: Model?,
+	droppedAxePos: Vector3?,
 }
 
 type Projectile = {
@@ -95,6 +105,11 @@ type Projectile = {
 	damage: number,
 	reflected: boolean,
 	isTracer: boolean,
+	isAxe: boolean?,
+	originPos: Vector3?,
+	maxDistance: number?,
+	spinAngle: number?,
+	canParry: boolean,
 	shooter: Enemy?,
 }
 
@@ -115,6 +130,7 @@ local stunPlayer: ((Player, number) -> ())? = nil
 -- ClassService's "somebody is still choosing a class": the whole board waits while it is true.
 local isPaused: (() -> boolean)? = nil
 local folder: Folder = nil :: any
+local worldRef: Instance? = nil
 
 local enemies: { Enemy } = {}
 local projectiles: { Projectile } = {}
@@ -339,12 +355,139 @@ local function releaseGrab(enemy: Enemy, t: number, playEscapeSfx: boolean)
 	end
 end
 
+local function syncBossHud(enemy: Enemy?)
+	if not worldRef then
+		return
+	end
+	if enemy and not enemy.dead and enemy.spec.isBoss == true then
+		worldRef:SetAttribute("BossName", enemy.spec.bossTitle or enemy.spec.displayName or "JEFE")
+		worldRef:SetAttribute("BossHealth", math.max(enemy.health, 0))
+		worldRef:SetAttribute("BossMaxHealth", enemy.spec.health)
+	else
+		worldRef:SetAttribute("BossName", "")
+		worldRef:SetAttribute("BossHealth", 0)
+		worldRef:SetAttribute("BossMaxHealth", 0)
+	end
+end
+
+local function clearDroppedAxe(enemy: Enemy)
+	if enemy.droppedAxePart then
+		enemy.droppedAxePart:Destroy()
+		enemy.droppedAxePart = nil
+	end
+	enemy.droppedAxePos = nil
+	enemy.axeInFlight = false
+end
+
+local function createDroppedAxe(pos: Vector3): Model
+	local m = Instance.new("Model")
+	m.Name = "DroppedEnemyAxe"
+	local safeXZ = Waves.avoidObstacles(Waves.clamp(pos, Config.ROOM_SIZE, WALL_MARGIN + 1), 1.5, Config.ARENA_PILLARS)
+	local base = Vector3.new(safeXZ.X, 0, safeXZ.Z)
+
+	-- Glowing pickup ring on the floor so players & the unarmed enemy clearly spot the dropped axe.
+	local ring = Instance.new("Part")
+	ring.Name = "PickupRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(255, 130, 45)
+	ring.Transparency = 0.45
+	ring.Size = Vector3.new(0.16, 4.4, 4.4)
+	ring.CFrame = CFrame.new(base.X, 0.1, base.Z) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = m
+
+	-- Battle-axe embedded diagonally upright in the concrete floor.
+	local shaft = Instance.new("Part")
+	shaft.Name = "Shaft"
+	shaft.Anchored = true
+	shaft.CanCollide = false
+	shaft.CanQuery = false
+	shaft.CanTouch = false
+	shaft.Material = Enum.Material.Metal
+	shaft.Color = Color3.fromRGB(110, 118, 132)
+	shaft.Size = Vector3.new(0.3, 3.6, 0.3)
+	shaft.CFrame = CFrame.new(base.X, 1.55, base.Z) * CFrame.Angles(math.rad(18), 0, math.rad(-22))
+	shaft.Parent = m
+
+	local blade = Instance.new("Part")
+	blade.Name = "Blade"
+	blade.Anchored = true
+	blade.CanCollide = false
+	blade.CanQuery = false
+	blade.CanTouch = false
+	blade.Material = Enum.Material.Neon
+	blade.Color = Color3.fromRGB(255, 86, 48)
+	blade.Size = Vector3.new(0.24, 1.65, 1.85)
+	blade.CFrame = CFrame.new(base.X, 0.72, base.Z) * CFrame.Angles(math.rad(18), 0, math.rad(-22))
+	blade.Parent = m
+
+	m.Parent = folder
+	return m
+end
+
+local function throwAxe(enemy: Enemy, target: BasePart)
+	local origin = enemy.body.Position
+	local aim = Vector3.new(target.Position.X - origin.X, 0, target.Position.Z - origin.Z)
+	if aim.Magnitude < 1e-3 then
+		return
+	end
+	local dir = aim.Unit
+	local speed = enemy.spec.axeThrowSpeed or 54
+	local damage = enemy.spec.axeThrowDamage or 18
+	local maxDist = enemy.spec.axeThrowMaxDistance or 40
+	local spawnPos = Vector3.new(origin.X + dir.X * 2.2, Config.PROJECTILE_HEIGHT + 0.4, origin.Z + dir.Z * 2.2)
+
+	enemy.axeInFlight = true
+	enemy.model:SetAttribute("AxeThrown", true)
+
+	local part = Instance.new("Part")
+	part.Name = "ThrownAxe"
+	part.Shape = Enum.PartType.Block
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Material = Enum.Material.Neon
+	part.Color = Color3.fromRGB(255, 92, 46)
+	part.Size = Vector3.new(2.2, 0.35, 2.8)
+	part.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+	part.Parent = folder
+
+	table.insert(projectiles, {
+		part = part,
+		velocity = dir * speed,
+		expiresAt = now() + (maxDist / math.max(speed, 1)) + 0.5,
+		damage = damage,
+		reflected = false,
+		isTracer = false,
+		isAxe = true,
+		originPos = spawnPos,
+		maxDistance = maxDist,
+		spinAngle = 0,
+		canParry = true,
+		shooter = enemy,
+	})
+	if enemy.hasJoints then
+		Remotes.EnemyAnim:FireAllClients("strike", enemy.model, "axe")
+	end
+	Remotes.CombatSfx:FireAllClients("enemyMeleeStrike", origin)
+end
+
 local function kill(enemy: Enemy)
 	if enemy.dead then
 		return
 	end
 	enemy.dead = true
+	if enemy.spec.isBoss == true then
+		syncBossHud(nil)
+	end
 	grid:remove(enemy)
+	clearDroppedAxe(enemy)
 	releaseGrab(enemy, now(), true)
 	local position = enemy.body.Position
 	if enemy.hasJoints and enemy.modelName then
@@ -365,48 +508,62 @@ local function fire(enemy: Enemy, target: BasePart)
 	if aim.Magnitude < 1e-3 then
 		return
 	end
-	local dir = aim.Unit
+	local baseDir = aim.Unit
+	local pelletCount = math.max(enemy.spec.pelletCount or 1, 1)
+	local pelletSpreadDeg = enemy.spec.pelletSpreadDeg or 0
 	local spreadDeg = enemy.spec.burstSpreadDeg or 0
-	if spreadDeg > 0 then
-		local rad = math.rad((math.random() * 2 - 1) * spreadDeg)
-		local cosA, sinA = math.cos(rad), math.sin(rad)
-		dir = Vector3.new(dir.X * cosA - dir.Z * sinA, 0, dir.X * sinA + dir.Z * cosA).Unit
-	end
-
 	local isTracer = enemy.spec.projectileStyle == "tracer"
+	local isShotgun = enemy.weapon == "shotgun"
 	local speed = enemy.spec.projectileSpeed or 45
 	local damage = enemy.spec.projectileDamage or enemy.spec.damage or 8
 	local spawnPos = Vector3.new(origin.X, Config.PROJECTILE_HEIGHT, origin.Z)
+	local canParry = if enemy.spec.canParry ~= nil then enemy.spec.canParry else true
 
-	local part = Instance.new("Part")
-	part.Name = if isTracer then "Tracer" else "Shot"
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Material = Enum.Material.Neon
-	if isTracer then
-		-- Sleek glowing ballistic tracer line for minigun bursts.
-		part.Shape = Enum.PartType.Block
-		part.Color = Color3.fromRGB(255, 205, 65)
-		part.Size = Vector3.new(0.28, 0.28, 3.8)
-		part.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
-	else
-		part.Shape = Enum.PartType.Ball
-		part.Color = enemy.spec.color
-		part.Size = Vector3.one * 1.5
-		part.Position = spawnPos
+	for p = 1, pelletCount do
+		local dir = baseDir
+		if pelletCount > 1 and pelletSpreadDeg > 0 then
+			-- Fan out evenly across 4 diverging directions while facing straight ahead.
+			local frac = (p - 1) / (pelletCount - 1) - 0.5
+			local rad = math.rad(frac * pelletSpreadDeg)
+			local cosA, sinA = math.cos(rad), math.sin(rad)
+			dir = Vector3.new(baseDir.X * cosA - baseDir.Z * sinA, 0, baseDir.X * sinA + baseDir.Z * cosA).Unit
+		elseif spreadDeg > 0 then
+			local rad = math.rad((math.random() * 2 - 1) * spreadDeg)
+			local cosA, sinA = math.cos(rad), math.sin(rad)
+			dir = Vector3.new(baseDir.X * cosA - baseDir.Z * sinA, 0, baseDir.X * sinA + baseDir.Z * cosA).Unit
+		end
+
+		local part = Instance.new("Part")
+		part.Name = if isTracer then (if isShotgun then "ShotgunTracer" else "Tracer") else "Shot"
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.Material = Enum.Material.Neon
+		if isTracer then
+			part.Shape = Enum.PartType.Block
+			part.Color = if isShotgun then Color3.fromRGB(115, 235, 255) else Color3.fromRGB(255, 205, 65)
+			part.Size = if isShotgun then Vector3.new(0.32, 0.32, 4.4) else Vector3.new(0.28, 0.28, 3.8)
+			part.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+		else
+			part.Shape = Enum.PartType.Ball
+			part.Color = enemy.spec.color
+			part.Size = Vector3.one * 1.5
+			part.Position = spawnPos
+		end
+		part.Parent = folder
+		table.insert(projectiles, {
+			part = part,
+			velocity = dir * speed,
+			expiresAt = now() + (enemy.spec.projectileLife or 2.5),
+			damage = damage,
+			reflected = false,
+			isTracer = isTracer,
+			canParry = canParry,
+			shooter = enemy,
+		})
 	end
-	part.Parent = folder
-	table.insert(projectiles, {
-		part = part,
-		velocity = dir * speed,
-		expiresAt = now() + (enemy.spec.projectileLife or 2.5),
-		damage = damage,
-		reflected = false,
-		isTracer = isTracer,
-		shooter = enemy,
-	})
+
 	if enemy.hasJoints then
 		Remotes.EnemyAnim:FireAllClients("fire", enemy.model, enemy.weapon)
 	end
@@ -518,6 +675,7 @@ local function stepEnemy(
 			or enemy.state.phase == "spin"
 			or enemy.state.phase == "phantomStep"
 			or enemy.state.phase == "slamWindup"
+			or enemy.state.phase == "axeThrowWindup"
 			or enemy.state.phase == "beamCharge"
 			or enemy.state.phase == "evade"
 			or enemy.state.phase == "lunge"
@@ -597,7 +755,7 @@ local function stepEnemy(
 		local telegraphColor: Color3? = nil
 		if state.phase == "phantomStep" or (state.phase == "windup" and (state.phantomStepFinisher or state.pendingPhantomStep)) then
 			telegraphColor = Color3.fromRGB(70, 235, 255)
-		elseif state.phase == "slamWindup" then
+		elseif state.phase == "slamWindup" or state.phase == "axeThrowWindup" then
 			telegraphColor = Color3.fromRGB(255, 165, 55)
 		elseif state.phase == "spin" then
 			telegraphColor = Color3.fromRGB(255, 85, 120)
@@ -609,6 +767,12 @@ local function stepEnemy(
 			-- Red, not the grab's amber: a different tell for a different answer (dash sideways out
 			-- of the line, rather than away).
 			telegraphColor = Color3.fromRGB(255, 60, 60)
+		elseif state.phase == "bossConeWindup" then
+			telegraphColor = Color3.fromRGB(255, 130, 45)
+		elseif state.phase == "bossLeapWindup" or state.phase == "bossLeap" then
+			telegraphColor = Color3.fromRGB(255, 55, 70)
+		elseif state.phase == "bossNovaWindup" then
+			telegraphColor = Color3.fromRGB(215, 85, 255)
 		elseif state.phase == "windup" or state.phase == "lunge" then
 			telegraphColor = Color3.fromRGB(255, 190, 85)
 		end
@@ -624,9 +788,37 @@ local function stepEnemy(
 			or (state.phase == "windup" and (state.pendingPhantomStep == true or state.phantomStepFinisher == true))
 		local isGrabAlert = enemy.kind == "grabber"
 			and (state.phase == "windup" or state.phase == "lunge" or state.phase == "rushWindup" or state.phase == "rush")
+		local isBossAlert = enemy.spec.isBoss == true
+			and (state.phase == "bossConeWindup" or state.phase == "bossLeapWindup" or state.phase == "bossNovaWindup")
+		local isAxeAlert = state.phase == "axeThrowWindup"
 		enemy.model:SetAttribute("ParryTelegraph", isPhantomFinisher)
-		enemy.model:SetAttribute("AlertIcon", isPhantomAbility or isGrabAlert)
+		enemy.model:SetAttribute("AlertIcon", isPhantomAbility or isGrabAlert or isBossAlert or isAxeAlert)
 		enemy.model:SetAttribute("SlamRadius", if state.phase == "slamWindup" then (enemy.spec.slamRadius or 15.5) else nil)
+		if state.phase == "bossConeWindup" then
+			local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+			local dir = if toT.Magnitude > 1e-3 then toT.Unit else Vector3.new(0, 0, -1)
+			enemy.bossConeDir = dir
+			enemy.model:SetAttribute("BossConeDir", dir)
+			enemy.model:SetAttribute("BossConeRange", enemy.spec.coneRange or 24)
+			enemy.model:SetAttribute("BossConeArc", enemy.spec.coneArc or 115)
+			Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
+		elseif before == "bossConeWindup" then
+			enemy.model:SetAttribute("BossConeDir", nil)
+		end
+		if state.phase == "bossLeapWindup" then
+			local rawLand = Vector3.new(target.root.Position.X, enemy.spec.size.Y / 2, target.root.Position.Z)
+			local clampedLand = Waves.clamp(rawLand, Config.ROOM_SIZE, WALL_MARGIN + enemy.radius)
+			local safeLand = Waves.avoidObstacles(clampedLand, enemy.radius, Config.ARENA_PILLARS)
+			enemy.bossLeapTarget = safeLand
+			enemy.model:SetAttribute("BossLeapTarget", Vector3.new(safeLand.X, 0.15, safeLand.Z))
+			enemy.model:SetAttribute("BossLeapRadius", enemy.spec.leapRadius or 18)
+			Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
+		elseif state.phase ~= "bossLeap" and (before == "bossLeapWindup" or before == "bossLeap") then
+			enemy.model:SetAttribute("BossLeapTarget", nil)
+		end
+		if state.phase == "bossNovaWindup" then
+			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
+		end
 		if before == "evade" then
 			-- Ensure ground elevation snaps cleanly to exact floor height on landing.
 			local baseY = enemy.spec.size.Y / 2
@@ -650,7 +842,7 @@ local function stepEnemy(
 			else
 				Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 			end
-		elseif state.phase == "slamWindup" then
+		elseif state.phase == "slamWindup" or state.phase == "axeThrowWindup" then
 			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 		elseif state.phase == "rushWindup" then
 			Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
@@ -887,6 +1079,8 @@ local function stepEnemy(
 		enemy.phantomStartedAt = t
 		enemy.phantomDuration = enemy.spec.phantomStepDuration or 0.15
 		Remotes.CombatSfx:FireAllClients("playerDash", position)
+	elseif intent.action == "axeThrow" then
+		throwAxe(enemy, target.root)
 	elseif intent.action == "fire" then
 		lastRangedShotAt[target.player] = t
 		local burstCount = enemy.spec.burstCount or 1
@@ -895,6 +1089,107 @@ local function stepEnemy(
 			enemy.nextBurstAt = t + (enemy.spec.burstInterval or 0.18)
 		end
 		fire(enemy, target.root)
+	elseif intent.action == "bossConeSmash" then
+		-- Boss Oh: massive frontal cone smash with Titanic Maul.
+		local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local dir = enemy.bossConeDir or (if toT.Magnitude > 1e-3 then toT.Unit else Vector3.new(0, 0, -1))
+		local coneRange = enemy.spec.coneRange or 24
+		local coneArc = enemy.spec.coneArc or 115
+		local coneDamage = enemy.spec.coneDamage or 26
+		local coneStun = enemy.spec.coneStunDuration or 0.9
+		enemy.bossConeDir = nil
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", position)
+		Remotes.EnemyAnim:FireAllClients("bossConeSmash", enemy.model, position, dir, coneRange)
+		for _, candidate in ipairs(list) do
+			if Melee.inArc(position, dir, candidate.root.Position, coneRange, coneArc) then
+				local landed, outcome = hurt(candidate.player, coneDamage, { canBlock = true, canParry = false, origin = position })
+				if landed and stunPlayer then
+					stunPlayer(candidate.player, if outcome == "block" then coneStun * 0.45 else coneStun)
+				end
+			end
+		end
+	elseif intent.action == "bossLeapLaunch" then
+		enemy.bossLeapOrigin = position
+		enemy.bossLeapStartedAt = t
+		enemy.bossLeapDuration = enemy.spec.leapDuration or 0.72
+		if not enemy.bossLeapTarget then
+			local rawLand = Vector3.new(target.root.Position.X, enemy.spec.size.Y / 2, target.root.Position.Z)
+			enemy.bossLeapTarget = Waves.avoidObstacles(Waves.clamp(rawLand, Config.ROOM_SIZE, WALL_MARGIN + enemy.radius), enemy.radius, Config.ARENA_PILLARS)
+		end
+		Remotes.CombatSfx:FireAllClients("playerDash", position)
+	elseif intent.action == "bossLeapLand" then
+		local baseY = enemy.spec.size.Y / 2
+		local land = enemy.bossLeapTarget or Vector3.new(position.X, baseY, position.Z)
+		local landPos = Vector3.new(land.X, baseY, land.Z)
+		local look = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
+		moveEnemy(enemy, if (look - landPos).Magnitude > 1e-3 then CFrame.lookAt(landPos, look) else CFrame.new(landPos))
+		grid:move(enemy, landPos.X, landPos.Z)
+		position = landPos
+		enemy.bossLeapOrigin = nil
+		enemy.bossLeapTarget = nil
+		enemy.model:SetAttribute("BossLeapTarget", nil)
+
+		local leapRadius = enemy.spec.leapRadius or 18
+		local leapHeight = enemy.spec.leapHeight or 5.0
+		local leapDamage = enemy.spec.leapDamage or 32
+		local leapStun = enemy.spec.leapStunDuration or 1.2
+		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", landPos)
+		Remotes.EnemyAnim:FireAllClients("slamImpact", enemy.model, landPos, leapRadius)
+		for _, candidate in ipairs(list) do
+			if Hitbox.inEllipsoid(landPos, candidate.root.Position, leapRadius, leapHeight) then
+				local landed, outcome = hurt(candidate.player, leapDamage, { canBlock = true, canParry = false, origin = landPos })
+				if landed and stunPlayer then
+					stunPlayer(candidate.player, if outcome == "block" then leapStun * 0.45 else leapStun)
+				end
+			end
+		end
+	elseif intent.action == "bossNovaFire" then
+		-- Boss Oh: fires 2 staggered 360-deg rings of plasma orbs (jumpable, cover-blockable, and parriable!).
+		local wavesCount = enemy.spec.novaWaves or 2
+		local orbCount = enemy.spec.novaOrbCount or 10
+		local orbSpeed = enemy.spec.novaOrbSpeed or 34
+		local orbDamage = enemy.spec.novaDamage or 18
+		local function emitRing(angleOffset: number)
+			if enemy.dead then
+				return
+			end
+			local ringOrigin = enemy.body.Position
+			Remotes.CombatSfx:FireAllClients("enemyRangedFire", ringOrigin)
+			for k = 0, orbCount - 1 do
+				local angle = angleOffset + (k / orbCount) * math.pi * 2
+				local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+				local part = Instance.new("Part")
+				part.Name = "BossNovaOrb"
+				part.Anchored = true
+				part.CanCollide = false
+				part.CanTouch = false
+				part.Shape = Enum.PartType.Ball
+				part.Size = Vector3.one * 2.15
+				part.Color = Color3.fromRGB(255, 115, 45)
+				part.Material = Enum.Material.Neon
+				part.Position = Vector3.new(ringOrigin.X + dir.X * (enemy.radius + 1.5), Config.PROJECTILE_HEIGHT, ringOrigin.Z + dir.Z * (enemy.radius + 1.5))
+				part.Parent = folder
+				table.insert(projectiles, {
+					part = part,
+					velocity = dir * orbSpeed,
+					expiresAt = now() + 3.2,
+					damage = orbDamage,
+					reflected = false,
+					isTracer = false,
+					canParry = true,
+					shooter = enemy,
+				})
+			end
+		end
+		emitRing(0)
+		for w = 2, wavesCount do
+			local offset = (math.pi / orbCount) * (w - 1)
+			task.delay(0.35 * (w - 1), function()
+				if not (isPaused and isPaused()) then
+					emitRing(offset)
+				end
+			end)
+		end
 	elseif intent.action == "explode" then
 		explode(enemy, list)
 		return
@@ -956,6 +1251,22 @@ local function stepEnemy(
 		local nextCFrame = if (look - lockPos).Magnitude > 1e-3 then CFrame.lookAt(lockPos, look) else CFrame.new(lockPos)
 		moveEnemy(enemy, nextCFrame)
 		grid:move(enemy, lockPos.X, lockPos.Z)
+		return
+	elseif intent.move == "bossLeap" and enemy.bossLeapOrigin and enemy.bossLeapTarget then
+		-- Parabolic meteor leap arc across the arena straight onto the locked red target circle.
+		local dur = math.max(enemy.bossLeapDuration, 0.1)
+		local u = math.clamp((t - enemy.bossLeapStartedAt) / dur, 0, 1)
+		local arcHeight = enemy.spec.leapArcHeight or 16
+		local baseY = enemy.spec.size.Y / 2
+		local leapPos = Vector3.new(
+			enemy.bossLeapOrigin.X + (enemy.bossLeapTarget.X - enemy.bossLeapOrigin.X) * u,
+			baseY + 4 * arcHeight * u * (1 - u),
+			enemy.bossLeapOrigin.Z + (enemy.bossLeapTarget.Z - enemy.bossLeapOrigin.Z) * u
+		)
+		local look = Vector3.new(enemy.bossLeapTarget.X, leapPos.Y, enemy.bossLeapTarget.Z)
+		local nextCFrame = if (look - leapPos).Magnitude > 1e-3 then CFrame.lookAt(leapPos, look) else CFrame.new(leapPos)
+		moveEnemy(enemy, nextCFrame)
+		grid:move(enemy, leapPos.X, leapPos.Z)
 		return
 	elseif intent.move == "evade" and enemy.evadeOrigin and enemy.evadeTarget then
 		-- Parabolic backstep leap: fast horizontal ease-out + real aerial jump arc, facing the player.
@@ -1146,11 +1457,40 @@ local function stepEnemy(
 		end
 	end
 
+	-- Unarmed axe enemy sprints straight to its dropped battle-axe on the floor and picks it up.
+	if intent.move == "axeRetrieve" then
+		local axePos = enemy.droppedAxePos
+		if not axePos then
+			enemy.model:SetAttribute("AxeThrown", false)
+			enemy.state = Brain.finishAxeRetrieve(enemy.state, 0.2, enemy.spec.axeThrowCooldown or 6.5, t)
+			syncPhase(enemy, t)
+			return
+		end
+		local toAxe = Vector3.new(axePos.X - position.X, 0, axePos.Z - position.Z)
+		local pickupRadius = enemy.spec.axePickupRadius or 4.2
+		if toAxe.Magnitude <= pickupRadius then
+			clearDroppedAxe(enemy)
+			enemy.model:SetAttribute("AxeThrown", false)
+			enemy.state = Brain.finishAxeRetrieve(enemy.state, 0.45, enemy.spec.axeThrowCooldown or 6.5, t)
+			syncPhase(enemy, t)
+			Remotes.CombatSfx:FireAllClients("playerBlock", position)
+			return
+		end
+		local dir = toAxe.Unit
+		local retrieveSpeed = enemy.spec.speed * (enemy.spec.axeRetrieveSpeedFactor or 1.28)
+		local candidate = position + dir * retrieveSpeed * dt
+		local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
+		local look = Vector3.new(axePos.X, moved.Y, axePos.Z)
+		moveEnemy(enemy, if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved))
+		grid:move(enemy, moved.X, moved.Z)
+		return
+	end
+
 	-- Separation via the spatial grid, so a wave spreads into a crowd in O(local) rather than O(N^2).
 	local push = separationPush(enemy, position)
 
 	local candidate = position + (direction * (enemy.spec.speed * speedScale) + push * enemy.spec.speed) * dt
-	local moved = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
+	local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
 	if (moved.X ~= candidate.X or moved.Z ~= candidate.Z) and (intent.move == "flank" or enemy.kind == "ranged") then
 		enemy.orbitSign = -enemy.orbitSign
 		enemy.orbitFlipAt = t + 3.5 + math.random() * 2.5
@@ -1189,11 +1529,25 @@ end
 local function stepProjectiles(list, dt: number, t: number)
 	for i = #projectiles, 1, -1 do
 		local shot = projectiles[i]
-		local position = shot.part.Position + shot.velocity * dt
+		local prevPos = shot.part.Position
+		local position = prevPos + shot.velocity * dt
 		local done = t >= shot.expiresAt
+		local axeMissed = false
+		if not done and shot.isAxe and not shot.reflected and shot.originPos and shot.maxDistance then
+			local traveled = Vector3.new(position.X - shot.originPos.X, 0, position.Z - shot.originPos.Z).Magnitude
+			if traveled >= shot.maxDistance then
+				done = true
+				axeMissed = true
+			end
+		end
 		if not done then
 			local inside = Waves.clamp(position, Config.ROOM_SIZE, 0)
-			done = inside.X ~= position.X or inside.Z ~= position.Z
+			if inside.X ~= position.X or inside.Z ~= position.Z or Waves.hitsObstacle(position, Config.PROJECTILE_HIT_RADIUS * 0.45, Config.ARENA_PILLARS) then
+				done = true
+				if shot.isAxe and not shot.reflected then
+					axeMissed = true
+				end
+			end
 		end
 		if not done then
 			if shot.reflected then
@@ -1223,8 +1577,11 @@ local function stepProjectiles(list, dt: number, t: number)
 							Config.PROJECTILE_HIT_HEIGHT
 						)
 					then
-						local landed, outcome =
-							hurt(target.player, shot.damage, { canBlock = true, canParry = true, origin = position })
+						local landed, outcome = hurt(
+							target.player,
+							shot.damage,
+							{ canBlock = true, canParry = shot.canParry, origin = position }
+						)
 						if outcome == "parry" then
 							-- Deflect the shot back toward the shooter (or nearest enemy) at boosted speed.
 							local dir = reflectDirection(position, shot.velocity, shot.shooter)
@@ -1236,7 +1593,7 @@ local function stepProjectiles(list, dt: number, t: number)
 							shot.part.Color = PARRIED_SHOT_COLOR
 							if shot.isTracer then
 								shot.part.Size = Vector3.new(0.45, 0.45, 4.4)
-							else
+							elseif not shot.isAxe then
 								shot.part.Size = Vector3.one * 2.1
 							end
 							position = position + dir * 2
@@ -1250,10 +1607,36 @@ local function stepProjectiles(list, dt: number, t: number)
 			end
 		end
 		if done then
+			if shot.isAxe and shot.shooter and not shot.shooter.dead then
+				local thrower = shot.shooter
+				thrower.axeInFlight = false
+				if axeMissed then
+					-- Thrown axe missed the player: embed it on the floor so the enemy must run
+					-- over and retrieve it before fighting with it again.
+					clearDroppedAxe(thrower)
+					local landPos = Waves.avoidObstacles(Waves.clamp(prevPos, Config.ROOM_SIZE, WALL_MARGIN + 1), 1.8, Config.ARENA_PILLARS)
+					thrower.droppedAxePos = Vector3.new(landPos.X, 0, landPos.Z)
+					thrower.droppedAxePart = createDroppedAxe(thrower.droppedAxePos)
+					thrower.model:SetAttribute("AxeThrown", true)
+					thrower.state = Brain.enterAxeRetrieve(thrower.state)
+					setTelegraph(thrower, false)
+					syncPhase(thrower, t)
+					Remotes.CombatSfx:FireAllClients("playerBlock", landPos)
+				else
+					-- Axe struck a player (or finished a parry bounce): returns cleanly to hand.
+					thrower.model:SetAttribute("AxeThrown", false)
+				end
+			end
 			shot.part:Destroy()
 			table.remove(projectiles, i)
 		else
-			if shot.isTracer and shot.velocity.Magnitude > 1e-3 then
+			if shot.isAxe then
+				shot.spinAngle = (shot.spinAngle or 0) + dt * 22
+				local baseCf = if shot.velocity.Magnitude > 1e-3
+					then CFrame.lookAt(position, position + shot.velocity)
+					else CFrame.new(position)
+				shot.part.CFrame = baseCf * CFrame.Angles(0, shot.spinAngle, 0)
+			elseif shot.isTracer and shot.velocity.Magnitude > 1e-3 then
 				shot.part.CFrame = CFrame.lookAt(position, position + shot.velocity)
 			else
 				shot.part.Position = position
@@ -1372,6 +1755,9 @@ local function step(dt: number)
 				continue
 			elseif enemy.model:GetAttribute("Phase") == "stunned" then
 				setTelegraph(enemy, false)
+				if enemy.droppedAxePos then
+					enemy.state = Brain.enterAxeRetrieve(enemy.state)
+				end
 				syncPhase(enemy, t)
 			end
 			local enemyDt = if t < enemy.slowUntil then dt * enemy.slowFactor else dt
@@ -1405,9 +1791,11 @@ function EnemyService.start(dependencies: {
 	warnParry = dependencies.warnParry
 	stunPlayer = dependencies.stun
 	isPaused = dependencies.isPaused
+	worldRef = dependencies.world
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
+	syncBossHud(nil)
 	RunService.Heartbeat:Connect(step)
 end
 
@@ -1435,7 +1823,7 @@ function EnemyService.forget(player: Player)
 	end
 end
 
-function EnemyService.spawn(kind: string, position: Vector3): Enemy?
+function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): Enemy?
 	local spec = Config.ENEMY_KINDS[kind]
 	if not spec then
 		warn(`no enemy kind "{kind}" in Config.ENEMY_KINDS`)
@@ -1445,16 +1833,17 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 	local model: Model
 	local body: BasePart
 	local modelName, weapon, variantSpec = pickVariant(kind, spec)
-	-- Merge variant-specific combat overrides (e.g. dual spin DPS, double-burst, minigun tracers)
-	-- onto a per-enemy copy of `spec` so `Brain` and `fire` stay generic.
-	local effectiveSpec = if variantSpec then table.clone(spec) else spec
+	-- Merge variant-specific combat overrides onto a per-enemy copy of `spec`, then apply the
+	-- active difficulty multipliers (`Fácil`, `Normal`, `Difícil`, `Zona Muerta`).
+	local mergedSpec = table.clone(spec)
 	if variantSpec then
 		for k, v in pairs(variantSpec) do
 			if k ~= "model" and k ~= "weapon" and k ~= "weight" then
-				effectiveSpec[k] = v
+				mergedSpec[k] = v
 			end
 		end
 	end
+	local effectiveSpec = Difficulty.scaleSpec(mergedSpec, diffId)
 	local hasJoints = false
 	local models = modelName and ReplicatedStorage:FindFirstChild("Models")
 	local template = models and models:FindFirstChild(modelName)
@@ -1571,6 +1960,14 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 		phantomStartedAt = 0,
 		phantomDuration = 0,
 		phantomStepIndex = 0,
+		bossConeDir = nil,
+		bossLeapOrigin = nil,
+		bossLeapTarget = nil,
+		bossLeapStartedAt = 0,
+		bossLeapDuration = 0,
+		axeInFlight = false,
+		droppedAxePart = nil,
+		droppedAxePos = nil,
 		rushDirection = nil,
 		rushHit = nil,
 		tauntedBy = nil,
@@ -1587,6 +1984,9 @@ function EnemyService.spawn(kind: string, position: Vector3): Enemy?
 	grid:insert(enemy, body.Position.X, body.Position.Z)
 	if enemy.radius > maxEnemyRadius then
 		maxEnemyRadius = enemy.radius
+	end
+	if effectiveSpec.isBoss == true then
+		syncBossHud(enemy)
 	end
 	return enemy
 end
@@ -1618,6 +2018,9 @@ function EnemyService.stun(enemy: Enemy, duration: number)
 	if enemy.dead or duration <= 0 then
 		return
 	end
+	if enemy.spec.isBoss == true then
+		duration *= 0.5
+	end
 	local t = now()
 	if enemy.grabTarget then
 		releaseGrab(enemy, t, true)
@@ -1631,6 +2034,11 @@ function EnemyService.stun(enemy: Enemy, duration: number)
 	enemy.phantomOrigin = nil
 	enemy.phantomTarget = nil
 	enemy.phantomStepIndex = 0
+	enemy.bossConeDir = nil
+	enemy.bossLeapOrigin = nil
+	enemy.bossLeapTarget = nil
+	enemy.model:SetAttribute("BossConeDir", nil)
+	enemy.model:SetAttribute("BossLeapTarget", nil)
 	enemy.state = Brain.initial(t)
 	local baseY = enemy.spec.size.Y / 2
 	local pos = enemy.body.Position
@@ -1673,6 +2081,9 @@ function EnemyService.damage(enemy: Enemy, amount: number)
 	end
 	enemy.health -= amount
 	enemy.fill.Size = UDim2.fromScale(math.clamp(enemy.health / enemy.spec.health, 0, 1), 1)
+	if enemy.spec.isBoss == true then
+		syncBossHud(enemy)
+	end
 	if enemy.health <= 0 then
 		kill(enemy)
 		return
@@ -1709,6 +2120,7 @@ function EnemyService.clear()
 	local t = now()
 	for _, enemy in ipairs(enemies) do
 		enemy.dead = true
+		clearDroppedAxe(enemy)
 		releaseGrab(enemy, t, false)
 		enemy.model:Destroy()
 	end
@@ -1720,6 +2132,7 @@ function EnemyService.clear()
 		shot.part:Destroy()
 	end
 	table.clear(projectiles)
+	syncBossHud(nil)
 end
 
 return EnemyService

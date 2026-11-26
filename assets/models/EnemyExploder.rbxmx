@@ -40,19 +40,55 @@
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
-        <bool name="CastShadow">true</bool>
+        <bool name="CastShadow">false</bool>
         <Color3uint8 name="Color3uint8">15436320</Color3uint8>
         <bool name="Massless">false</bool>
-        <token name="Material">1088</token>
+        <token name="Material">272</token>
         <Vector3 name="size">
           <X>1.75</X>
           <Y>1.3500061</Y>
           <Z>1.3500061</Z>
         </Vector3>
         <token name="TopSurface">0</token>
-        <float name="Transparency">0</float>
+        <float name="Transparency">1</float>
       </Properties>
       <Item class="Motor6D" referent="2">
+        <Properties>
+          <string name="Name">Joint_TorsoCore</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.3500061</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-0.3500061</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">3</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="4">
         <Properties>
           <string name="Name">Joint_Pelvis</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -85,10 +121,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">3</Ref>
+          <Ref name="Part1">5</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="4">
+      <Item class="Motor6D" referent="6">
         <Properties>
           <string name="Name">Joint_LeftLeg</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdExlZw==</BinaryString>
@@ -121,10 +157,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">5</Ref>
+          <Ref name="Part1">7</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="6">
+      <Item class="Motor6D" referent="8">
         <Properties>
           <string name="Name">Joint_LeftFoot</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdExlZw==</BinaryString>
@@ -157,10 +193,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">7</Ref>
+          <Ref name="Part1">9</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="8">
+      <Item class="Motor6D" referent="10">
         <Properties>
           <string name="Name">Joint_RightLeg</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRMZWc=</BinaryString>
@@ -193,10 +229,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">9</Ref>
+          <Ref name="Part1">11</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="10">
+      <Item class="Motor6D" referent="12">
         <Properties>
           <string name="Name">Joint_RightFoot</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRMZWc=</BinaryString>
@@ -229,10 +265,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">11</Ref>
+          <Ref name="Part1">13</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="12">
+      <Item class="Motor6D" referent="14">
         <Properties>
           <string name="Name">Joint_HarnessStrap</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -265,10 +301,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">13</Ref>
+          <Ref name="Part1">15</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="14">
+      <Item class="Motor6D" referent="16">
         <Properties>
           <string name="Name">Joint_C4Block</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -301,10 +337,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">15</Ref>
+          <Ref name="Part1">17</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="16">
+      <Item class="Motor6D" referent="18">
         <Properties>
           <string name="Name">Joint_C4Keypad</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -337,10 +373,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">17</Ref>
+          <Ref name="Part1">19</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="18">
+      <Item class="Motor6D" referent="20">
         <Properties>
           <string name="Name">Joint_C4TimerGlow</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -373,10 +409,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">19</Ref>
+          <Ref name="Part1">21</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="20">
+      <Item class="Motor6D" referent="22">
         <Properties>
           <string name="Name">Joint_C4Beacon</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -409,10 +445,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">21</Ref>
+          <Ref name="Part1">23</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="22">
+      <Item class="Motor6D" referent="24">
         <Properties>
           <string name="Name">Joint_TntStick1</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -445,10 +481,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">23</Ref>
+          <Ref name="Part1">25</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="24">
+      <Item class="Motor6D" referent="26">
         <Properties>
           <string name="Name">Joint_TntStick2</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -481,10 +517,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">25</Ref>
+          <Ref name="Part1">27</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="26">
+      <Item class="Motor6D" referent="28">
         <Properties>
           <string name="Name">Joint_TntStick3</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -517,10 +553,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">27</Ref>
+          <Ref name="Part1">29</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="28">
+      <Item class="Motor6D" referent="30">
         <Properties>
           <string name="Name">Joint_TntBandTop</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -553,10 +589,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">29</Ref>
+          <Ref name="Part1">31</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="30">
+      <Item class="Motor6D" referent="32">
         <Properties>
           <string name="Name">Joint_TntBandBot</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -589,10 +625,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">31</Ref>
+          <Ref name="Part1">33</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="32">
+      <Item class="Motor6D" referent="34">
         <Properties>
           <string name="Name">Joint_TntSpark</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
@@ -625,10 +661,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">33</Ref>
+          <Ref name="Part1">35</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="34">
+      <Item class="Motor6D" referent="36">
         <Properties>
           <string name="Name">Joint_Head</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
@@ -661,10 +697,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">35</Ref>
+          <Ref name="Part1">37</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="36">
+      <Item class="Motor6D" referent="38">
         <Properties>
           <string name="Name">Joint_Visor</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
@@ -697,10 +733,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">37</Ref>
+          <Ref name="Part1">39</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="38">
+      <Item class="Motor6D" referent="40">
         <Properties>
           <string name="Name">Joint_HazardBeacon</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
@@ -733,10 +769,10 @@
             <R22>1</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">39</Ref>
+          <Ref name="Part1">41</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="40">
+      <Item class="Motor6D" referent="42">
         <Properties>
           <string name="Name">Joint_LeftArm</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdEFybQ==</BinaryString>
@@ -769,10 +805,10 @@
             <R22>0.8829498</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">41</Ref>
+          <Ref name="Part1">43</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="42">
+      <Item class="Motor6D" referent="44">
         <Properties>
           <string name="Name">Joint_RightArm</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -805,11 +841,46 @@
             <R22>0.8829498</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">43</Ref>
+          <Ref name="Part1">45</Ref>
         </Properties>
       </Item>
     </Item>
     <Item class="Part" referent="3">
+      <Properties>
+        <string name="Name">TorsoCore</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">15436320</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.75</X>
+          <Y>1.3500061</Y>
+          <Z>1.3500061</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="5">
       <Properties>
         <string name="Name">Pelvis</string>
         <bool name="Anchored">false</bool>
@@ -844,7 +915,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="5">
+    <Item class="Part" referent="7">
       <Properties>
         <string name="Name">LeftLeg</string>
         <bool name="Anchored">false</bool>
@@ -879,7 +950,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="7">
+    <Item class="Part" referent="9">
       <Properties>
         <string name="Name">LeftFoot</string>
         <bool name="Anchored">false</bool>
@@ -914,7 +985,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="9">
+    <Item class="Part" referent="11">
       <Properties>
         <string name="Name">RightLeg</string>
         <bool name="Anchored">false</bool>
@@ -949,7 +1020,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="11">
+    <Item class="Part" referent="13">
       <Properties>
         <string name="Name">RightFoot</string>
         <bool name="Anchored">false</bool>
@@ -984,7 +1055,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="13">
+    <Item class="Part" referent="15">
       <Properties>
         <string name="Name">HarnessStrap</string>
         <bool name="Anchored">false</bool>
@@ -1019,7 +1090,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="15">
+    <Item class="Part" referent="17">
       <Properties>
         <string name="Name">C4Block</string>
         <bool name="Anchored">false</bool>
@@ -1054,7 +1125,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="17">
+    <Item class="Part" referent="19">
       <Properties>
         <string name="Name">C4Keypad</string>
         <bool name="Anchored">false</bool>
@@ -1089,7 +1160,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="19">
+    <Item class="Part" referent="21">
       <Properties>
         <string name="Name">C4TimerGlow</string>
         <bool name="Anchored">false</bool>
@@ -1124,7 +1195,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="21">
+    <Item class="Part" referent="23">
       <Properties>
         <string name="Name">C4Beacon</string>
         <bool name="Anchored">false</bool>
@@ -1159,7 +1230,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="23">
+    <Item class="Part" referent="25">
       <Properties>
         <string name="Name">TntStick1</string>
         <bool name="Anchored">false</bool>
@@ -1194,7 +1265,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="25">
+    <Item class="Part" referent="27">
       <Properties>
         <string name="Name">TntStick2</string>
         <bool name="Anchored">false</bool>
@@ -1229,7 +1300,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="27">
+    <Item class="Part" referent="29">
       <Properties>
         <string name="Name">TntStick3</string>
         <bool name="Anchored">false</bool>
@@ -1264,7 +1335,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="29">
+    <Item class="Part" referent="31">
       <Properties>
         <string name="Name">TntBandTop</string>
         <bool name="Anchored">false</bool>
@@ -1299,7 +1370,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="31">
+    <Item class="Part" referent="33">
       <Properties>
         <string name="Name">TntBandBot</string>
         <bool name="Anchored">false</bool>
@@ -1334,7 +1405,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="33">
+    <Item class="Part" referent="35">
       <Properties>
         <string name="Name">TntSpark</string>
         <bool name="Anchored">false</bool>
@@ -1370,7 +1441,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="35">
+    <Item class="Part" referent="37">
       <Properties>
         <string name="Name">Head</string>
         <bool name="Anchored">false</bool>
@@ -1405,7 +1476,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="37">
+    <Item class="Part" referent="39">
       <Properties>
         <string name="Name">Visor</string>
         <bool name="Anchored">false</bool>
@@ -1440,7 +1511,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="39">
+    <Item class="Part" referent="41">
       <Properties>
         <string name="Name">HazardBeacon</string>
         <bool name="Anchored">false</bool>
@@ -1476,7 +1547,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="41">
+    <Item class="Part" referent="43">
       <Properties>
         <string name="Name">LeftArm</string>
         <bool name="Anchored">false</bool>
@@ -1511,7 +1582,7 @@
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="43">
+    <Item class="Part" referent="45">
       <Properties>
         <string name="Name">RightArm</string>
         <bool name="Anchored">false</bool>

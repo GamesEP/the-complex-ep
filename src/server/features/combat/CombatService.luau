@@ -1281,7 +1281,7 @@ local function stepCombat(dt: number)
 		local expired = t >= bolt.expiresAt
 		if not expired then
 			local inside = Waves.clamp(nextPos, Config.ROOM_SIZE, 0)
-			expired = inside.X ~= nextPos.X or inside.Z ~= nextPos.Z
+			expired = inside.X ~= nextPos.X or inside.Z ~= nextPos.Z or Waves.hitsObstacle(nextPos, bolt.radius * 0.6, Config.ARENA_PILLARS)
 		end
 
 		local hitEnemyTarget: Enemy? = nil

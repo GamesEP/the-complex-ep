@@ -1,11 +1,11 @@
 --[[
-	The class selection screen (plans/gdd/ui.md, "ClassSelect"): three cards, one per test class,
-	shown until the player picks. While any player is still on it the enemies wait (ClassService).
+	The start screen (plans/gdd/ui.md, "ClassSelect"): difficulty selector (Fácil, Normal, Difícil,
+	Zona Muerta) paired with the three test class cards (Tanque, Daño, Apoyo). While any player is
+	still on it the enemies wait (ClassService).
 
-	Everything it shows comes from Config.CLASSES and Config.ABILITIES, so tuning a class never
-	means editing this file. It opens and closes on the replicated `Class` attribute, which the
-	server sets when it accepts the choice — the screen never decides for itself that a class
-	was chosen. Picking fires `ChooseClass` and waits for that attribute.
+	Everything it shows comes from Config.DIFFICULTIES, Config.CLASSES and Config.ABILITIES, and
+	both difficulty (`World.Difficulty`) and class (`Player.Class`) are driven by replicated
+	attributes written by the server.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
+local Difficulty = require(Shared.features.enemies.Difficulty)
 
 local React = require(ReplicatedStorage:WaitForChild("Packages").react)
 
@@ -35,6 +36,97 @@ local function Line(props)
 		textSize = props.textSize or 14,
 		color = props.color or ui.TEXT,
 		order = props.order,
+	})
+end
+
+local function DifficultyBar(props)
+	local currentId = props.currentId
+	local currentDef = Difficulty.get(currentId)
+	local buttons: { [string]: any } = {
+		List = React.createElement("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	}
+	local btnWidth = if props.compact then 92 else 132
+	for idx, diffId in ipairs(Config.DIFFICULTY_ORDER) do
+		local def = Config.DIFFICULTIES[diffId]
+		if def then
+			local selected = diffId == currentId
+			buttons[diffId] = React.createElement("TextButton", {
+				Name = `Diff_{diffId}`,
+				LayoutOrder = idx,
+				Size = UDim2.fromOffset(btnWidth, 34),
+				BackgroundColor3 = if selected then def.color else ui.STEEL,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Font = ui.DISPLAY_FONT,
+				TextSize = if props.compact then 11 else 13,
+				TextColor3 = if selected then ui.INK else ui.TEXT,
+				Text = def.shortName,
+				[React.Event.Activated] = function()
+					Remotes.ChooseDifficulty:FireServer(diffId)
+				end,
+			}, {
+				Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+				Stroke = React.createElement(ui.Outline, {
+					color = if selected then ui.TEXT else def.color,
+					thickness = if selected then 2 else 1.5,
+				}),
+			})
+		end
+	end
+
+	local summary = string.format(
+		"%s  ·  Enemigos ×%.2g  ·  Daño ×%.2g  ·  Vel. ×%.2g  ·  Vida ×%.2g",
+		currentDef.description,
+		currentDef.countMultiplier,
+		currentDef.damageMultiplier,
+		currentDef.speedMultiplier,
+		currentDef.healthMultiplier
+	)
+
+	return React.createElement(ui.Panel, {
+		name = "DifficultySelector",
+		order = 3,
+		size = UDim2.new(0, math.min(props.maxWidth, 620), 0, 0),
+		padding = 10,
+		accentColor = currentDef.color,
+		accent = "left",
+		strokeColor = currentDef.color,
+	}, {
+		List = React.createElement("UIListLayout", {
+			Padding = UDim.new(0, 6),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Title = React.createElement("TextLabel", {
+			LayoutOrder = 1,
+			Size = UDim2.new(1, 0, 0, 16),
+			BackgroundTransparency = 1,
+			Font = ui.MONO_FONT,
+			TextSize = 12,
+			TextColor3 = ui.MUTED,
+			Text = "DIFICULTAD DEL SECTOR (6 OLEADAS · JEFE: OH)",
+		}),
+		Row = React.createElement("Frame", {
+			LayoutOrder = 2,
+			Size = UDim2.new(1, 0, 0, 36),
+			BackgroundTransparency = 1,
+		}, buttons),
+		Summary = React.createElement("TextLabel", {
+			LayoutOrder = 3,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			Font = ui.MONO_FONT,
+			TextSize = 11,
+			TextColor3 = currentDef.color,
+			TextWrapped = true,
+			Text = summary,
+		}),
 	})
 end
 
@@ -91,10 +183,12 @@ local function Card(props)
 	})
 end
 
-local function ClassSelect()
+local function ClassSelect(props)
 	local player = Players.LocalPlayer
 	local metrics = Scaled.useLayout()
 	local current = hooks.useAttribute(player, "Class")
+	local diffAttr = hooks.useAttribute(props.world, "Difficulty")
+	local currentDifficulty = if Difficulty.isValid(diffAttr) then diffAttr else Config.DEFAULT_DIFFICULTY
 	-- Which card was pressed, so a second press does not fire again while the server answers.
 	local pending, setPending = React.useState(nil :: string?)
 
@@ -164,30 +258,35 @@ local function ClassSelect()
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		}, {
 			List = React.createElement("UIListLayout", {
-				Padding = UDim.new(0, 14),
+				Padding = UDim.new(0, 12),
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
 			Heading = React.createElement("TextLabel", {
 				LayoutOrder = 1,
-				Size = UDim2.new(1, 0, 0, 34),
+				Size = UDim2.new(1, 0, 0, 32),
 				BackgroundTransparency = 1,
 				Font = ui.TITLE_FONT,
-				TextSize = 30,
+				TextSize = 28,
 				TextColor3 = ui.TEXT,
-				Text = "Elige tu clase",
+				Text = "Prepara tu incursión",
 			}),
 			Subheading = React.createElement("TextLabel", {
 				LayoutOrder = 2,
-				Size = UDim2.new(1, 0, 0, 20),
+				Size = UDim2.new(1, 0, 0, 18),
 				BackgroundTransparency = 1,
 				Font = ui.BODY_FONT,
-				TextSize = 15,
+				TextSize = 14,
 				TextColor3 = ui.MUTED,
-				Text = "Los enemigos esperan a que elijas.",
+				Text = "Elige la dificultad y tu rol. Los enemigos esperan a que empieces.",
+			}),
+			Difficulty = React.createElement(DifficultyBar, {
+				currentId = currentDifficulty,
+				compact = metrics.compact,
+				maxWidth = available,
 			}),
 			Cards = React.createElement("Frame", {
-				LayoutOrder = 3,
+				LayoutOrder = 4,
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
@@ -199,8 +298,11 @@ end
 local screen = {}
 
 function screen.start()
+	local world = workspace:WaitForChild("World")
 	-- Above every other screen: while it is open nothing else should take a press.
-	return UI.mount("ClassSelect", ClassSelect, { displayOrder = 50 })
+	return UI.mount("ClassSelect", function()
+		return React.createElement(ClassSelect, { world = world })
+	end, { displayOrder = 50 })
 end
 
 return screen

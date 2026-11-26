@@ -11,12 +11,13 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 | `shared/features/combat/Defense` | Pure: hit resolution priority (`invulnerable > parry > block > hit`), 50% defense buff stacking, and WalkSpeed calculation. |
 | `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius, forward target selection and attack lunge math. Both realms call it. |
 | `shared/features/drops/Drops` | Pure: 30% drop roll, weighted kind selection, heal clamp, and damage/speed buff math. |
-| `shared/features/enemies/Brain` | Pure: what an enemy does each frame, as a state machine. |
-| `shared/features/enemies/EnemyAnim` | Pure: procedural enemy limb poses for walking, weapon-specific melee windup/strike (`sword`, `dual`, `axe`, `mace`), and death collapse. |
+| `shared/features/enemies/Brain` | Pure: what an enemy (including Boss Oh) does each frame, as a state machine. |
+| `shared/features/enemies/Difficulty` | Pure: 4-tier difficulty scaling (`easy`, `normal`, `hard`, `deadzone`) for wave counts (bosses stay at 1), health, damage, and speed. |
+| `shared/features/enemies/EnemyAnim` | Pure: procedural enemy limb poses for walking, weapon-specific melee windup/strike (`sword`, `dual`, `axe`, `mace`), Boss Oh attacks, and death collapse. |
 | `shared/features/enemies/Hitbox` | Pure: 3D ellipsoid hit checks for projectiles, melee strikes and oval explosions. |
 | `shared/features/enemies/SpatialGrid` | Pure: uniform 2D spatial hash grid for local enemy lookups without full-list scans. |
 | `shared/features/enemies/Tactics` | Pure: squad AI coordination (melee attack tokens, flanking orbit, ranged stagger/strafe, exploder intercept lead, grabber flank bias, co-op spread). |
-| `shared/features/enemies/Waves` | Pure: what a wave contains, where it spawns, keeping things inside the room. |
+| `shared/features/enemies/Waves` | Pure: what a wave contains, where it spawns, keeping things inside the room and clear of `Config.ARENA_PILLARS`. |
 | `server/features/combat/CombatService` | The player's stats, test sword equipping, drop buff application, the three remotes, and `hurt`. |
 | `server/features/drops/DropService` | Spawns `.rbxmx` combat drops on enemy kills, handles pickup radius, expiration and room reset. |
 | `server/features/enemies/EnemyService` | Spawns, moves and damages enemies; carries out what `Brain` decides. |
@@ -28,9 +29,10 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 | `client/features/combat/SoundPlayer` | 3D spatial combat audio player, preloading, and `CombatSfx` listener. |
 | `client/features/combat/ui/CombatHud` | Health, cooldowns, active buff timers, wave. |
 | `client/features/drops/DropVisuals` | Client-only bobbing and rotation for drops in `workspace.World.Drops`. |
-| `client/features/enemies/EnemyAnimator` | Client-side 60 FPS `Motor6D.C0` animator for rigged `.rbxmx` enemies (walking, weapon attacks, and client-side death collapses). |
+| `client/features/enemies/EnemyAnimator` | Client-side 60 FPS `Motor6D.C0` animator for rigged `.rbxmx` enemies (walking, weapon attacks, axe throw/retrieve, ranged recoil, and client-side death collapses). |
+| `client/features/world/ArenaTheme` | Smoothly tweens `ComplexArena` neon accents, PointLights, and `Lighting` ambient across `Config.WAVE_THEMES` as `World.Wave` advances. |
 
-Every number is in `Config/Combat.luau`, `Config/Drops.luau`, `Config/Enemies.luau`, `Config/Audio.luau` and `Config/Animations.luau`.
+Every number is in `Config/Combat.luau`, `Config/Drops.luau`, `Config/Enemies.luau`, `Config/Difficulty.luau`, `Config/World.luau`, `Config/Audio.luau` and `Config/Animations.luau`.
 
 ## Who decides what
 
@@ -85,6 +87,7 @@ renamed. Read the name from Config anywhere it reaches a screen — never write 
 | `ranged` | Cazador | Ranged, four weapon variants |
 | `exploder` | Detonante | Fast suicide runner |
 | `grabber` | Coloso | Juggernaut that grabs and rushes |
+| `bossOh` | Oh | Wave 6 heavy mechanical titan boss (cone smash, seismic leap, 360° plasma nova) |
 
 **Anchored parts, not rigs.** An enemy is a Model with one anchored part (`Body`), moved by the
 server every Heartbeat. A Humanoid rig per enemy brings physics, pathfinding and a network owner
@@ -160,6 +163,29 @@ counted from the start of the windup. Measured in Studio from 25 studs: 0.72 s w
 **Health per variant.** A variant entry may set `health`; `EnemyService.spawn` already merges every
 variant field except `model`, `weapon` and `weight` over its kind, so it overrides the kind's
 value. The ladder and the reasoning are in `plans/gdd/content.md`.
+
+**Difficulty scaling (`Config/Difficulty.luau` + `shared/features/enemies/Difficulty`).** Players
+select one of 4 tiers (`easy`, `normal`, `hard`, `deadzone` — *Fácil*, *Normal*, *Difícil*, *Zona
+Muerta*) via the contracted `ChooseDifficulty` remote in `ClassSelect`, stored on
+`workspace.World:GetAttribute("Difficulty")`. `WaveDirector` scales non-boss wave counts with
+`Difficulty.scaleWave` (reserving bosses at `1`), and `EnemyService.spawn` runs
+`Difficulty.scaleSpec` on every enemy's merged spec to scale `health`, movement/charge/projectile
+speeds, and all damage fields cleanly. Changing difficulty while the room is paused resets the
+queued wave cleanly.
+
+**Boss "Oh" (Wave 6, `assets/models/BossOh.rbxmx`).** An 11-stud rigged mechanical titan spawning
+near the North Blast Door with `650` base HP (scaled by difficulty) and 50% stun duration
+resistance. `Brain` cycles three telegraphed attacks:
+- **Frontal Cone Smash (`bossConeWindup` -> `bossConeSmash`):** 0.85 s ground fan warning (`115°`,
+  `24` studs), followed by an overhead maul sweep dealing `coneDamage` and `coneStunDuration`.
+- **Seismic Meteor Leap (`bossLeapWindup` -> `bossLeap`):** triggered at `16–55` studs on cooldown;
+  locks a red ground impact ring (`18` studs), arcs `16` studs high over `0.72 s`, and slams the
+  landing zone for `leapDamage` + `leapStunDuration`.
+- **360° Plasma Nova (`bossNovaWindup` -> `bossNovaFire`):** 1.0 s reactor overcharge ring, then
+  fires 2 staggered rings of 10 plasma orbs (blocked by the 4 reactor pillars or reflectable via
+  Parry).
+`EnemyService` mirrors the active boss onto `workspace.World` attributes (`BossName`, `BossHealth`,
+`BossMaxHealth`), which `CombatHud` renders as the bottom-center `BossBar`.
 
 ## Waves
 
@@ -278,19 +304,25 @@ All combat 3D models (`ComplexArena`, `TestSword`, `DropHeal`, `DropDamage`, `Dr
 `EnemyRangedShotgun`, `EnemyRangedCarbine`, `EnemyRangedMinigun`, `EnemyExploder`, `EnemyGrabber`)
 are tracked `.rbxmx` assets under `assets/models/` generated by `lune run scripts/generate-arena.luau`
 and `lune run scripts/generate-models.luau`, mounted at `ReplicatedStorage.Models` via
-`default.project.json` (never built part-by-part at runtime, per `CLAUDE.md`). Every combat enemy
-model anchors only `Body` and rigs limbs via `Group`-tagged `Motor6D` pivots so `EnemyService`
-updates `Body.CFrame` while `EnemyAnimator` drives walk/strafe/sprint, weapon-specific melee
-strikes, single-sword Paso Fantasma (`phantomStep`) multi-directional ambush dashes
+`default.project.json` (never built part-by-part at runtime, per `CLAUDE.md`). Every combat enemy model anchors only an invisible `Body` root and rigs every visible part
+(including `TorsoCore`) via `Group`-tagged `Motor6D` pivots so `EnemyService` updates `Body.CFrame`
+while `EnemyAnimator` drives hierarchical 60 FPS limb poses (head and arms inherit `torso`
+crouches/twists/recoil, and dual-blade `spinPose` rotates the whole connected body around `Body`'s
+center via `pose.root` rather than spinning individual limbs in place): walk/strafe/sprint,
+weapon-specific melee strikes, single-sword Paso Fantasma (`phantomStep`) multi-directional ambush
+dashes
 (`phantomStepPose` + neon afterimage silhouettes in `_EnemyCorpses`, 3+ hops via
 `Tactics.phantomStepWaypoint` into an unavoidable parry-only finisher slash that shadows the player
 and passes `canDodge = false, canBlock = false, canParry = true` to `CombatService.hurt`,
 telegraphed by an overhead yellow warning triangle `!` + pulsing `PhantomStepParryGlint`),
-dual-blade DPS tornado spin (`spinPose` + danger disc), heavy mace seismic ground slam
-(`slamWindupPose` + filling floor warning ring + `slamImpact` shockwave & debris checked via
-`Hitbox.inEllipsoid`, staggering and stunning grounded players via `CombatService.stun` /
-`StunnedUntil` + `CombatAnim.staggerPose`), ranged gun recoil (single orb, double-burst orb, or
-6-round minigun tracer lines), rifle/plasma charged cylindrical rail-beam (`beamChargePose` +
+dual-blade DPS tornado spin (`spinPose` + danger disc), heavy axe throw (`axeThrowWindupPose` ->
+spinning `ThrownAxe` projectile; on miss embeds `DroppedEnemyAxe` on the floor and transitions
+into `axeRetrieve` / `axeRetrievePose` until picked back up, hiding in-hand axe parts via
+`AxeThrown`), heavy mace seismic ground slam (`slamWindupPose` + filling floor warning ring +
+`slamImpact` shockwave & debris checked via `Hitbox.inEllipsoid`, staggering and stunning grounded
+players via `CombatService.stun` / `StunnedUntil` + `CombatAnim.staggerPose`), pronounced ranged
+gun recoil (`firePose` across rifle, plasma, 4-way diverging shotgun tracer fan, and 6-round
+minigun tracer bursts), rifle/plasma charged cylindrical rail-beam (`beamChargePose` +
 cylindrical laser guide that locks `0.4 s` before `beamFire`, checked via `Hitbox.inBeam`),
 ranged parabolic backstep evade leaps (`evadeJumpPose`, >=5 s cooldown), exploder fuse shake,
 muscular grabber windup/lunge/hold (overhead yellow `!` triangle), and client death collapses at 60
@@ -299,10 +331,25 @@ FPS without Humanoids.
 - **Arena (`ComplexArena.rbxmx`):** industrial sci-fi sector room (140×140 studs, floor top at
   `y = 0`) cloned by `WorldBuilder.build()`, with `SpawnLocation` placed from the arena's pivot
   (`pivot * Config.SPAWN_OFFSET`). North (`-Z`) and West (`-X`) are full-height hero walls (blast
-  door, observation bay, columns, conduits, cyan/amber lights); South (`+Z`) and East (`+X`) use
-  low cutaway curbs + invisible full-height containment bounds so `IsoCamera` (at `+X/+Z`) is never
-  obstructed while keeping players inside. All decorative floor plates are `CanCollide = false` so
-  dashes and lunges never snag.
+  door with holo-status boards, observation bay, columns, conduits, overhead gantry cranes, server
+  racks, cryo tank clusters, cyan/amber lights); South (`+Z`) and East (`+X`) use low cutaway curbs
+  + low cargo pallets + invisible full-height containment bounds so `IsoCamera` (at `+X/+Z`) is
+  never obstructed while keeping players inside. Inside the room sit **4 solid quadrant reactor
+  pillars** at `(±38, ±38)` (SE kept shorter at `8.5` studs for camera sightline) plus **5 solid
+  chest-high tactical cover bunkers** (`Config.ARENA_PILLARS`), recessed glowing floor turbine
+  vents, overhead pillar conduit bridges, and perimeter industrial props. `Waves.avoidObstacles`
+  and `Waves.hitsObstacle` keep enemy movement, spawns, drops, and projectiles (`EnemyService` +
+  `CombatService` `staffBolt` + `DropService`) respecting every pillar and bunker as real tactical
+  cover. Every standing structure and perimeter prop except the 5 cover bunkers (pillars, crates,
+  barrels, cryo tanks, consoles, server racks, pallets, bollards) carries a full-height (`36` stud)
+  invisible anti-climb collision hull (`CanCollide = true`, `CanQuery = true`) paired with a 4-wall
+  + ceiling invisible containment shell so players cannot pass through props, climb onto
+  tall/perimeter structures, or exit the room. The 5 low tactical cover bunkers (`CoverBunkers`)
+  use matching-height solid colliders (`3.55–3.95` studs) so they are the only structures players
+  can jump onto and stand on top of. All decorative floor plates and vents are `CanCollide = false` so dashes and
+  lunges never snag. Client horizontal impulses (Dash, Estocada, Attack Lunge, and `Knockback`)
+  use bounded finite `MaxForce` + per-frame `RespectCanCollide` spherecast wall-stops and an
+  out-of-bounds clamp in `CombatInput` so dashing into walls or pillars stops flush without flinging.
 
 - **Test sword:** `CombatService` clones `ReplicatedStorage.Models.TestSword` on `CharacterAdded`
   and `CharacterAppearanceLoaded`, welding its `PrimaryPart` (`Grip`) to `RightHand`
@@ -325,9 +372,11 @@ FPS without Humanoids.
   slowing `WalkSpeed` via `Defense.walkSpeed`; releasing starts `Config.BLOCK_COOLDOWN`.
   `CombatService.hurt` returns `(hitLanded, outcome)` via `Defense.resolveHit`:
   - `parry` deals 0 damage, triggers `playerParry` SFX + `parry` animation, staggers melee
-    attackers (`Config.PARRY_STUN_SECONDS`), and **reflects ranged projectiles** back at the shooter
-    (or nearest living enemy) at `Config.PARRY_PROJECTILE_SPEED_MULTIPLIER` speed for
-    `Config.PARRY_PROJECTILE_DAMAGE` damage.
+    attackers (`Config.PARRY_STUN_SECONDS`), and **reflects parriable ranged projectiles** back at
+    the shooter (or nearest living enemy) at `Config.PARRY_PROJECTILE_SPEED_MULTIPLIER` speed for
+    `Config.PARRY_PROJECTILE_DAMAGE` damage. Minigun tracers (`EnemyRangedMinigun`, `canParry =
+    false`) cannot be parried — holding Block reduces their damage by 70%, while Dash, Jump, and
+    arena cover avoid them cleanly.
   - `block` reduces damage by `Config.BLOCK_DAMAGE_REDUCTION` (70%), stacks with the 50% defense
     buff, and plays `playerBlock`.
 - **Visuals and HUD:** `DropVisuals` bobs/spins pickups on `RenderStepped`, `PlayerAnimator`
@@ -339,7 +388,7 @@ FPS without Humanoids.
 
 ## What is not verified offline
 
-`make test` covers `CombatAnim`, `CombatAudio`, `Defense`, `Drops`, `Melee`, `Brain`, `EnemyAnim`, `Hitbox`, `SpatialGrid`, `Tactics` and `Waves`. Everything that needs a DataModel — the camera,
+`make test` covers `CombatAnim`, `CombatAudio`, `Defense`, `Drops`, `Melee`, `Brain`, `Difficulty`, `EnemyAnim`, `Hitbox`, `SpatialGrid`, `Tactics` and `Waves`. Everything that needs a DataModel — the camera,
 the dash's feel, the touch buttons' placement, enemies moving, 3D audio playback and volume balance, animation silhouettes and feel, sword grip alignment, drop pickup feel, the HUD — only shows up in Studio.
 The touch buttons in particular sit where `ContextActionService` puts them by default; check them
 with phone emulation before relying on them.

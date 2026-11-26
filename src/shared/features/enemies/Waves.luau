@@ -34,11 +34,54 @@ function Waves.spawnPoint(i: number, n: number, room: Vector2, inset: number, he
 	return Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
 end
 
+export type Obstacle = { x: number, z: number, radius: number }
+
 -- Keeps a point inside the room, `margin` studs from the walls.
 function Waves.clamp(point: Vector3, room: Vector2, margin: number): Vector3
 	local halfX = room.X / 2 - margin
 	local halfZ = room.Y / 2 - margin
 	return Vector3.new(math.clamp(point.X, -halfX, halfX), point.Y, math.clamp(point.Z, -halfZ, halfZ))
+end
+
+-- Pushes `point` radially outside any solid interior pillar (`obstacles`), preserving `point.Y`.
+function Waves.avoidObstacles(point: Vector3, entityRadius: number, obstacles: { Obstacle }?): Vector3
+	if not obstacles or #obstacles == 0 then
+		return point
+	end
+	local x, z = point.X, point.Z
+	for _, pillar in ipairs(obstacles) do
+		local dx = x - pillar.x
+		local dz = z - pillar.z
+		local minDist = pillar.radius + entityRadius
+		local distSq = dx * dx + dz * dz
+		if distSq < minDist * minDist then
+			if distSq > 1e-6 then
+				local dist = math.sqrt(distSq)
+				local scale = minDist / dist
+				x = pillar.x + dx * scale
+				z = pillar.z + dz * scale
+			else
+				x = pillar.x + minDist
+			end
+		end
+	end
+	return Vector3.new(x, point.Y, z)
+end
+
+-- True when a projectile/orb at `point` overlaps any solid pillar cover.
+function Waves.hitsObstacle(point: Vector3, hitRadius: number, obstacles: { Obstacle }?): boolean
+	if not obstacles or #obstacles == 0 then
+		return false
+	end
+	for _, pillar in ipairs(obstacles) do
+		local dx = point.X - pillar.x
+		local dz = point.Z - pillar.z
+		local limit = pillar.radius + hitRadius
+		if dx * dx + dz * dz <= limit * limit then
+			return true
+		end
+	end
+	return false
 end
 
 --=============================================================================
@@ -59,6 +102,12 @@ function Waves.selfTest()
 
 	local inside = Waves.clamp(Vector3.new(500, 3, -500), room, 3)
 	assert(inside.X == 67 and inside.Z == -67 and inside.Y == 3, "a point outside is pulled back in, height kept")
+
+	local pillars = { { x = 38, z = 38, radius = 5.6 } }
+	local pushed = Waves.avoidObstacles(Vector3.new(40, 2.5, 38), 2.0, pillars)
+	assert(math.abs((pushed.X - 38) - 7.6) < 1e-4 and pushed.Y == 2.5, "avoidObstacles pushes outside pillar radius keeping Y")
+	assert(Waves.hitsObstacle(Vector3.new(41, 2, 38), 1.0, pillars), "hitsObstacle detects shots hitting solid cover")
+	assert(not Waves.hitsObstacle(Vector3.new(0, 2, 0), 1.0, pillars), "hitsObstacle ignores clear center arena")
 end
 
 return Waves

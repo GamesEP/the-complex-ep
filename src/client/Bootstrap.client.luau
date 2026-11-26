@@ -15,6 +15,7 @@ local Client = script.Parent
 local Layout = require(Client.ui.ScreenMetrics)
 
 local BuildStamp = require(Client.features.environment.ui.BuildStamp)
+local ArenaTheme = require(Client.features.world.ArenaTheme)
 local ClassSelect = require(Client.features.classes.ui.ClassSelect)
 local CombatHud = require(Client.features.combat.ui.CombatHud)
 local CombatInput = require(Client.features.combat.CombatInput)
@@ -37,6 +38,7 @@ PlayerAnimator.start()
 SoundPlayer.start()
 CombatInput.start()
 Knockback.start()
+ArenaTheme.start()
 TonemapperController.start()
 
 -- Everywhere but production, so a screenshot always says which experience it came from. The

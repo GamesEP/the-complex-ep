@@ -12,6 +12,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.core.Net.Remotes)
@@ -22,14 +23,38 @@ local player = Players.LocalPlayer
 
 -- One fling at a time: a newer one replaces the older instead of two velocities fighting.
 local token = 0
-local active: { velocity: LinearVelocity, attachment: Attachment }? = nil
+local active: { velocity: LinearVelocity, attachment: Attachment, root: BasePart, direction: Vector3, speed: number }? = nil
 
-local function clear()
+local function clear(hardStop: boolean?)
 	if active then
+		local moveRoot = active.root
 		active.velocity:Destroy()
 		active.attachment:Destroy()
 		active = nil
+		if hardStop and moveRoot.Parent then
+			local v = moveRoot.AssemblyLinearVelocity
+			moveRoot.AssemblyLinearVelocity = Vector3.new(0, math.min(v.Y, 0), 0)
+		end
 	end
+end
+
+local function hitsWallAhead(root: BasePart, direction: Vector3, distance: number): boolean
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.RespectCanCollide = true
+	local excluded: { Instance } = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(excluded, p.Character)
+		end
+	end
+	params.FilterDescendantsInstances = excluded
+	local sphere = workspace:Spherecast(root.Position, 1.05, direction * distance, params)
+	if sphere and math.abs(sphere.Normal.Y) < 0.65 then
+		return true
+	end
+	local ray = workspace:Raycast(root.Position, direction * (distance + 0.9), params)
+	return ray ~= nil and math.abs(ray.Normal.Y) < 0.65
 end
 
 local function fling(direction: Vector3, speed: number, upSpeed: number, seconds: number)
@@ -49,10 +74,17 @@ local function fling(direction: Vector3, speed: number, upSpeed: number, seconds
 
 	token += 1
 	local mine = token
-	clear()
+	clear(false)
 
-	-- Horizontal: held along one line for `seconds`, like the dash, so ground friction cannot eat
-	-- it. Vertical: one upward kick, left to gravity, which is what makes it read as a launch.
+	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, upSpeed, root.AssemblyLinearVelocity.Z)
+
+	if hitsWallAhead(root, flat, 1.4) then
+		return
+	end
+
+	-- Horizontal: bounded-force velocity (never `math.huge`, which flings players over walls on
+	-- impact) monitored each Heartbeat so wall contact halts horizontal travel cleanly.
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = root
 	local velocity = Instance.new("LinearVelocity")
@@ -61,26 +93,35 @@ local function fling(direction: Vector3, speed: number, upSpeed: number, seconds
 	velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
 	velocity.LineDirection = flat
 	velocity.LineVelocity = speed
-	velocity.MaxForce = math.huge
+	velocity.MaxForce = math.max(root.AssemblyMass * 2200, 30000)
 	velocity.Parent = root
-	active = { velocity = velocity, attachment = attachment }
-
-	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-	root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, upSpeed, root.AssemblyLinearVelocity.Z)
+	active = { velocity = velocity, attachment = attachment, root = root, direction = flat, speed = speed }
 
 	task.delay(seconds, function()
 		if token == mine then
-			clear()
+			clear(false)
 		end
 	end)
 end
 
 function Knockback.start()
 	Remotes.Knockback.OnClientEvent:Connect(fling)
+	RunService.Heartbeat:Connect(function(dt: number)
+		if not active then
+			return
+		end
+		local root = active.root
+		local safeDt = math.min(dt, 1 / 30)
+		local checkDist = math.clamp(active.speed * safeDt * 1.15, 1.2, 2.6)
+		if not root.Parent or hitsWallAhead(root, active.direction, checkDist) then
+			token += 1
+			clear(true)
+		end
+	end)
 	-- A respawn must not inherit a fling aimed at the previous body.
 	player.CharacterAdded:Connect(function()
 		token += 1
-		clear()
+		clear(false)
 	end)
 end
 

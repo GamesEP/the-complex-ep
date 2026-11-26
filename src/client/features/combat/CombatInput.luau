@@ -14,6 +14,7 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
@@ -21,6 +22,7 @@ local Remotes = require(Shared.core.Net.Remotes)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Classes = require(Shared.features.classes.Classes)
+local Waves = require(Shared.features.enemies.Waves)
 
 local Effects = require(script.Parent.Effects)
 local AbilityStore = require(script.Parent.stores.AbilityStore)
@@ -36,7 +38,15 @@ local lastSwingAt = -math.huge
 local dashCharges = 1
 local dashRechargeAt = 0
 local lastDashAt = -math.huge
-local activeDash: { velocity: LinearVelocity, attachment: Attachment }? = nil
+type ActiveMove = {
+	velocity: LinearVelocity,
+	attachment: Attachment,
+	root: BasePart,
+	direction: Vector3,
+	speed: number,
+}
+
+local activeDash: ActiveMove? = nil
 local dashToken = 0
 local spinReadyAt = 0
 local stingerReadyAt = 0
@@ -53,7 +63,7 @@ local chargeToken = 0
 -- Active attack lunge state; gated on `lungeToken` so a dash or respawn cancels any in-flight
 -- step-in cleanly without firing a stale swing.
 local lungeToken = 0
-local activeLunge: { velocity: LinearVelocity, attachment: Attachment }? = nil
+local activeLunge: ActiveMove? = nil
 local dashEndsAt = 0
 
 -- Sticky target picked by the first basic attack or ability in a combo. Tracked with its own
@@ -62,11 +72,90 @@ local dashEndsAt = 0
 local lockedTarget: BasePart? = nil
 local lastEngageAt = -math.huge
 
-local function clearLunge()
+-- Builds RaycastParams that hit only solid world geometry (`RespectCanCollide = true` skips
+-- enemies, drops, floor plates, and VFX) while excluding all player characters.
+local function wallCastParams(): RaycastParams
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.RespectCanCollide = true
+	local excluded: { Instance } = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(excluded, p.Character)
+		end
+	end
+	params.FilterDescendantsInstances = excluded
+	return params
+end
+
+-- True when a solid wall, pillar, cover bunker, or prop lies within `distance` studs ahead.
+-- Ignores near-horizontal floor normals (`|Normal.Y| >= 0.65`).
+local function hitsWallAhead(root: BasePart, direction: Vector3, distance: number): boolean
+	local params = wallCastParams()
+	local sphere = workspace:Spherecast(root.Position, 1.05, direction * distance, params)
+	if sphere and math.abs(sphere.Normal.Y) < 0.65 then
+		return true
+	end
+	local ray = workspace:Raycast(root.Position, direction * (distance + 0.9), params)
+	if ray and math.abs(ray.Normal.Y) < 0.65 then
+		return true
+	end
+	return false
+end
+
+-- Stops residual horizontal velocity and suppresses any upward wall-impact rebound impulse.
+local function dampenAfterMove(root: BasePart, hardStop: boolean)
+	if not root.Parent then
+		return
+	end
+	local vel = root.AssemblyLinearVelocity
+	local y = if hardStop then math.min(vel.Y, 0) else math.min(vel.Y, 4)
+	if hardStop then
+		root.AssemblyLinearVelocity = Vector3.new(0, y, 0)
+	else
+		local horiz = Vector3.new(vel.X, 0, vel.Z)
+		local maxCarry = Config.MOVE_SPEED * 1.15
+		if horiz.Magnitude > maxCarry then
+			horiz = horiz.Unit * maxCarry
+		end
+		root.AssemblyLinearVelocity = Vector3.new(horiz.X, y, horiz.Z)
+	end
+end
+
+-- Creates a bounded-force horizontal LinearVelocity (never `math.huge`, which causes Roblox's
+-- solver to fling characters vertically out of the arena on wall/corner contact). Returns nil
+-- if already flush against a solid obstacle in `direction`.
+local function startSafeVelocity(root: BasePart, direction: Vector3, speed: number): ActiveMove?
+	if hitsWallAhead(root, direction, 1.4) then
+		dampenAfterMove(root, true)
+		return nil
+	end
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = root
+	local velocity = Instance.new("LinearVelocity")
+	velocity.Attachment0 = attachment
+	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+	velocity.LineDirection = direction
+	velocity.LineVelocity = speed
+	velocity.MaxForce = math.max(root.AssemblyMass * 2200, 30000)
+	velocity.Parent = root
+	return {
+		velocity = velocity,
+		attachment = attachment,
+		root = root,
+		direction = direction,
+		speed = speed,
+	}
+end
+
+local function clearLunge(hardStop: boolean?)
 	if activeLunge then
+		local moveRoot = activeLunge.root
 		activeLunge.velocity:Destroy()
 		activeLunge.attachment:Destroy()
 		activeLunge = nil
+		dampenAfterMove(moveRoot, hardStop == true)
 	end
 end
 
@@ -254,18 +343,8 @@ local function attack()
 		local myToken = lungeToken
 		clearLunge()
 
-		-- Horizontal-only velocity, same as dash: respects room walls and leaves gravity alone.
-		local attachment = Instance.new("Attachment")
-		attachment.Parent = root
-		local velocity = Instance.new("LinearVelocity")
-		velocity.Attachment0 = attachment
-		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-		velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-		velocity.LineDirection = aim
-		velocity.LineVelocity = Config.ATTACK_LUNGE_SPEED
-		velocity.MaxForce = math.huge
-		velocity.Parent = root
-		activeLunge = { velocity = velocity, attachment = attachment }
+		-- Horizontal-only bounded-force velocity: stops cleanly on walls/pillars without flinging.
+		activeLunge = startSafeVelocity(root, aim, Config.ATTACK_LUNGE_SPEED)
 
 		-- Play the attack windup immediately during the step-in, then draw the slash and notify
 		-- the server once the lunge has closed the gap.
@@ -351,17 +430,7 @@ local function releaseHeavyAttack()
 		local myToken = lungeToken
 		clearLunge()
 
-		local attachment = Instance.new("Attachment")
-		attachment.Parent = root
-		local velocity = Instance.new("LinearVelocity")
-		velocity.Attachment0 = attachment
-		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-		velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-		velocity.LineDirection = aim
-		velocity.LineVelocity = Config.ATTACK_LUNGE_SPEED
-		velocity.MaxForce = math.huge
-		velocity.Parent = root
-		activeLunge = { velocity = velocity, attachment = attachment }
+		activeLunge = startSafeVelocity(root, aim, Config.ATTACK_LUNGE_SPEED)
 
 		task.delay(lungeDuration, function()
 			if lungeToken ~= myToken then
@@ -436,11 +505,13 @@ local function beginAttackHold()
 	end)
 end
 
-local function clearDash()
+local function clearDash(hardStop: boolean?)
 	if activeDash then
+		local moveRoot = activeDash.root
 		activeDash.velocity:Destroy()
 		activeDash.attachment:Destroy()
 		activeDash = nil
+		dampenAfterMove(moveRoot, hardStop == true)
 	end
 end
 
@@ -478,24 +549,14 @@ local function dash()
 	lastDashAt = clock
 	dashEndsAt = clock + Config.DASH_DURATION
 
-	-- The character is the client's to move, so the dash is a velocity held along one line for
-	-- its duration: horizontal only, gravity left alone, and gone before the next frame's input.
+	-- Bounded-force horizontal dash monitored every Heartbeat: cancels cleanly on wall/pillar
+	-- contact so slamming into an obstacle never flings the player upward or out of the room.
 	dashToken += 1
 	local myDashToken = dashToken
-	local attachment = Instance.new("Attachment")
-	attachment.Parent = root
-	local velocity = Instance.new("LinearVelocity")
-	velocity.Attachment0 = attachment
-	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-	velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-	velocity.LineDirection = direction
-	velocity.LineVelocity = Config.DASH_DISTANCE / Config.DASH_DURATION
-	velocity.MaxForce = math.huge
-	velocity.Parent = root
-	activeDash = { velocity = velocity, attachment = attachment }
+	activeDash = startSafeVelocity(root, direction, Config.DASH_DISTANCE / Config.DASH_DURATION)
 	task.delay(Config.DASH_DURATION, function()
 		if dashToken == myDashToken then
-			clearDash()
+			clearDash(false)
 		end
 	end)
 
@@ -563,22 +624,13 @@ local function stinger()
 	stingerReadyAt = now() + Config.STINGER_COOLDOWN
 	dashEndsAt = clock + Config.STINGER_DURATION
 
-	-- Explosive horizontal piercing thrust (DMC Stinger), keeping gravity intact and respecting walls.
-	local attachment = Instance.new("Attachment")
-	attachment.Parent = root
-	local velocity = Instance.new("LinearVelocity")
-	velocity.Attachment0 = attachment
-	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-	velocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-	velocity.LineDirection = aim
-	velocity.LineVelocity = Config.STINGER_DISTANCE / math.max(Config.STINGER_DURATION, 0.05)
-	velocity.MaxForce = math.huge
-	velocity.Parent = root
-	activeLunge = { velocity = velocity, attachment = attachment }
+	-- Explosive horizontal piercing thrust (Estocada), bounded force + wall-stop guarded.
+	local stingerSpeed = Config.STINGER_DISTANCE / math.max(Config.STINGER_DURATION, 0.05)
+	activeLunge = startSafeVelocity(root, aim, stingerSpeed)
 	local myToken = lungeToken
 	task.delay(Config.STINGER_DURATION, function()
 		if lungeToken == myToken then
-			clearLunge()
+			clearLunge(false)
 		end
 	end)
 
@@ -882,6 +934,51 @@ function CombatInput.start()
 		if maxCharges >= 2 and dashCharges < 2 then
 			dashCharges = 2
 			dashRechargeAt = 0
+		end
+	end)
+
+	-- Per-frame wall-stop guard for active dashes/lunges + hard arena bounds safety clamp so
+	-- no physics spike can ever fling the player onto a structure or outside the room.
+	RunService.Heartbeat:Connect(function(dt: number)
+		local root, humanoid = body()
+		if not root or not humanoid then
+			return
+		end
+
+		local safeDt = math.min(dt, 1 / 30)
+		if activeDash then
+			local checkDist = math.clamp(activeDash.speed * safeDt * 1.15, 1.2, 2.6)
+			if activeDash.root ~= root or hitsWallAhead(root, activeDash.direction, checkDist) then
+				dashToken += 1
+				clearDash(true)
+			elseif humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and root.AssemblyLinearVelocity.Y > 6 then
+				local v = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+			end
+		end
+
+		if activeLunge then
+			local checkDist = math.clamp(activeLunge.speed * safeDt * 1.15, 1.2, 2.6)
+			if activeLunge.root ~= root or hitsWallAhead(root, activeLunge.direction, checkDist) then
+				lungeToken += 1
+				clearLunge(true)
+			elseif humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and root.AssemblyLinearVelocity.Y > 6 then
+				local v = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+			end
+		end
+
+		-- Arena bounds safety net: if a physics glitch ever pushes the character past the room
+		-- perimeter or above/below the arena shell, pull them cleanly back inside.
+		local halfX = Config.ROOM_SIZE.X / 2 - 1.5
+		local halfZ = Config.ROOM_SIZE.Y / 2 - 1.5
+		local pos = root.Position
+		if math.abs(pos.X) > halfX or math.abs(pos.Z) > halfZ or pos.Y > 33 or pos.Y < -4 then
+			local clamped = Waves.clamp(pos, Config.ROOM_SIZE, 3.5)
+			local safe = Waves.avoidObstacles(clamped, 2.8, Config.ARENA_PILLARS)
+			local safeY = math.clamp(pos.Y, 3.5, 22)
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.CFrame = CFrame.new(safe.X, safeY, safe.Z) * root.CFrame.Rotation
 		end
 	end)
 

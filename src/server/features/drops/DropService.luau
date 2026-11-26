@@ -138,7 +138,8 @@ function DropService.spawn(kind: Drops.DropKind, position: Vector3): Model?
 	end
 
 	local clamped = Waves.clamp(position, Config.ROOM_SIZE, WALL_MARGIN)
-	local dropPos = Vector3.new(clamped.X, Config.DROP_HEIGHT, clamped.Z)
+	local clearPos = Waves.avoidObstacles(clamped, 2.2, Config.ARENA_PILLARS)
+	local dropPos = Vector3.new(clearPos.X, Config.DROP_HEIGHT, clearPos.Z)
 
 	local model = template:Clone()
 	local core = model.PrimaryPart or model:FindFirstChild("Core")

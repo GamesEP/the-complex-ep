@@ -7,7 +7,7 @@ Status: drafted
 | Nombre | Tamaño | Notas |
 |---|---|---|
 | Hub | <...> | Donde aparece el jugador y arma su grupo. Cada jugador lo ve vacío. |
-| The Complex (Sala de combate) | 140 × 140 studs (`Config.ROOM_SIZE`), 5 plantas × 5 salas en v1 | Complejo industrial sci-fi (`assets/models/ComplexArena.rbxmx`): hormigón oscuro, acero, franjas de peligro amarillas, puerta blindada de sector en el muro norte, ventanal de observación en el muro oeste, tuberías elevadas, plataforma de elevador central y bordes frontales recortados para visibilidad isométrica. Ver [loop.md](loop.md). |
+| The Complex (Sala de combate) | 140 × 140 studs (`Config.ROOM_SIZE`), 5 plantas × 5 salas en v1 | Complejo industrial sci-fi (`assets/models/ComplexArena.rbxmx`) cuya **paleta de neones e iluminación cambia suavemente al pasar de oleada** (`Config.WAVE_THEMES`, de cyan/ámbar en Oleada 1 hasta reactor rojo/oro en Oleada 6 y verde al limpiar la sala): hormigón oscuro, acero, franjas de peligro amarillas, puerta blindada de sector con paneles holográficos en el muro norte, ventanal de observación en el muro oeste, grúas/pasarelas superiores y puentes de conductos de energía, plataforma de elevador central, rejillas de turbinas empotradas en el suelo, **4 pilares reactores sólidos en cuadrantes (`±38, ±38`, pilar SE rebajado a `8,5` studs, no escalables) y 5 búnkeres tácticos de cobertura a media altura (únicas estructuras a las que el jugador sí puede subirse encima)** (`Config.ARENA_PILLARS`) que detienen proyectiles, además de tanques criogénicos, racks de servidores, cajas de carga, barriles, consolas iluminadas, palets bajos y rampas de cables (todos sólidos y no escalables). Ver [loop.md](loop.md). |
 
 > Maps live as tracked models under `assets/`. Spawns on one are offsets from the model's
 > pivot, never world positions — see [CLAUDE.md](../../CLAUDE.md#two-kinds-of-world-and-which-rule-applies).
@@ -26,7 +26,7 @@ y cada jefe ocupa la última de las 5 salas de su planta (no hay sala extra).
 
 | Jefe | Dónde aparece | Notas |
 |---|---|---|
-| Oh | Planta 2 | Primera parte de OhMyGon, peleada sola. También cierra la planta de prueba del Hito 2 para validar salas + jefe juntos (ver [scope.md](scope.md)). |
+| **Oh** (`BossOh`, `OH — TITÁN DEL SECTOR`) | Planta 2 (y **Oleada 6** en el corte jugable) | Primera parte de OhMyGon, peleada sola (`650` HP base, `11` studs de altura, resistencia del `50%` a aturdimientos). Titán mecánico pesado con núcleo de reactor expuesto y mazo sísmico, con **3 ataques telegrafiados**: (1) **Demolición Frontal** — barre un cono delantero de `115°` y `24` studs (`0,85 s` de aviso con abanico rojo en el suelo, `26` de daño y aturdimiento de `0,9 s`); (2) **Salto Titánico** — salto parabólico hacia el jugador lejano (`16–55` studs, círculo rojo en la zona de aterrizaje) que golpea un radio de `18` studs al caer (`32` de daño, aturdimiento de `1,2 s`); (3) **Pulso de Núcleo** — sobrecarga su reactor (`1,0 s`) y dispara **2 anillos escalonados de 10 orbes de plasma en 360°** (`18` de daño por orbe, bloqueables con pilares o reflejables con Parry). |
 | My | Planta 3 | Segunda parte, peleada sola. |
 | Gon | Planta 4 | Tercera parte, peleada sola. |
 | OhMyGon | Planta 5 (la última) | Oh, My y Gon fusionados. Dos fases. |
@@ -34,9 +34,24 @@ y cada jefe ocupa la última de las 5 salas de su planta (no hay sala extra).
 Pelear las tres partes por separado antes enseña al grupo los ataques de cada una, para que en la
 fusión reconozca lo que está viendo.
 
-**Open:** qué ataques tiene cada parte (Oh, My, Gon) y qué cambia de la fase 1 a la fase 2 de
-OhMyGon. Los ataques de Oh bloquean el cierre del Hito 2; los de My, Gon y OhMyGon bloquean el
-hito de Run en solitario.
+**Open:** qué ataques tienen **My** y **Gon**, y qué cambia de la fase 1 a la fase 2 de OhMyGon
+(bloquea el hito de Run en solitario). Los ataques de **Oh** ya están definidos e implementados en
+la Oleada 6 del corte jugable.
+
+## Dificultad
+
+Antes de empezar a pelear (en la misma pantalla de selección de clase), el grupo elige uno de **4
+niveles de dificultad** (`Config.DIFFICULTIES`, replicado en `workspace.World:GetAttribute("Difficulty")`).
+La dificultad recalibra la cantidad de enemigos por oleada, su daño, su velocidad de movimiento y su
+vida. Los jefes (`isBoss = true`, como **Oh**) escalan vida, daño y velocidad, pero **nunca se
+duplican** (siempre aparece 1 jefe).
+
+| Dificultad | Id | Cantidad | Daño | Velocidad | Vida |
+|---|---|---|---|---|---|
+| **Fácil** | `easy` | `×0,75` (mín. 1) | `×0,70` | `×0,85` | `×0,80` |
+| **Normal** | `normal` | `×1,00` | `×1,00` | `×1,00` | `×1,00` |
+| **Difícil** | `hard` | `×1,35` | `×1,35` | `×1,18` | `×1,25` |
+| **Zona Muerta** | `deadzone` | `×1,75` | `×1,75` | `×1,35` | `×1,50` |
 
 ## Enemigos
 
@@ -44,8 +59,8 @@ Cada tipo obliga al grupo a hacer algo distinto; una sala se diseña mezclándol
 
 | Tipo | Qué hace | Qué le pide al jugador |
 |---|---|---|
-| **Centinela** (cuerpo a cuerpo) | Unidades de asalto blindadas del Complejo en 4 variantes de arma (`EnemyMelee` espada + escudo, `EnemyMeleeDual` espadas dobles, `EnemyMeleeAxe` hacha pesada y `EnemyMeleeMace` mazo triturador), con animaciones procedurales de caminar, ataque según el arma y muerte. Las unidades con **una sola espada (`EnemyMelee`)** activan **Paso Fantasma**: muestran un icono triangular amarillo (`!`) sobre la cabeza, encadenan al menos **3 desplazamientos ultrarrápidos en distintas direcciones** dejando estelas neón de silueta para rodear y lanzar un **tajo sorpresa inesquivable** (`15` de daño, ignora i-frames de Dash, salto y bloqueo pasivo; **solo puede evitarse haciendo Parry** a tiempo tras el destello). Las unidades con **espadas dobles** ejecutan un **ataque giratorio DPS** periódico (`1,6 s`, ticks de 6 de daño cada `0,25 s` en radio de 8 studs). Las unidades con **mazo (`EnemyMeleeMace`)** alzan el mazo por encima de la cabeza (`0,78 s`, anillo sísmico de aviso en el suelo) y **golpean el suelo** desatando una onda de `15,5` studs (`14` de daño) que **tambalea y aturde** a los jugadores alcanzados durante `1,6 s` (`0,7 s` al bloquear). | Hacer **Parry obligatorio** al remate de Paso Fantasma para aturdir al atacante; **saltar** o usar **Dash** para evitar la onda sísmica del mazo; esquivar o hacer Parry al resto de golpes y al giro de espadas dobles. |
-| **Cazador** (a distancia) | Tiradores blindados del Complejo en 4 variantes: rifle de plasma (`EnemyRanged`) y cañón de plasma (`EnemyRangedCarbine`), capaces de **cargar al máximo poder su arma con un láser guía cilíndrico que fija su línea en rojo (`0,4 s` antes de disparar) y lanza un rayo cilíndrico devastador** (`32`/`28` de daño); escopeta de energía (`EnemyRangedShotgun`, **disparo doble** por ataque); y variante ocasional con **metralleta rotativa** (`EnemyRangedMinigun`) que dispara **ráfagas repetidas de 6 líneas trazadoras rápidas**. Si el jugador se acerca a menos de `11` studs, **retroceden dando un salto evasivo rápido** (`20` studs, enfriamiento de `5,5 s`). | Salir lateralmente, saltar o usar Dash al fijarse el rayo cargado (o bloquearlo), ir a por el tirador tras forzar su salto evasivo, saltar disparos normales o devolver bolas/trazadoras con Parry. |
+| **Centinela** (cuerpo a cuerpo) | Unidades de asalto blindadas del Complejo en 4 variantes de arma (`EnemyMelee` espada + escudo, `EnemyMeleeDual` espadas dobles, `EnemyMeleeAxe` hacha pesada y `EnemyMeleeMace` mazo triturador), con animaciones procedurales de caminar, ataque según el arma y muerte. Las unidades con **una sola espada (`EnemyMelee`)** activan **Paso Fantasma**: muestran un icono triangular amarillo (`!`) sobre la cabeza, encadenan al menos **3 desplazamientos ultrarrápidos en distintas direcciones** dejando estelas neón de silueta para rodear y lanzar un **tajo sorpresa inesquivable** (`15` de daño, ignora i-frames de Dash, salto y bloqueo pasivo; **solo puede evitarse haciendo Parry** a tiempo tras el destello). Las unidades con **espadas dobles** ejecutan un **ataque giratorio DPS** periódico (`1,6 s`, ticks de 6 de daño cada `0,25 s` en radio de 8 studs). Las unidades con **hacha (`EnemyMeleeAxe`)** pueden **lanzar su hacha giratoria a media distancia** (`13–42` studs, `0,65 s` de aviso con icono `!`, `18` de daño, reflejable con Parry); **si fallan, el hacha queda clavada en el suelo y el enemigo corre desarmado a recogerla** antes de volver a pelear. Las unidades con **mazo (`EnemyMeleeMace`)** alzan el mazo por encima de la cabeza (`0,78 s`, anillo sísmico de aviso en el suelo) y **golpean el suelo** desatando una onda de `15,5` studs (`14` de daño) que **tambalea y aturde** a los jugadores alcanzados durante `1,6 s` (`0,7 s` al bloquear). | Hacer **Parry obligatorio** al remate de Paso Fantasma; esquivar o devolver el hacha lanzada y castigar al enemigo mientras corre a recogerla; **saltar** o usar **Dash** para evitar la onda sísmica del mazo; esquivar o hacer Parry al resto de golpes y al giro de espadas dobles. |
+| **Cazador** (a distancia) | Tiradores blindados del Complejo con animación marcada de **retroceso al disparar** en 4 variantes: rifle de plasma (`EnemyRanged`) y cañón de plasma (`EnemyRangedCarbine`), capaces de **cargar al máximo poder su arma con un láser guía cilíndrico que fija su línea en rojo (`0,4 s` antes de disparar) y lanza un rayo cilíndrico devastador** (`32`/`28` de daño); escopeta de energía (`EnemyRangedShotgun`), que **dispara 4 líneas trazadoras en abanico divergente (`36°`) mientras apunta al frente**; y variante ocasional con **metralleta rotativa** (`EnemyRangedMinigun`) que dispara **ráfagas repetidas de 6 líneas trazadoras rápidas no reflejables con Parry** (`canParry = false`, pero bloqueables, saltables o esquivables tras cobertura). Si el jugador se acerca a menos de `11` studs, **retroceden dando un salto evasivo rápido** (`20` studs, enfriamiento de `5,5 s`). | Salir lateralmente, saltar o usar Dash al fijarse el rayo cargado (o bloquearlo), abrir hueco entre las 4 líneas de la escopeta o devolverlas con Parry, ir a por el tirador tras forzar su salto evasivo, usar cobertura/bloqueo/salto contra la metralleta rotativa (sin Parry) o devolver bolas de energía con Parry. |
 | En área | Ataca una zona marcada en el suelo. | Salir de la zona a tiempo. |
 | Por contacto | Hace daño al tocarlo. | No chocar con él; atacarlo sin pegarse. |
 | **Detonante** (explosivo) | Corredor rápido con carga C4 y cartuchos de TNT pegados al cuerpo (`EnemyExploder`), con animación de carrera frenética, mecha temblorosa y muerte. Su explosión ovalada daña tanto a jugadores cercanos como a otros enemigos dentro del radio (`Config.ENEMY_KINDS.exploder.enemyDamage`). | Matarlo de lejos, alejarse (o saltar cerca del borde), o atraerlo hacia un grupo de enemigos para usar su explosión a favor. |
@@ -74,9 +89,10 @@ puede esquivar con Dash, pero la combinación embestida + agarre es fuerte. Deci
 si la embestida debe bloquear el agarre durante unos segundos. Bloquea el ajuste del Coloso.
 
 Los números de cada tipo (vida, velocidad, daño, alcance, tiempos) están en
-`Config.ENEMY_KINDS`, y las oleadas de la sala de prueba en `Config.WAVES` (5 oleadas; el Coloso
-aparece a partir de la oleada 4). Por ahora existen cuatro tipos en el corte de combate: cuerpo a
-cuerpo (Centinela), a distancia (Cazador), explosivo (Detonante) y agarrador (Coloso).
+`Config.ENEMY_KINDS`, y las oleadas de la sala de prueba en `Config.WAVES` (6 oleadas; el Coloso
+aparece a partir de la oleada 4 y el jefe **Oh** cierra la oleada 6). Por ahora existen cuatro tipos
+base más el primer jefe en el corte de combate: cuerpo a cuerpo (Centinela), a distancia (Cazador),
+explosivo (Detonante), agarrador (Coloso) y jefe (**Oh**).
 
 El Coloso es el caso extremo: el único enemigo que castiga ir solo, porque un compañero puede
 salvarte. En los tres controles (PC, mando y móvil) se escapa pulsando el mismo botón de ataque

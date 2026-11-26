@@ -18,6 +18,7 @@ local PARTS = {
 	"Classes",
 	"Combat",
 	"Diagnostics",
+	"Difficulty",
 	"Drops",
 	"Enemies",
 	"Environments",

@@ -22,6 +22,7 @@ local EnemyAnimator = require(Client.features.enemies.EnemyAnimator)
 local IsoCamera = require(Client.features.camera.IsoCamera)
 local PlayerAnimator = require(Client.features.combat.PlayerAnimator)
 local SoundPlayer = require(Client.features.combat.SoundPlayer)
+local TonemapperController = require(Client.features.tonemapping.TonemapperController)
 
 -- Before anything builds a ScreenGui: every panel asks Layout how much room it has and mounts
 -- inside the UIScale it hands out, so it has to know the screen first.
@@ -33,6 +34,7 @@ EnemyAnimator.start()
 PlayerAnimator.start()
 SoundPlayer.start()
 CombatInput.start()
+TonemapperController.start()
 
 -- Everywhere but production, so a screenshot always says which experience it came from. The
 -- decision is here rather than inside the screen: a watermark that can decide for itself to be

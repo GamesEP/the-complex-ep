@@ -29,6 +29,7 @@ local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
 local Tactics = require(Shared.features.enemies.Tactics)
+local Tonemapper = require(Shared.features.tonemapping.Tonemapper)
 local Waves = require(Shared.features.enemies.Waves)
 
 local Server = script.Parent
@@ -60,6 +61,7 @@ if RunService:IsStudio() then
 	Brain.selfTest()
 	EnemyAnim.selfTest()
 	Tactics.selfTest()
+	Tonemapper.selfTest()
 	Waves.selfTest()
 end
 

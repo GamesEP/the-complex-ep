@@ -47,6 +47,7 @@ end
 function Sandbox.environment(extra: { [string]: any }?): { [string]: any }
 	local env: { [string]: any } = {
 		assert = assert,
+		buffer = buffer,
 		error = error,
 		getmetatable = getmetatable,
 		ipairs = ipairs,

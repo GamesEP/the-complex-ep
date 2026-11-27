@@ -1387,7 +1387,7 @@ local function CombatHud(props)
 				subLabel = if grabbed
 					then `{grabProgress}/{grabGoal}`
 					elseif chargingHeavy then "CARGA"
-					elseif not touch then `HOLD {math.round(Config.HEAVY_CHARGE_SECONDS)}s`
+					elseif not touch then string.format("HOLD %.1fs", Config.HEAVY_CHARGE_SECONDS)
 					else nil,
 				subColor = if grabbed then ui.GRAB elseif chargingHeavy then ui.HEAVY else ui.MUTED,
 				keycap = "LMB",

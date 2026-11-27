@@ -102,6 +102,7 @@ export type Enemy = {
 	knockbackDir: Vector3?,
 	knockbackSpeed: number,
 	knockbackEndsAt: number,
+	contactHitAt: { [Player]: number },
 }
 
 export type HitInfo = {
@@ -109,8 +110,29 @@ export type HitInfo = {
 	sourcePos: Vector3?,
 }
 
+type HazardZone = {
+	position: Vector3,
+	radius: number,
+	height: number,
+	launchedAt: number,
+	telegraphDuration: number,
+	telegraphEndsAt: number,
+	expiresAt: number,
+	detonated: boolean,
+	impactDamage: number,
+	tickDamage: number,
+	tickEvery: number,
+	nextTickAt: number,
+	shellOrigin: Vector3,
+	partOuter: Part,
+	partInner: Part,
+	partShell: Part?,
+}
+
 type Projectile = {
 	part: BasePart,
+	model: Model?,
+	position: Vector3,
 	velocity: Vector3,
 	expiresAt: number,
 	damage: number,
@@ -145,8 +167,10 @@ local worldRef: Instance? = nil
 
 local enemies: { Enemy } = {}
 local projectiles: { Projectile } = {}
+local hazardZones: { HazardZone } = {}
 local variantCursor: { [string]: number } = {}
 local lastRangedShotAt: { [Player]: number } = {}
+local lastAreaLaunchAt: { [Player]: number } = {}
 local nextOrbitSign = 1
 local grid = SpatialGrid.new(Config.ENEMY_GRID_CELL_SIZE)
 local separationScratch: { Enemy } = {}
@@ -211,6 +235,14 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
+-- Keeps any enemy (or grab hold point) strictly inside the room perimeter and outside every
+-- solid arena structure/prop (pillars, bunkers, cryo tanks, crates, consoles, racks, pallets).
+local function clampEnemyPos(candidate: Vector3, radius: number): Vector3
+	local clamped = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
+	local cleared = Waves.avoidObstacles(clamped, radius, Config.ARENA_PILLARS)
+	return Waves.clamp(cleared, Config.ROOM_SIZE, WALL_MARGIN)
+end
+
 -- Returns `(freeTargets, grabbedPositions)`: non-grabbed living players for enemies to chase,
 -- and grabbed player positions so roaming enemies steer clear when no free target exists.
 local function targets(): ({ { player: Player, root: BasePart } }, { Vector3 })
@@ -239,12 +271,14 @@ end
 -- Strong anti-clumping repulsion via the spatial grid in O(local) rather than O(N^2).
 -- Ranged units push farther apart from each other (`AI_RANGED_SPACING`) to form crossfire angles.
 local function separationPush(enemy: Enemy, position: Vector3): Vector3
-	local spacing = if enemy.kind == "ranged" then Config.AI_RANGED_SPACING else Config.ENEMY_SPACING
+	local isArtilleryOrRanged = enemy.kind == "ranged" or enemy.kind == "area"
+	local spacing = if isArtilleryOrRanged then Config.AI_RANGED_SPACING else Config.ENEMY_SPACING
 	local neighbors = grid:queryRadius(position.X, position.Z, spacing, separationScratch)
 	table.clear(neighborPosScratch)
 	for _, other in ipairs(neighbors) do
 		if other ~= enemy and not other.dead then
-			if enemy.kind ~= "ranged" or other.kind == "ranged" or (position - other.body.Position).Magnitude < Config.ENEMY_SPACING then
+			local otherFar = other.kind == "ranged" or other.kind == "area"
+			if not isArtilleryOrRanged or otherFar or (position - other.body.Position).Magnitude < Config.ENEMY_SPACING then
 				table.insert(neighborPosScratch, other.body.Position)
 			end
 		end
@@ -390,10 +424,35 @@ local function clearDroppedAxe(enemy: Enemy)
 	enemy.axeInFlight = false
 end
 
+local function cloneBattleAxe(): (Model?, BasePart?)
+	local models = ReplicatedStorage:FindFirstChild("Models")
+	local template = models and models:FindFirstChild("EnemyBattleAxe")
+	if not template or not template:IsA("Model") then
+		return nil, nil
+	end
+	local axe = template:Clone()
+	local pivot = axe.PrimaryPart or axe:FindFirstChild("Pivot")
+	if not pivot or not pivot:IsA("BasePart") then
+		axe:Destroy()
+		return nil, nil
+	end
+	axe.PrimaryPart = pivot
+	axe.WorldPivot = pivot.CFrame
+	for _, desc in ipairs(axe:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			desc.Anchored = true
+			desc.CanCollide = false
+			desc.CanQuery = false
+			desc.CanTouch = false
+		end
+	end
+	return axe, pivot
+end
+
 local function createDroppedAxe(pos: Vector3): Model
 	local m = Instance.new("Model")
 	m.Name = "DroppedEnemyAxe"
-	local safeXZ = Waves.avoidObstacles(Waves.clamp(pos, Config.ROOM_SIZE, WALL_MARGIN + 1), 1.5, Config.ARENA_PILLARS)
+	local safeXZ = clampEnemyPos(pos, 1.8)
 	local base = Vector3.new(safeXZ.X, 0, safeXZ.Z)
 
 	-- Glowing pickup ring on the floor so players & the unarmed enemy clearly spot the dropped axe.
@@ -412,30 +471,13 @@ local function createDroppedAxe(pos: Vector3): Model
 	ring.CFrame = CFrame.new(base.X, 0.1, base.Z) * CFrame.Angles(0, 0, math.rad(90))
 	ring.Parent = m
 
-	-- Battle-axe embedded diagonally upright in the concrete floor.
-	local shaft = Instance.new("Part")
-	shaft.Name = "Shaft"
-	shaft.Anchored = true
-	shaft.CanCollide = false
-	shaft.CanQuery = false
-	shaft.CanTouch = false
-	shaft.Material = Enum.Material.Metal
-	shaft.Color = Color3.fromRGB(110, 118, 132)
-	shaft.Size = Vector3.new(0.3, 3.6, 0.3)
-	shaft.CFrame = CFrame.new(base.X, 1.55, base.Z) * CFrame.Angles(math.rad(18), 0, math.rad(-22))
-	shaft.Parent = m
-
-	local blade = Instance.new("Part")
-	blade.Name = "Blade"
-	blade.Anchored = true
-	blade.CanCollide = false
-	blade.CanQuery = false
-	blade.CanTouch = false
-	blade.Material = Enum.Material.Neon
-	blade.Color = Color3.fromRGB(255, 86, 48)
-	blade.Size = Vector3.new(0.24, 1.65, 1.85)
-	blade.CFrame = CFrame.new(base.X, 0.72, base.Z) * CFrame.Angles(math.rad(18), 0, math.rad(-22))
-	blade.Parent = m
+	-- Clone the real `.rbxmx` battle-axe embedded blade-first diagonally into the arena floor.
+	local axeModel = cloneBattleAxe()
+	if axeModel then
+		axeModel.Name = "DroppedAxeModel"
+		axeModel:PivotTo(CFrame.new(base.X, 1.35, base.Z) * CFrame.Angles(math.rad(-72), math.rad(25), math.rad(16)))
+		axeModel.Parent = m
+	end
 
 	m.Parent = folder
 	return m
@@ -451,26 +493,37 @@ local function throwAxe(enemy: Enemy, target: BasePart)
 	local speed = enemy.spec.axeThrowSpeed or 54
 	local damage = enemy.spec.axeThrowDamage or 18
 	local maxDist = enemy.spec.axeThrowMaxDistance or 40
-	local spawnPos = Vector3.new(origin.X + dir.X * 2.2, Config.PROJECTILE_HEIGHT + 0.4, origin.Z + dir.Z * 2.2)
+	local spawnPos = Vector3.new(origin.X + dir.X * 2.2, Config.PROJECTILE_HEIGHT + 0.5, origin.Z + dir.Z * 2.2)
 
 	enemy.axeInFlight = true
 	enemy.model:SetAttribute("AxeThrown", true)
 
-	local part = Instance.new("Part")
-	part.Name = "ThrownAxe"
-	part.Shape = Enum.PartType.Block
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Material = Enum.Material.Neon
-	part.Color = Color3.fromRGB(255, 92, 46)
-	part.Size = Vector3.new(2.2, 0.35, 2.8)
-	part.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
-	part.Parent = folder
+	local axeModel, pivot = cloneBattleAxe()
+	local part: BasePart
+	if axeModel and pivot then
+		axeModel.Name = "ThrownAxe"
+		axeModel:PivotTo(CFrame.lookAt(spawnPos, spawnPos + dir) * CFrame.Angles(0, 0, math.rad(76)))
+		axeModel.Parent = folder
+		part = pivot
+	else
+		local fallback = Instance.new("Part")
+		fallback.Name = "ThrownAxe"
+		fallback.Anchored = true
+		fallback.CanCollide = false
+		fallback.CanQuery = false
+		fallback.CanTouch = false
+		fallback.Material = Enum.Material.Neon
+		fallback.Color = Color3.fromRGB(255, 92, 46)
+		fallback.Size = Vector3.new(0.4, 1.4, 2.6)
+		fallback.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+		fallback.Parent = folder
+		part = fallback
+	end
 
 	table.insert(projectiles, {
 		part = part,
+		model = axeModel,
+		position = spawnPos,
 		velocity = dir * speed,
 		expiresAt = now() + (maxDist / math.max(speed, 1)) + 0.5,
 		damage = damage,
@@ -565,6 +618,7 @@ local function fire(enemy: Enemy, target: BasePart)
 		part.Parent = folder
 		table.insert(projectiles, {
 			part = part,
+			position = spawnPos,
 			velocity = dir * speed,
 			expiresAt = now() + (enemy.spec.projectileLife or 2.5),
 			damage = damage,
@@ -622,6 +676,190 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 	Remotes.CombatSfx:FireAllClients("enemyExploderBlast", origin)
 end
 
+local function destroyHazardZone(zone: HazardZone)
+	if zone.partOuter.Parent then
+		zone.partOuter:Destroy()
+	end
+	if zone.partInner.Parent then
+		zone.partInner:Destroy()
+	end
+	if zone.partShell and zone.partShell.Parent then
+		zone.partShell:Destroy()
+	end
+end
+
+-- Launches an Artillero (`area`) arcing mortar round toward `targetPos`, creating a floor warning
+-- circle that fills over `areaTelegraph` seconds before detonating into an active hazard pool.
+-- Enforces `Tactics.isGrabSafeZone` so a player trapped by a Coloso is never melted unfairly.
+local function launchAreaHazard(enemy: Enemy, targetPos: Vector3, grabbedPositions: { Vector3 }, t: number)
+	local radius = enemy.spec.areaRadius or 11
+	local height = enemy.spec.areaHeight or 3.6
+	local telegraphDur = enemy.spec.areaTelegraph or 1.05
+	local activeDur = enemy.spec.areaDuration or 3.5
+	local tickEvery = enemy.spec.areaTickEvery or 0.5
+	local impactDmg = enemy.spec.areaImpactDamage or 14
+	local tickDmg = enemy.spec.areaTickDamage or 10
+
+	local rawLand = Vector3.new(targetPos.X, 0, targetPos.Z)
+	local clamped = Waves.clamp(rawLand, Config.ROOM_SIZE, math.max(WALL_MARGIN, radius * 0.45))
+	local landPos = Vector3.new(clamped.X, 0, clamped.Z)
+	if not Tactics.isGrabSafeZone(landPos, radius, grabbedPositions, 2.5) then
+		return
+	end
+
+	local diam = radius * 2
+	local outer = Instance.new("Part")
+	outer.Name = "AreaHazardOuter"
+	outer.Shape = Enum.PartType.Cylinder
+	outer.Anchored = true
+	outer.CanCollide = false
+	outer.CanQuery = false
+	outer.CanTouch = false
+	outer.CastShadow = false
+	outer.Material = Enum.Material.Neon
+	outer.Color = Color3.fromRGB(255, 165, 45)
+	outer.Transparency = 0.68
+	outer.Size = Vector3.new(0.14, diam, diam)
+	outer.CFrame = CFrame.new(landPos.X, 0.14, landPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+	outer.Parent = folder
+
+	local inner = Instance.new("Part")
+	inner.Name = "AreaHazardInner"
+	inner.Shape = Enum.PartType.Cylinder
+	inner.Anchored = true
+	inner.CanCollide = false
+	inner.CanQuery = false
+	inner.CanTouch = false
+	inner.CastShadow = false
+	inner.Material = Enum.Material.Neon
+	inner.Color = Color3.fromRGB(165, 255, 70)
+	inner.Transparency = 0.58
+	inner.Size = Vector3.new(0.2, 2.0, 2.0)
+	inner.CFrame = CFrame.new(landPos.X, 0.2, landPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+	inner.Parent = folder
+
+	local shellOrigin = enemy.body.Position + Vector3.new(0, 2.2, 0)
+	local shell = Instance.new("Part")
+	shell.Name = "AreaMortarShell"
+	shell.Shape = Enum.PartType.Ball
+	shell.Anchored = true
+	shell.CanCollide = false
+	shell.CanQuery = false
+	shell.CanTouch = false
+	shell.CastShadow = false
+	shell.Material = Enum.Material.Neon
+	shell.Color = Color3.fromRGB(185, 255, 75)
+	shell.Size = Vector3.one * 1.45
+	shell.Position = shellOrigin
+	shell.Parent = folder
+
+	table.insert(hazardZones, {
+		position = landPos,
+		radius = radius,
+		height = height,
+		launchedAt = t,
+		telegraphDuration = telegraphDur,
+		telegraphEndsAt = t + telegraphDur,
+		expiresAt = t + telegraphDur + activeDur,
+		detonated = false,
+		impactDamage = impactDmg,
+		tickDamage = tickDmg,
+		tickEvery = tickEvery,
+		nextTickAt = t + telegraphDur + tickEvery,
+		shellOrigin = shellOrigin,
+		partOuter = outer,
+		partInner = inner,
+		partShell = shell,
+	})
+	Remotes.CombatSfx:FireAllClients("enemyAreaLaunch", enemy.body.Position)
+end
+
+local function stepHazardZones(list: { { player: Player, root: BasePart } }, t: number)
+	for i = #hazardZones, 1, -1 do
+		local zone = hazardZones[i]
+		if t >= zone.expiresAt then
+			destroyHazardZone(zone)
+			table.remove(hazardZones, i)
+		elseif not zone.detonated then
+			local u = math.clamp((t - zone.launchedAt) / math.max(zone.telegraphDuration, 0.05), 0, 1)
+			local diam = zone.radius * 2
+			local fillDiam = math.max(diam * u, 1.8)
+			zone.partInner.Size = Vector3.new(0.2, fillDiam, fillDiam)
+			zone.partInner.Transparency = 0.66 - 0.34 * u
+			zone.partOuter.Transparency = 0.72 - 0.16 * math.abs(math.sin(t * 20))
+			if zone.partShell and zone.partShell.Parent then
+				local arcHeight = 22
+				local sx = zone.shellOrigin.X + (zone.position.X - zone.shellOrigin.X) * u
+				local sz = zone.shellOrigin.Z + (zone.position.Z - zone.shellOrigin.Z) * u
+				local sy = zone.shellOrigin.Y * (1 - u) + 0.5 * u + 4 * arcHeight * u * (1 - u)
+				zone.partShell.Position = Vector3.new(sx, sy, sz)
+			end
+			if t >= zone.telegraphEndsAt then
+				zone.detonated = true
+				if zone.partShell and zone.partShell.Parent then
+					zone.partShell:Destroy()
+					zone.partShell = nil
+				end
+				zone.partOuter.Color = Color3.fromRGB(135, 255, 55)
+				zone.partOuter.Transparency = 0.34
+				zone.partInner.Color = Color3.fromRGB(220, 255, 85)
+				zone.partInner.Size = Vector3.new(0.22, diam * 0.92, diam * 0.92)
+				zone.partInner.Transparency = 0.45
+				burst(zone.position + Vector3.new(0, 0.6, 0), zone.radius * 0.85, Color3.fromRGB(165, 255, 65), zone.height)
+				Remotes.CombatSfx:FireAllClients("enemyAreaDetonate", zone.position)
+				for _, target in ipairs(list) do
+					if Hitbox.inGroundZone(zone.position, target.root.Position, zone.radius, zone.height) then
+						hurt(target.player, zone.impactDamage, { canBlock = true, canParry = false, origin = zone.position })
+					end
+				end
+			end
+		else
+			-- Active toxic plasma pool: gently pulses on the floor and ticks grounded players.
+			local remain = math.max(zone.expiresAt - t, 0)
+			local fade = if remain < 0.45 then 1 - remain / 0.45 else 0
+			local pulse = 0.9 + 0.06 * math.sin(t * 14)
+			local diam = zone.radius * 2
+			zone.partInner.Size = Vector3.new(0.22, diam * pulse, diam * pulse)
+			zone.partOuter.Transparency = 0.34 + 0.66 * fade
+			zone.partInner.Transparency = 0.48 + 0.52 * fade
+			if t >= zone.nextTickAt then
+				zone.nextTickAt = t + zone.tickEvery
+				for _, target in ipairs(list) do
+					if Hitbox.inGroundZone(zone.position, target.root.Position, zone.radius, zone.height) then
+						hurt(target.player, zone.tickDamage, { canBlock = true, canParry = false, origin = zone.position })
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Checks Voltaico (`contact`) body/surge shock damage against every free player with per-player
+-- debounce. Routed through `CombatService.hurt` so Dash i-frames & Block apply cleanly.
+local function applyContactDamage(enemy: Enemy, pos: Vector3, list: { { player: Player, root: BasePart } }, t: number)
+	local isActive = enemy.state.phase == "contactActive"
+	if not isActive and enemy.state.phase ~= "chase" then
+		return
+	end
+	local radius = if isActive then (enemy.spec.contactRadius or 5.5) else (enemy.spec.passiveContactRadius or 2.9)
+	local height = enemy.spec.contactHeight or 4.6
+	local dmg = if isActive then (enemy.spec.contactDamage or 10) else (enemy.spec.passiveContactDamage or 5)
+	local tickEvery = if isActive
+		then (enemy.spec.contactTickEvery or 0.6)
+		else (enemy.spec.passiveContactTickEvery or 0.75)
+
+	for _, candidate in ipairs(list) do
+		local nextAt = enemy.contactHitAt[candidate.player] or 0
+		if t >= nextAt and Hitbox.inEllipsoid(pos, candidate.root.Position, radius, height) then
+			local landed = hurt(candidate.player, dmg, { canBlock = true, canParry = false, origin = pos })
+			if landed then
+				enemy.contactHitAt[candidate.player] = t + tickEvery
+				Remotes.CombatSfx:FireAllClients("enemyContactZap", candidate.root.Position)
+			end
+		end
+	end
+end
+
 local function stepHeldGrab(enemy: Enemy, t: number)
 	local victim = enemy.grabTarget
 	if not victim then
@@ -638,7 +876,7 @@ local function stepHeldGrab(enemy: Enemy, t: number)
 	-- Hold the player visibly inside the grabber's front claws.
 	local origin = enemy.body.Position
 	local forward = enemy.body.CFrame.LookVector
-	local holdXZ = Waves.clamp(origin + forward * Config.GRAB_HOLD_DISTANCE, Config.ROOM_SIZE, WALL_MARGIN)
+	local holdXZ = clampEnemyPos(origin + forward * Config.GRAB_HOLD_DISTANCE, 1.8)
 	local holdPos = Vector3.new(holdXZ.X, root.Position.Y, holdXZ.Z)
 	local facePos = Vector3.new(origin.X, root.Position.Y, origin.Z)
 	if (facePos - holdPos).Magnitude > 1e-3 then
@@ -693,6 +931,9 @@ local function stepEnemy(
 			or enemy.state.phase == "rushWindup"
 			or enemy.state.phase == "rush"
 			or enemy.state.phase == "fuse"
+			or enemy.state.phase == "areaWindup"
+			or enemy.state.phase == "contactWindup"
+			or enemy.state.phase == "contactActive"
 		then
 			enemy.state = Brain.initial(t)
 			enemy.lungeDirection = nil
@@ -725,7 +966,7 @@ local function stepEnemy(
 		local push = separationPush(enemy, position)
 		local roamSpeed = enemy.spec.speed * Config.ENEMY_WANDER_SPEED_FACTOR
 		local candidate = position + (roamDir * roamSpeed + push * enemy.spec.speed) * dt
-		local moved = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
+		local moved = clampEnemyPos(candidate, enemy.radius)
 		if moved.X ~= candidate.X or moved.Z ~= candidate.Z then
 			-- Hit a room wall while roaming: steer smoothly back toward the room interior.
 			local inward = Vector3.new(-position.X, 0, -position.Z)
@@ -784,6 +1025,12 @@ local function stepEnemy(
 			telegraphColor = Color3.fromRGB(255, 55, 70)
 		elseif state.phase == "bossNovaWindup" then
 			telegraphColor = Color3.fromRGB(215, 85, 255)
+		elseif state.phase == "areaWindup" then
+			telegraphColor = Color3.fromRGB(170, 255, 65)
+		elseif state.phase == "contactWindup" then
+			telegraphColor = Color3.fromRGB(255, 232, 75)
+		elseif state.phase == "contactActive" then
+			telegraphColor = Color3.fromRGB(55, 240, 255)
 		elseif state.phase == "windup" or state.phase == "lunge" then
 			telegraphColor = Color3.fromRGB(255, 190, 85)
 		end
@@ -863,6 +1110,10 @@ local function stepEnemy(
 			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
 		elseif state.phase == "fuse" then
 			Remotes.CombatSfx:FireAllClients("enemyExploderFuse", position)
+		elseif state.phase == "areaWindup" then
+			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
+		elseif state.phase == "contactWindup" then
+			Remotes.CombatSfx:FireAllClients("enemyContactSurge", position)
 		end
 	end
 
@@ -894,7 +1145,7 @@ local function stepEnemy(
 			local offsetDir = if toEnemy.Magnitude > 1e-3
 				then toEnemy.Unit
 				else -Vector3.new(target.root.CFrame.LookVector.X, 0, target.root.CFrame.LookVector.Z).Unit
-			local snapXZ = Waves.clamp(target.root.Position + offsetDir * 4.4, Config.ROOM_SIZE, WALL_MARGIN)
+			local snapXZ = clampEnemyPos(target.root.Position + offsetDir * 4.4, enemy.radius)
 			local snapPos = Vector3.new(snapXZ.X, baseY, snapXZ.Z)
 			local lookAtPlayer = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
 			if (lookAtPlayer - snapPos).Magnitude > 1e-3 then
@@ -1048,11 +1299,11 @@ local function stepEnemy(
 			(side + awayUnit * 0.2).Unit,
 			(-side + awayUnit * 0.2).Unit,
 		}
-		local bestLanding = Waves.clamp(position + candidates[1] * leapDist, Config.ROOM_SIZE, WALL_MARGIN)
+		local bestLanding = clampEnemyPos(position + candidates[1] * leapDist, enemy.radius)
 		local bestClearance = Vector3.new(bestLanding.X - position.X, 0, bestLanding.Z - position.Z).Magnitude
 		if bestClearance < leapDist * 0.55 then
 			for i = 2, #candidates do
-				local landing = Waves.clamp(position + candidates[i] * leapDist, Config.ROOM_SIZE, WALL_MARGIN)
+				local landing = clampEnemyPos(position + candidates[i] * leapDist, enemy.radius)
 				local clearance = Vector3.new(landing.X - position.X, 0, landing.Z - position.Z).Magnitude
 				if clearance > bestClearance then
 					bestClearance = clearance
@@ -1083,7 +1334,7 @@ local function stepEnemy(
 			totalSteps,
 			enemy.orbitSign
 		)
-		local clamped = Waves.clamp(rawWaypoint, Config.ROOM_SIZE, WALL_MARGIN)
+		local clamped = clampEnemyPos(rawWaypoint, enemy.radius)
 		local baseY = enemy.spec.size.Y / 2
 		enemy.phantomOrigin = Vector3.new(position.X, baseY, position.Z)
 		enemy.phantomTarget = Vector3.new(clamped.X, baseY, clamped.Z)
@@ -1178,10 +1429,12 @@ local function stepEnemy(
 				part.Size = Vector3.one * 2.15
 				part.Color = Color3.fromRGB(255, 115, 45)
 				part.Material = Enum.Material.Neon
-				part.Position = Vector3.new(ringOrigin.X + dir.X * (enemy.radius + 1.5), Config.PROJECTILE_HEIGHT, ringOrigin.Z + dir.Z * (enemy.radius + 1.5))
+				local orbPos = Vector3.new(ringOrigin.X + dir.X * (enemy.radius + 1.5), Config.PROJECTILE_HEIGHT, ringOrigin.Z + dir.Z * (enemy.radius + 1.5))
+				part.Position = orbPos
 				part.Parent = folder
 				table.insert(projectiles, {
 					part = part,
+					position = orbPos,
 					velocity = dir * orbSpeed,
 					expiresAt = now() + 3.2,
 					damage = orbDamage,
@@ -1204,6 +1457,11 @@ local function stepEnemy(
 	elseif intent.action == "explode" then
 		explode(enemy, list)
 		return
+	elseif intent.action == "areaLaunch" then
+		lastAreaLaunchAt[target.player] = t
+		launchAreaHazard(enemy, target.root.Position, grabbedPositions, t)
+	elseif intent.action == "contactSurgeStart" then
+		Remotes.CombatSfx:FireAllClients("enemyContactZap", position)
 	end
 
 	-- Continue any in-progress multi-shot burst (double-shot shotgun/plasma or 6-round minigun).
@@ -1226,7 +1484,7 @@ local function stepEnemy(
 		end
 		local push = separationPush(enemy, standPos) * Config.ENEMY_HITSTUN_SEPARATION_SCALE
 		local candidate = standPos + (recoil + push * enemy.spec.speed) * dt
-		local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
+		local moved = clampEnemyPos(candidate, enemy.radius)
 		local look = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
 		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
 		moveEnemy(enemy, nextCFrame)
@@ -1250,11 +1508,12 @@ local function stepEnemy(
 		local u = math.clamp((t - enemy.phantomStartedAt) / dur, 0, 1)
 		local ease = 1 - (1 - u) * (1 - u)
 		local baseY = enemy.spec.size.Y / 2
-		local dashPos = Vector3.new(
+		local rawDash = Vector3.new(
 			enemy.phantomOrigin.X + (enemy.phantomTarget.X - enemy.phantomOrigin.X) * ease,
 			baseY,
 			enemy.phantomOrigin.Z + (enemy.phantomTarget.Z - enemy.phantomOrigin.Z) * ease
 		)
+		local dashPos = clampEnemyPos(rawDash, enemy.radius)
 		local totalSteps = math.max(enemy.spec.phantomStepCount or 3, 3)
 		local travel = Vector3.new(enemy.phantomTarget.X - enemy.phantomOrigin.X, 0, enemy.phantomTarget.Z - enemy.phantomOrigin.Z)
 		local lookTarget: Vector3
@@ -1279,12 +1538,15 @@ local function stepEnemy(
 		local offsetDir = if toEnemy.Magnitude > 1e-3
 			then toEnemy.Unit
 			else -Vector3.new(target.root.CFrame.LookVector.X, 0, target.root.CFrame.LookVector.Z).Unit
-		local desiredXZ = Waves.clamp(target.root.Position + offsetDir * 4.4, Config.ROOM_SIZE, WALL_MARGIN)
+		local desiredXZ = clampEnemyPos(target.root.Position + offsetDir * 4.4, enemy.radius)
 		local alpha = math.clamp(dt * 24, 0, 1)
-		local lockPos = Vector3.new(
-			position.X + (desiredXZ.X - position.X) * alpha,
-			baseY,
-			position.Z + (desiredXZ.Z - position.Z) * alpha
+		local lockPos = clampEnemyPos(
+			Vector3.new(
+				position.X + (desiredXZ.X - position.X) * alpha,
+				baseY,
+				position.Z + (desiredXZ.Z - position.Z) * alpha
+			),
+			enemy.radius
 		)
 		local look = Vector3.new(target.root.Position.X, baseY, target.root.Position.Z)
 		local nextCFrame = if (look - lockPos).Magnitude > 1e-3 then CFrame.lookAt(lockPos, look) else CFrame.new(lockPos)
@@ -1314,11 +1576,12 @@ local function stepEnemy(
 		local ease = 1 - (1 - u) * (1 - u)
 		local arcHeight = enemy.spec.evadeArcHeight or 5.5
 		local baseY = enemy.spec.size.Y / 2
-		local leapPos = Vector3.new(
+		local rawLeap = Vector3.new(
 			enemy.evadeOrigin.X + (enemy.evadeTarget.X - enemy.evadeOrigin.X) * ease,
 			baseY + 4 * arcHeight * u * (1 - u),
 			enemy.evadeOrigin.Z + (enemy.evadeTarget.Z - enemy.evadeOrigin.Z) * ease
 		)
+		local leapPos = clampEnemyPos(rawLeap, enemy.radius)
 		local look = Vector3.new(target.root.Position.X, leapPos.Y, target.root.Position.Z)
 		local nextCFrame = if (look - leapPos).Magnitude > 1e-3 then CFrame.lookAt(leapPos, look) else CFrame.new(leapPos)
 		moveEnemy(enemy, nextCFrame)
@@ -1346,7 +1609,7 @@ local function stepEnemy(
 		local rushDir = enemy.rushDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
 		local rushSpeed = enemy.spec.rushSpeed or (enemy.spec.speed * 4)
 		local candidatePos = position + rushDir * rushSpeed * dt
-		local moved = Waves.clamp(candidatePos, Config.ROOM_SIZE, WALL_MARGIN)
+		local moved = clampEnemyPos(candidatePos, enemy.radius)
 		local look = Vector3.new(moved.X + rushDir.X, moved.Y, moved.Z + rushDir.Z)
 		moveEnemy(enemy, if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved))
 		grid:move(enemy, moved.X, moved.Z)
@@ -1394,7 +1657,7 @@ local function stepEnemy(
 	elseif isLunging then
 		local chargeDir = enemy.lungeDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
 		local lungeSpeed = enemy.spec.lungeSpeed or (enemy.spec.speed * 3.5)
-		local moved = Waves.clamp(position + chargeDir * lungeSpeed * dt, Config.ROOM_SIZE, WALL_MARGIN)
+		local moved = clampEnemyPos(position + chargeDir * lungeSpeed * dt, enemy.radius)
 		local look = Vector3.new(moved.X + chargeDir.X, moved.Y, moved.Z + chargeDir.Z)
 		local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
 		moveEnemy(enemy, nextCFrame)
@@ -1415,6 +1678,10 @@ local function stepEnemy(
 			direction = toward.Unit
 		end
 		speedScale = enemy.spec.spinMoveFactor or 0.65
+	elseif intent.move == "contactSurge" then
+		-- Voltaico electrified surge: high-tempo spiral pursuit sweeping into contact radius.
+		direction = Tactics.spiralApproach(position, target.root.Position, enemy.orbitSign, 0.58)
+		speedScale = enemy.spec.contactSpeedFactor or 1.18
 	elseif intent.move == "flank" then
 		-- Melee units without an attack token peel off to their own angular sector around the
 		-- player so waiting enemies surround from every side instead of clumping together.
@@ -1456,7 +1723,7 @@ local function stepEnemy(
 			local pincer = Tactics.pincerApproach(position, target.root.Position, sectorAngle, 0.5)
 			local blend = Vector3.new(ambush.X + pincer.X, 0, ambush.Z + pincer.Z)
 			direction = if blend.Magnitude > 1e-3 then blend.Unit else ambush
-		elseif enemy.kind == "ranged" then
+		elseif enemy.kind == "ranged" or enemy.kind == "area" then
 			direction = Tactics.steerToSector(
 				position,
 				target.root.Position,
@@ -1466,6 +1733,8 @@ local function stepEnemy(
 				enemy.orbitSign,
 				0.35
 			)
+		elseif enemy.kind == "contact" then
+			direction = Tactics.pincerApproach(position, target.root.Position, sectorAngle, 0.6)
 		elseif toward.Magnitude > 1e-3 then
 			direction = toward.Unit
 		end
@@ -1481,8 +1750,8 @@ local function stepEnemy(
 			local side = Vector3.new(-back.Z * enemy.orbitSign, 0, back.X * enemy.orbitSign) * 0.45
 			direction = (back + side).Unit
 			speedScale = Config.AI_RECOVER_BACKSTEP_FACTOR
-		elseif enemy.kind == "ranged" then
-			-- Ranged units spread across opposite firing sectors around the player for crossfire.
+		elseif enemy.kind == "ranged" or (enemy.kind == "area" and enemy.state.phase == "chase") then
+			-- Ranged and artillery units spread across opposite firing sectors around the player.
 			direction = Tactics.steerToSector(
 				position,
 				target.root.Position,
@@ -1518,7 +1787,7 @@ local function stepEnemy(
 		local dir = toAxe.Unit
 		local retrieveSpeed = enemy.spec.speed * (enemy.spec.axeRetrieveSpeedFactor or 1.28)
 		local candidate = position + dir * retrieveSpeed * dt
-		local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
+		local moved = clampEnemyPos(candidate, enemy.radius)
 		local look = Vector3.new(axePos.X, moved.Y, axePos.Z)
 		moveEnemy(enemy, if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved))
 		grid:move(enemy, moved.X, moved.Z)
@@ -1529,8 +1798,8 @@ local function stepEnemy(
 	local push = separationPush(enemy, position)
 
 	local candidate = position + (direction * (enemy.spec.speed * speedScale) + push * enemy.spec.speed) * dt
-	local moved = Waves.avoidObstacles(Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN), enemy.radius, Config.ARENA_PILLARS)
-	if (moved.X ~= candidate.X or moved.Z ~= candidate.Z) and (intent.move == "flank" or enemy.kind == "ranged") then
+	local moved = clampEnemyPos(candidate, enemy.radius)
+	if (moved.X ~= candidate.X or moved.Z ~= candidate.Z) and (intent.move == "flank" or enemy.kind == "ranged" or enemy.kind == "area" or enemy.kind == "contact") then
 		enemy.orbitSign = -enemy.orbitSign
 		enemy.orbitFlipAt = t + 3.5 + math.random() * 2.5
 	end
@@ -1538,6 +1807,9 @@ local function stepEnemy(
 	local nextCFrame = if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved)
 	moveEnemy(enemy, nextCFrame)
 	grid:move(enemy, moved.X, moved.Z)
+	if enemy.kind == "contact" then
+		applyContactDamage(enemy, moved, list, t)
+	end
 end
 
 local function reflectDirection(origin: Vector3, currentVelocity: Vector3, shooter: Enemy?): Vector3
@@ -1568,7 +1840,7 @@ end
 local function stepProjectiles(list, dt: number, t: number)
 	for i = #projectiles, 1, -1 do
 		local shot = projectiles[i]
-		local prevPos = shot.part.Position
+		local prevPos = shot.position
 		local position = prevPos + shot.velocity * dt
 		local done = t >= shot.expiresAt
 		local axeMissed = false
@@ -1629,11 +1901,19 @@ local function stepProjectiles(list, dt: number, t: number)
 							shot.velocity = dir * speed
 							shot.damage = Config.PARRY_PROJECTILE_DAMAGE
 							shot.expiresAt = t + Config.PARRY_PROJECTILE_LIFE
-							shot.part.Color = PARRIED_SHOT_COLOR
-							if shot.isTracer then
-								shot.part.Size = Vector3.new(0.45, 0.45, 4.4)
-							elseif not shot.isAxe then
-								shot.part.Size = Vector3.one * 2.1
+							if shot.model then
+								for _, desc in ipairs(shot.model:GetDescendants()) do
+									if desc:IsA("BasePart") and desc.Material == Enum.Material.Neon then
+										desc.Color = PARRIED_SHOT_COLOR
+									end
+								end
+							else
+								shot.part.Color = PARRIED_SHOT_COLOR
+								if shot.isTracer then
+									shot.part.Size = Vector3.new(0.45, 0.45, 4.4)
+								elseif not shot.isAxe then
+									shot.part.Size = Vector3.one * 2.1
+								end
 							end
 							position = position + dir * 2
 							break
@@ -1653,7 +1933,7 @@ local function stepProjectiles(list, dt: number, t: number)
 					-- Thrown axe missed the player: embed it on the floor so the enemy must run
 					-- over and retrieve it before fighting with it again.
 					clearDroppedAxe(thrower)
-					local landPos = Waves.avoidObstacles(Waves.clamp(prevPos, Config.ROOM_SIZE, WALL_MARGIN + 1), 1.8, Config.ARENA_PILLARS)
+					local landPos = clampEnemyPos(prevPos, 1.8)
 					thrower.droppedAxePos = Vector3.new(landPos.X, 0, landPos.Z)
 					thrower.droppedAxePart = createDroppedAxe(thrower.droppedAxePos)
 					thrower.model:SetAttribute("AxeThrown", true)
@@ -1666,15 +1946,27 @@ local function stepProjectiles(list, dt: number, t: number)
 					thrower.model:SetAttribute("AxeThrown", false)
 				end
 			end
-			shot.part:Destroy()
+			if shot.model then
+				shot.model:Destroy()
+			else
+				shot.part:Destroy()
+			end
 			table.remove(projectiles, i)
 		else
+			shot.position = position
 			if shot.isAxe then
 				shot.spinAngle = (shot.spinAngle or 0) + dt * 22
 				local baseCf = if shot.velocity.Magnitude > 1e-3
 					then CFrame.lookAt(position, position + shot.velocity)
 					else CFrame.new(position)
-				shot.part.CFrame = baseCf * CFrame.Angles(0, shot.spinAngle, 0)
+				-- Spin the battle-axe flat-tilted in its blade plane so the full crescent silhouette
+				-- and glowing plasma edge read clearly from the isometric camera.
+				local spinCf = baseCf * CFrame.Angles(0, 0, math.rad(76)) * CFrame.Angles(shot.spinAngle, 0, 0)
+				if shot.model then
+					shot.model:PivotTo(spinCf)
+				else
+					shot.part.CFrame = spinCf
+				end
 			elseif shot.isTracer and shot.velocity.Magnitude > 1e-3 then
 				shot.part.CFrame = CFrame.lookAt(position, position + shot.velocity)
 			else
@@ -1743,7 +2035,7 @@ local function step(dt: number)
 						targetPosition = chosen.position,
 						jitter = enemy.sectorJitter,
 					}
-					if enemy.kind == "ranged" then
+					if enemy.kind == "ranged" or enemy.kind == "area" then
 						table.insert(rangedSectorEntries, sectorEntry)
 					else
 						table.insert(closeSectorEntries, sectorEntry)
@@ -1780,13 +2072,16 @@ local function step(dt: number)
 				elseif enemy.kind == "ranged" then
 					canAttack = Tactics.canFireStaggered(lastRangedShotAt[target.player], t, Config.AI_RANGED_STAGGER_SECONDS)
 					sectorAngle = rangedSectors[enemy] or 0
+				elseif enemy.kind == "area" then
+					canAttack = Tactics.canFireStaggered(lastAreaLaunchAt[target.player], t, 1.35)
+					sectorAngle = rangedSectors[enemy] or 0
 				else
 					sectorAngle = closeSectors[enemy] or 0
 				end
 			end
 			if enemy.shoveVelocity and t < enemy.shoveUntil then
 				local here = enemy.body.Position
-				local pushed = Waves.clamp(here + enemy.shoveVelocity * dt, Config.ROOM_SIZE, WALL_MARGIN)
+				local pushed = clampEnemyPos(here + enemy.shoveVelocity * dt, enemy.radius)
 				moveEnemy(enemy, CFrame.new(pushed) * enemy.body.CFrame.Rotation)
 				grid:move(enemy, pushed.X, pushed.Z)
 			end
@@ -1809,6 +2104,7 @@ local function step(dt: number)
 		end
 	end
 	stepProjectiles(list, dt, t)
+	stepHazardZones(list, t)
 end
 
 function EnemyService.start(dependencies: {
@@ -1855,7 +2151,9 @@ end
 
 function EnemyService.forget(player: Player)
 	lastRangedShotAt[player] = nil
+	lastAreaLaunchAt[player] = nil
 	for _, enemy in ipairs(enemies) do
+		enemy.contactHitAt[player] = nil
 		if enemy.grabTarget == player then
 			releaseGrab(enemy, now(), false)
 		end
@@ -1913,6 +2211,9 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		model:SetAttribute("Kind", kind)
 		if weapon then
 			model:SetAttribute("Weapon", weapon)
+		end
+		if kind == "contact" then
+			model:SetAttribute("ContactRadius", effectiveSpec.contactRadius or 5.5)
 		end
 		local spawnCFrame = CFrame.new(position.X, spec.size.Y / 2, position.Z)
 		if hasJoints then
@@ -2022,6 +2323,7 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		knockbackDir = nil,
 		knockbackSpeed = 0,
 		knockbackEndsAt = 0,
+		contactHitAt = {},
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
@@ -2225,10 +2527,19 @@ function EnemyService.clear()
 	end
 	table.clear(enemies)
 	table.clear(lastRangedShotAt)
+	table.clear(lastAreaLaunchAt)
 	grid:clear()
 	maxEnemyRadius = 0
+	for _, zone in ipairs(hazardZones) do
+		destroyHazardZone(zone)
+	end
+	table.clear(hazardZones)
 	for _, shot in ipairs(projectiles) do
-		shot.part:Destroy()
+		if shot.model then
+			shot.model:Destroy()
+		else
+			shot.part:Destroy()
+		end
 	end
 	table.clear(projectiles)
 	syncBossHud(nil)

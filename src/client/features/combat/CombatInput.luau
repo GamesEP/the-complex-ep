@@ -81,9 +81,9 @@ type ActiveAction = {
 	cancelAt: number,
 	endsAt: number,
 }
-type BufferedKind = "attack" | "spin" | "stinger" | "overDrive"
+type BufferedKind = "attack" | "spin" | "stinger" | "overDrive" | "ability"
 local activeAction: ActiveAction? = nil
-local bufferedAction: { kind: BufferedKind, expiresAt: number }? = nil
+local bufferedAction: { kind: BufferedKind, abilityId: string?, expiresAt: number }? = nil
 
 -- DMC soft target lock: keeps the enemy locked while neutral or steering in its general direction
 -- (`TARGET_LOCK_CONE`), tracks small recoil movement to stay in the sweet spot, and breaks
@@ -197,14 +197,14 @@ local function recordAction(actionName: string, step: number?, startedAt: number
 	}
 end
 
-local function canStartOffensiveAction(clock: number, kind: BufferedKind): boolean
+local function canStartOffensiveAction(clock: number, kind: BufferedKind, abilityId: string?): boolean
 	if activeLunge then
-		bufferedAction = { kind = kind, expiresAt = clock + Config.COMBO_INPUT_BUFFER }
+		bufferedAction = { kind = kind, abilityId = abilityId, expiresAt = clock + Config.COMBO_INPUT_BUFFER }
 		return false
 	end
 	if activeAction and clock < activeAction.cancelAt then
 		if activeAction.cancelAt - clock <= Config.COMBO_INPUT_BUFFER then
-			bufferedAction = { kind = kind, expiresAt = activeAction.cancelAt + 0.08 }
+			bufferedAction = { kind = kind, abilityId = abilityId, expiresAt = activeAction.cancelAt + 0.08 }
 		end
 		return false
 	end
@@ -947,6 +947,9 @@ local function castClassAbility(abilityId: string)
 		return
 	end
 	local clock = os.clock()
+	if not canStartOffensiveAction(clock, "ability", abilityId) then
+		return
+	end
 	local moveDir = Melee.flat(humanoid.MoveDirection)
 	local fallbackFacing = Melee.flat(root.CFrame.LookVector)
 	local facing = moveDir or fallbackFacing
@@ -957,10 +960,17 @@ local function castClassAbility(abilityId: string)
 	local aim = if pick then pick.direction else facing
 
 	cancelHeavyCharge(true)
+	lungeToken += 1
+	clearLunge(true)
 	lockedTarget = targetBody
 	lastEngageAt = if targetBody then clock else -math.huge
 	local _, slotLevel = abilitySlotInfo(AbilityStore.current())
 	classAbilityReadyAt[abilityId] = now() + effectiveCooldown(ability.cooldown, slotLevel)
+	if abilityId == "execute" then
+		recordAction("attack", Config.COMBO_HITS, clock)
+	else
+		recordAction(abilityId, nil, clock)
+	end
 	root.CFrame = CFrame.lookAt(root.Position, root.Position + aim)
 	Effects.classAbilityLocal(abilityId)
 	Remotes.UseAbility:FireServer(abilityId, aim)
@@ -1194,17 +1204,45 @@ function CombatInput.start()
 		end
 	end)
 
-	-- Grant bonus dash charges immediately when picking up a Speed Buff drop or Double Dash passive.
+	-- Grant bonus dash charges immediately when picking up a Speed Buff drop or Double Dash passive,
+	-- and clamp downward cleanly when a temporary buff expires or a fresh run resets passives.
 	local function syncBonusDashCharges()
 		local t = now()
 		local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash())
 		if maxCharges >= 2 and dashCharges < maxCharges then
 			dashCharges = maxCharges
 			dashRechargeAt = 0
+		elseif dashCharges > maxCharges then
+			dashCharges = maxCharges
 		end
 	end
 	player:GetAttributeChangedSignal("SpeedBuffUntil"):Connect(syncBonusDashCharges)
 	player:GetAttributeChangedSignal("HasDoubleDash"):Connect(syncBonusDashCharges)
+
+	-- Auto-focus a newly drafted ability slot whenever the currently selected slot is empty, and
+	-- clear any stale local cooldown for a freshly equipped/replaced ability.
+	local function onAbilitySlotChanged(slot: number)
+		local id = player:GetAttribute(`AbilitySlot{slot}`)
+		if type(id) == "string" and id ~= "" then
+			if id == "spin" then
+				spinReadyAt = 0
+			elseif id == "stinger" then
+				stingerReadyAt = 0
+			elseif id == "overdrive" then
+				overDriveReadyAt = 0
+			else
+				classAbilityReadyAt[id] = nil
+			end
+			if abilitySlotInfo(AbilityStore.current()) == nil then
+				AbilityStore.select(slot)
+			end
+		end
+	end
+	for slot = 1, Config.ABILITY_SLOTS do
+		player:GetAttributeChangedSignal(`AbilitySlot{slot}`):Connect(function()
+			onAbilitySlotChanged(slot)
+		end)
+	end
 
 	-- Double Jump passive (plans/roadmap.md VS-19): one crisp mid-air jump per ground touch on
 	-- Space, mobile Jump button, and gamepad ButtonA via UserInputService.JumpRequest.
@@ -1356,6 +1394,7 @@ function CombatInput.start()
 					canFire = clock - lastSwingAt >= minInterval
 				end
 				if canFire then
+					local bufferedAbilityId = bufferedAction.abilityId
 					bufferedAction = nil
 					if kind == "attack" then
 						attack()
@@ -1365,6 +1404,8 @@ function CombatInput.start()
 						stinger()
 					elseif kind == "overDrive" then
 						overDrive()
+					elseif kind == "ability" and bufferedAbilityId then
+						castClassAbility(bufferedAbilityId)
 					end
 				end
 			end
@@ -1436,9 +1477,7 @@ function CombatInput.start()
 		Effects.updateLockIndicator(lockedTarget)
 	end)
 
-	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
-	player.CharacterAdded:Connect(function(character)
-		task.spawn(trackCharacterJump, character)
+	local function resetLocalCombatState(resetSlot: boolean)
 		cancelHeavyCharge(false)
 		lungeToken += 1
 		clearLunge()
@@ -1462,6 +1501,27 @@ function CombatInput.start()
 		blockReadyAt = 0
 		heavyReadyAt = 0
 		blocking = false
+		if resetSlot then
+			AbilityStore.reset()
+		end
+	end
+
+	-- A fresh run or retry resets local predicted cooldowns & active slot even when the character
+	-- stays alive (e.g. RetryRun after Victory in Room 5 does not trigger CharacterAdded).
+	task.spawn(function()
+		local world = workspace:WaitForChild("World")
+		world:GetAttributeChangedSignal("RunStartedAt"):Connect(function()
+			local startedAt = world:GetAttribute("RunStartedAt")
+			if type(startedAt) == "number" and startedAt > 0 then
+				resetLocalCombatState(true)
+			end
+		end)
+	end)
+
+	-- A respawn is a fresh start: no combo carried over, nothing predicted from the last life.
+	player.CharacterAdded:Connect(function(character)
+		task.spawn(trackCharacterJump, character)
+		resetLocalCombatState(false)
 	end)
 end
 

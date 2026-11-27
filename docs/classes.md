@@ -70,7 +70,7 @@ Every hit on a player goes through `CombatService.hurt`, which multiplies incomi
 
 `Classes.isRanged(classId)` distinguishes the Support's **Báculo de energía** (`attackStyle = "ranged"`):
 - **Basic combo (`Attack`):** Support does not melee-lunge (`CombatInput` uses `Config.STAFF_AIM_ASSIST_RANGE = 42` with zero step-in lunge) and `CombatService.attack` spawns server-authoritative traveling energy bolts (`playerBolts`, step 3 splashes in `Config.STAFF_BOLT_FINISHER_SPLASH`), rendered on all clients via `CombatVfx` `"staffBolt"` / `"boltImpact"`.
-- **Heavy Attack (`HeavyAttack`, 2 s hold):**
+- **Heavy Attack (`HeavyAttack`, 1.4 s hold):**
   - **Tanque (`tank`):** *Impacto Sísmico* — circular seismic greatsword slam (`TANK_HEAVY_RADIUS`) that damages, shoves outward, and stuns (`EnemyService.stun`).
   - **Daño (`dps`):** *Desgarro* — twin rapid diagonal X-shaped dagger slashes (`DPS_HEAVY_SECOND_DELAY` apart) with neon echo.
   - **Apoyo (`support`):** *Orbe de Plasma* — long-range explosive arcane orb (`SUPPORT_HEAVY_RANGE`) that detonates on impact or max range for AoE damage and stun.

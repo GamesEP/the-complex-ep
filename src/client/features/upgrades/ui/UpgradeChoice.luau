@@ -31,6 +31,17 @@ local UpgradeStore = require(script.Parent.Parent.stores.UpgradeStore)
 
 local HOTKEY_PRIORITY = Enum.ContextActionPriority.High.Value + 50
 local CARD_KEYS = { "Q", "E", "F" }
+-- Brief grace delay when a brand-new offer opens so a mid-combat reflex press of E (Ability) or
+-- F (Block) never picks card 2 or 3 accidentally. Clicking or tapping a ticket works immediately.
+local OFFER_INPUT_GRACE_SECONDS = 0.35
+
+local offerOpenedAt = 0
+local lastOfferId: number? = nil
+
+local function isRunActive(world: Instance?): boolean
+	local rs = if world then world:GetAttribute("RunState") else nil
+	return rs == "fighting" or rs == "transition"
+end
 
 local function readOwnedSlots(player: Player): ({ string }, { number })
 	local slots: { string } = {}
@@ -45,16 +56,7 @@ local function readOwnedSlots(player: Player): ({ string }, { number })
 end
 
 local function needsSlotReplacement(player: Player, card: UpgradeStore.CardData): boolean
-	if card.kind ~= "ability" or not card.abilityId then
-		return false
-	end
-	local slots = readOwnedSlots(player)
-	for i = 1, Config.ABILITY_SLOTS do
-		if slots[i] == card.abilityId or slots[i] == "" then
-			return false
-		end
-	end
-	return true
+	return UpgradeStore.needsSlotReplacement(card, readOwnedSlots(player))
 end
 
 local function triggerCard(cardIndex: number)
@@ -172,9 +174,10 @@ local function UpgradeTicket(props)
 	})
 end
 
-local function UpgradeChoice()
+local function UpgradeChoice(props)
 	local player = Players.LocalPlayer
 	local metrics = Scaled.useLayout()
+	local runState = hooks.useAttribute(props.world, "RunState")
 	local offer = hooks.useAtom(UpgradeStore.offer)
 	local pending = hooks.useAtom(UpgradeStore.pending)
 	local replacingIndex = hooks.useAtom(UpgradeStore.replacingCardIndex)
@@ -187,7 +190,7 @@ local function UpgradeChoice()
 	local level2 = hooks.useAttribute(player, "AbilityLevel2")
 	local level3 = hooks.useAttribute(player, "AbilityLevel3")
 
-	if not offer or #offer.cards == 0 then
+	if (runState ~= "fighting" and runState ~= "transition") or not offer or #offer.cards == 0 then
 		return nil
 	end
 
@@ -206,17 +209,22 @@ local function UpgradeChoice()
 		}),
 	}
 
+	local ownedSlots = {
+		if type(slot1) == "string" then slot1 else "",
+		if type(slot2) == "string" then slot2 else "",
+		if type(slot3) == "string" then slot3 else "",
+	}
 	local headerTitle: string
 	local headerAccent = ui.HAZARD
 	if replacingIndex then
 		local chosen = offer.cards[replacingIndex]
-		local chosenName = if chosen then chosen.title else "Habilidad"
+		local chosenAbility = if chosen and chosen.abilityId then Config.ABILITIES[chosen.abilityId] else nil
+		local chosenName = if chosenAbility then chosenAbility.name elseif chosen then chosen.title else "Habilidad"
 		headerTitle = `3/3 LLENAS — REEMPLAZAR PARA {string.upper(chosenName)}`
 		headerAccent = ui.STRIKE
-		local slotIds = { slot1, slot2, slot3 }
 		local slotLevels = { level1, level2, level3 }
 		for s = 1, Config.ABILITY_SLOTS do
-			local abilityId = if type(slotIds[s]) == "string" then slotIds[s] else ""
+			local abilityId = ownedSlots[s]
 			local ability = Config.ABILITIES[abilityId]
 			local lv = if type(slotLevels[s]) == "number" and slotLevels[s] > 0 then math.floor(slotLevels[s]) else 1
 			cards[`Slot_{s}`] = React.createElement(UpgradeTicket, {
@@ -239,11 +247,8 @@ local function UpgradeChoice()
 		headerTitle = if offer.isStarter then "ELIGE TU HABILIDAD INICIAL" else "MEJORA DE SALA — ELIGE 1"
 		headerAccent = if offer.isStarter then ui.KINETIC else ui.HAZARD
 		for idx, card in ipairs(offer.cards) do
+			local willReplace = UpgradeStore.needsSlotReplacement(card, ownedSlots)
 			local accent = if typeof(card.color) == "Color3" then card.color else ui.HAZARD
-			local title = card.title
-			if card.kind == "ability" and type(card.nextLevel) == "number" and card.nextLevel >= 2 then
-				title = `{card.title} Nv.{card.nextLevel}`
-			end
 			cards[`Card_{idx}`] = React.createElement(UpgradeTicket, {
 				name = `UpgradeCard{idx}`,
 				order = idx,
@@ -251,9 +256,9 @@ local function UpgradeChoice()
 				compact = metrics.compact,
 				touch = metrics.touch,
 				accent = accent,
-				category = card.category,
+				category = UpgradeStore.categoryLabel(card, willReplace),
 				keycap = CARD_KEYS[idx] or tostring(idx),
-				title = title,
+				title = card.title,
 				effect = card.effect,
 				onActivate = function()
 					triggerCard(idx)
@@ -369,19 +374,34 @@ end
 local screen = {}
 
 function screen.start()
+	local world = workspace:WaitForChild("World")
+
 	Remotes.UpgradeOffer.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" then
+			lastOfferId = nil
 			UpgradeStore.reset()
 			return
 		end
-		UpgradeStore.setServerState(payload.offer, if type(payload.pending) == "number" then payload.pending else 0)
+		local nextOffer = payload.offer
+		local nextId = if type(nextOffer) == "table" and type(nextOffer.offerId) == "number" then nextOffer.offerId else nil
+		if nextId ~= lastOfferId then
+			lastOfferId = nextId
+			if nextId ~= nil then
+				offerOpenedAt = os.clock()
+			end
+		end
+		UpgradeStore.setServerState(nextOffer, if type(payload.pending) == "number" then payload.pending else 0)
 	end)
 
-	-- Bind Q / E / F at higher priority than CombatInput; returns Pass whenever no offer is open
-	-- so normal combat controls are completely unaffected outside upgrade choices.
-	local function bindHotkey(actionName: string, index: number, key: Enum.KeyCode)
+	-- Bind PC Q / E / F and Gamepad DPad Left / Up / Right above CombatInput while an offer is
+	-- open during an active run; passes through during the initial 0.35 s grace window so a
+	-- mid-combat reflex press of E or F never picks a card accidentally.
+	local function bindHotkey(actionName: string, index: number, ...: Enum.KeyCode)
 		ContextActionService:BindActionAtPriority(actionName, function(_, state: Enum.UserInputState)
-			if not UpgradeStore.hasOffer() then
+			if not isRunActive(world) or not UpgradeStore.hasOffer() then
+				return Enum.ContextActionResult.Pass
+			end
+			if os.clock() - offerOpenedAt < OFFER_INPUT_GRACE_SECONDS then
 				return Enum.ContextActionResult.Pass
 			end
 			if state ~= Enum.UserInputState.Begin then
@@ -389,25 +409,25 @@ function screen.start()
 			end
 			triggerCard(index)
 			return Enum.ContextActionResult.Sink
-		end, false, HOTKEY_PRIORITY, key)
+		end, false, HOTKEY_PRIORITY, ...)
 	end
 
-	bindHotkey("UpgradePick1", 1, Enum.KeyCode.Q)
-	bindHotkey("UpgradePick2", 2, Enum.KeyCode.E)
-	bindHotkey("UpgradePick3", 3, Enum.KeyCode.F)
+	bindHotkey("UpgradePick1", 1, Enum.KeyCode.Q, Enum.KeyCode.DPadLeft)
+	bindHotkey("UpgradePick2", 2, Enum.KeyCode.E, Enum.KeyCode.DPadUp)
+	bindHotkey("UpgradePick3", 3, Enum.KeyCode.F, Enum.KeyCode.DPadRight)
 
 	ContextActionService:BindActionAtPriority("UpgradeCancelReplace", function(_, state: Enum.UserInputState)
-		if not UpgradeStore.replacingCardIndex() then
+		if not isRunActive(world) or not UpgradeStore.replacingCardIndex() then
 			return Enum.ContextActionResult.Pass
 		end
 		if state == Enum.UserInputState.Begin then
 			UpgradeStore.cancelReplace()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, HOTKEY_PRIORITY, Enum.KeyCode.Escape, Enum.KeyCode.ButtonB)
+	end, false, HOTKEY_PRIORITY, Enum.KeyCode.Escape, Enum.KeyCode.ButtonB, Enum.KeyCode.DPadDown)
 
 	return UI.mount("UpgradeChoice", function()
-		return React.createElement(UpgradeChoice)
+		return React.createElement(UpgradeChoice, { world = world })
 	end, { displayOrder = 30 })
 end
 

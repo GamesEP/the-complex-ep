@@ -34,7 +34,13 @@ function Waves.spawnPoint(i: number, n: number, room: Vector2, inset: number, he
 	return Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
 end
 
-export type Obstacle = { x: number, z: number, radius: number }
+export type Obstacle = {
+	x: number,
+	z: number,
+	radius: number?,
+	halfX: number?,
+	halfZ: number?,
+}
 
 -- Keeps a point inside the room, `margin` studs from the walls.
 function Waves.clamp(point: Vector3, room: Vector2, margin: number): Vector3
@@ -43,42 +49,88 @@ function Waves.clamp(point: Vector3, room: Vector2, margin: number): Vector3
 	return Vector3.new(math.clamp(point.X, -halfX, halfX), point.Y, math.clamp(point.Z, -halfZ, halfZ))
 end
 
--- Pushes `point` radially outside any solid interior pillar (`obstacles`), preserving `point.Y`.
+local function pushOutOfObstacle(x: number, z: number, entityRadius: number, obs: Obstacle): (number, number)
+	if obs.halfX and obs.halfZ then
+		local hx = obs.halfX
+		local hz = obs.halfZ
+		local dx = x - obs.x
+		local dz = z - obs.z
+		local cx = math.clamp(dx, -hx, hx)
+		local cz = math.clamp(dz, -hz, hz)
+		local rx = dx - cx
+		local rz = dz - cz
+		local distSq = rx * rx + rz * rz
+		if distSq == 0 then
+			-- Center lies strictly inside the box: eject along the shallowest axis.
+			local penX = hx - math.abs(dx)
+			local penZ = hz - math.abs(dz)
+			if penX <= penZ then
+				local sx = if dx >= 0 then 1 else -1
+				return obs.x + sx * (hx + entityRadius), z
+			else
+				local sz = if dz >= 0 then 1 else -1
+				return x, obs.z + sz * (hz + entityRadius)
+			end
+		elseif distSq < entityRadius * entityRadius then
+			local dist = math.sqrt(distSq)
+			local scale = entityRadius / dist
+			return obs.x + cx + rx * scale, obs.z + cz + rz * scale
+		end
+		return x, z
+	end
+
+	local radius = obs.radius or 0
+	local dx = x - obs.x
+	local dz = z - obs.z
+	local minDist = radius + entityRadius
+	local distSq = dx * dx + dz * dz
+	if distSq < minDist * minDist then
+		if distSq > 1e-6 then
+			local dist = math.sqrt(distSq)
+			local scale = minDist / dist
+			return obs.x + dx * scale, obs.z + dz * scale
+		end
+		return obs.x + minDist, z
+	end
+	return x, z
+end
+
+-- Pushes `point` cleanly outside every solid obstacle (circles and axis-aligned boxes), running
+-- two passes so adjacent props (e.g. twin crates) never nudge an entity into its neighbour.
 function Waves.avoidObstacles(point: Vector3, entityRadius: number, obstacles: { Obstacle }?): Vector3
 	if not obstacles or #obstacles == 0 then
 		return point
 	end
 	local x, z = point.X, point.Z
-	for _, pillar in ipairs(obstacles) do
-		local dx = x - pillar.x
-		local dz = z - pillar.z
-		local minDist = pillar.radius + entityRadius
-		local distSq = dx * dx + dz * dz
-		if distSq < minDist * minDist then
-			if distSq > 1e-6 then
-				local dist = math.sqrt(distSq)
-				local scale = minDist / dist
-				x = pillar.x + dx * scale
-				z = pillar.z + dz * scale
-			else
-				x = pillar.x + minDist
-			end
+	for _ = 1, 2 do
+		for _, obs in ipairs(obstacles) do
+			x, z = pushOutOfObstacle(x, z, entityRadius, obs)
 		end
 	end
 	return Vector3.new(x, point.Y, z)
 end
 
--- True when a projectile/orb at `point` overlaps any solid pillar cover.
+-- True when a projectile/orb at `point` overlaps any solid obstacle cover.
 function Waves.hitsObstacle(point: Vector3, hitRadius: number, obstacles: { Obstacle }?): boolean
 	if not obstacles or #obstacles == 0 then
 		return false
 	end
-	for _, pillar in ipairs(obstacles) do
-		local dx = point.X - pillar.x
-		local dz = point.Z - pillar.z
-		local limit = pillar.radius + hitRadius
-		if dx * dx + dz * dz <= limit * limit then
-			return true
+	for _, obs in ipairs(obstacles) do
+		if obs.halfX and obs.halfZ then
+			local dx = point.X - obs.x
+			local dz = point.Z - obs.z
+			local rx = dx - math.clamp(dx, -obs.halfX, obs.halfX)
+			local rz = dz - math.clamp(dz, -obs.halfZ, obs.halfZ)
+			if rx * rx + rz * rz <= hitRadius * hitRadius then
+				return true
+			end
+		else
+			local dx = point.X - obs.x
+			local dz = point.Z - obs.z
+			local limit = (obs.radius or 0) + hitRadius
+			if dx * dx + dz * dz <= limit * limit then
+				return true
+			end
 		end
 	end
 	return false
@@ -108,6 +160,15 @@ function Waves.selfTest()
 	assert(math.abs((pushed.X - 38) - 7.6) < 1e-4 and pushed.Y == 2.5, "avoidObstacles pushes outside pillar radius keeping Y")
 	assert(Waves.hitsObstacle(Vector3.new(41, 2, 38), 1.0, pillars), "hitsObstacle detects shots hitting solid cover")
 	assert(not Waves.hitsObstacle(Vector3.new(0, 2, 0), 1.0, pillars), "hitsObstacle ignores clear center arena")
+
+	-- Box obstacles: exact AABB push-out (interior & corner) and projectile hit detection.
+	local boxes = { { x = -38, z = -38, halfX = 4.6, halfZ = 4.6 } }
+	local boxPushed = Waves.avoidObstacles(Vector3.new(-35, 2.5, -38), 2.0, boxes)
+	assert(math.abs(boxPushed.X - (-38 + 4.6 + 2.0)) < 1e-4 and boxPushed.Y == 2.5, "avoidObstacles ejects from inside box along shallowest axis")
+	local cornerPushed = Waves.avoidObstacles(Vector3.new(-32.8, 2.5, -32.8), 2.0, boxes)
+	assert(not Waves.hitsObstacle(cornerPushed, 1.9, boxes), "corner push clears box corner cleanly")
+	assert(Waves.hitsObstacle(Vector3.new(-33.5, 2, -33.5), 1.0, boxes), "hitsObstacle detects shots clipping box corner")
+	assert(not Waves.hitsObstacle(Vector3.new(-20, 2, -38), 1.0, boxes), "hitsObstacle ignores clear lane outside box")
 end
 
 return Waves

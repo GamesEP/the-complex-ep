@@ -58,6 +58,22 @@ function Hitbox.inBeam(
 	return horiz + vert <= 1 + 1e-6
 end
 
+-- True when `target` is inside a ground hazard zone (cylinder of `radius` on X/Z reaching up to
+-- `height` studs above `zonePos.Y`). Standing or running in the pool takes damage while jumping
+-- above `height` clears the floor hazard cleanly.
+function Hitbox.inGroundZone(zonePos: Vector3, target: Vector3, radius: number, height: number): boolean
+	if radius <= 0 or height <= 0 then
+		return false
+	end
+	local dx = target.X - zonePos.X
+	local dz = target.Z - zonePos.Z
+	if dx * dx + dz * dz > radius * radius + 1e-6 then
+		return false
+	end
+	local dy = target.Y - zonePos.Y
+	return dy >= -1.5 and dy <= height
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -103,6 +119,12 @@ function Hitbox.selfTest()
 	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 3, 5), 2.4, 3.2), "behind shooter is never hit")
 	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 3, -60), 2.4, 3.2), "beyond beam range is never hit")
 	assert(not Hitbox.inBeam(beamOrigin, beamDir, 55, Vector3.new(0, 6.5, -25), 2.4, 3.2), "high jump clears beam")
+
+	-- Artillero ground hazard zone (Y=0, R=11, H=3.6): grounded player hit, jumping clears.
+	local zonePos = Vector3.new(0, 0, 0)
+	assert(Hitbox.inGroundZone(zonePos, Vector3.new(8, 3, 0), 11, 3.6), "standing player inside ground zone is hit")
+	assert(not Hitbox.inGroundZone(zonePos, Vector3.new(12, 3, 0), 11, 3.6), "player outside zone radius is safe")
+	assert(not Hitbox.inGroundZone(zonePos, Vector3.new(4, 5.2, 0), 11, 3.6), "jumping player clears ground hazard height")
 end
 
 return Hitbox

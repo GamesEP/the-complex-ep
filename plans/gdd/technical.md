@@ -5,7 +5,7 @@ Status: agreed
 | | |
 |---|---|
 | Jugadores por grupo | 1 a 4 (`Config.PARTY_MAX_PLAYERS`). Se puede jugar solo. |
-| Jugadores por servidor | Dos tipos de servidor. **Hub**: `<n>` jugadores (`Config.HUB_MAX_PLAYERS`), cada uno sin ver a los demás. **Run**: un servidor privado reservado por run, con solo ese grupo (1 a 4). |
+| Jugadores por servidor | Dos tipos de servidor. **Hub**: 24 jugadores (`Config.HUB_MAX_PLAYERS`), cada uno sin ver a los demás. **Run**: un servidor privado reservado por run, con solo ese grupo (1 a 4). |
 | Plataformas | PC, móvil y consola. Las tres tienen que poder jugar una run completa. |
 | Entrada | Teclado y ratón, táctil y mando. Ningún control puede existir en una sola de las tres. El apuntado usa dirección de movimiento + asistencia en cono de 120° en las tres plataformas (sin apuntado por cursor). |
 | Cámara | Isométrica, desde arriba, fija en diagonal. Se ve a todo el grupo y a la horda a la vez. |
@@ -31,6 +31,3 @@ no en PC.
   hub.
 - **Mundo abierto o streaming dinámico de mapas:** la acción transcurre en salas cerradas.
 - **Primera persona o VR:** el juego se diseña exclusivamente para cámara isométrica.
-
-**Open:** cuántos jugadores por servidor de hub (`Config.HUB_MAX_PLAYERS`). Bloquea la pantalla
-de la lista en el hito de Grupos; no bloquea el Corte jugable ni el Hito 2.

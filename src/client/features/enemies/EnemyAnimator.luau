@@ -57,6 +57,8 @@ type Rig = {
 	bossNovaRing: Part?,
 	alertGui: BillboardGui?,
 	stunOrbs: { Part }?,
+	contactAura: Part?,
+	contactArcs: { Part }?,
 	lastAfterimageAt: number,
 	afterimageIndex: number,
 }
@@ -232,6 +234,18 @@ local function detachEnemy(inst: Instance)
 			end
 			rig.stunOrbs = nil
 		end
+		if rig.contactAura then
+			rig.contactAura:Destroy()
+			rig.contactAura = nil
+		end
+		if rig.contactArcs then
+			for _, arc in ipairs(rig.contactArcs) do
+				if arc.Parent then
+					arc:Destroy()
+				end
+			end
+			rig.contactArcs = nil
+		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
 		end
@@ -280,6 +294,8 @@ local function attachEnemy(inst: Instance)
 			bossNovaRing = nil,
 			alertGui = nil,
 			stunOrbs = nil,
+			contactAura = nil,
+			contactArcs = nil,
 			lastAfterimageAt = 0,
 			afterimageIndex = 0,
 		}
@@ -717,6 +733,12 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.rushPose(clock)
 		elseif phase == "fuse" then
 			targetPose = EnemyAnim.fusePose(clock, phaseProgress)
+		elseif phase == "areaWindup" then
+			targetPose = EnemyAnim.areaWindupPose(phaseProgress, clock)
+		elseif phase == "contactWindup" then
+			targetPose = EnemyAnim.contactWindupPose(phaseProgress, clock)
+		elseif phase == "contactActive" then
+			targetPose = EnemyAnim.contactActivePose(rig.walkPhase, clock)
 		elseif strikeElapsed >= 0 and strikeElapsed < Config.ENEMY_STRIKE_ANIM_SECONDS then
 			targetPose = EnemyAnim.strikePose(strikeElapsed / Config.ENEMY_STRIKE_ANIM_SECONDS, rig.weapon)
 		elseif fireElapsed >= 0 and fireElapsed < Config.ENEMY_FIRE_ANIM_SECONDS then
@@ -1026,6 +1048,87 @@ local function onRenderStepped(dt: number)
 			rig.bossNovaRing = nil
 		end
 
+		-- Voltaico (`contact`) high-voltage aura ring + crackling orbiting electric arcs.
+		if phase == "contactWindup" or phase == "contactActive" then
+			local radiusAttr = model:GetAttribute("ContactRadius")
+			local contactDiam = (if type(radiusAttr) == "number" and radiusAttr > 0 then radiusAttr else 5.5) * 2
+			local aura = rig.contactAura
+			if not aura or not aura.Parent then
+				local disc = Instance.new("Part")
+				disc.Name = "ContactAuraRing"
+				disc.Shape = Enum.PartType.Cylinder
+				disc.Anchored = true
+				disc.CanCollide = false
+				disc.CanQuery = false
+				disc.CanTouch = false
+				disc.CastShadow = false
+				disc.Material = Enum.Material.Neon
+				disc.Parent = getCorpseFolder()
+				rig.contactAura = disc
+				aura = disc
+			end
+			local arcs = rig.contactArcs
+			if not arcs then
+				arcs = {}
+				for k = 1, 3 do
+					local bolt = Instance.new("Part")
+					bolt.Name = `ContactArc_{k}`
+					bolt.Anchored = true
+					bolt.CanCollide = false
+					bolt.CanQuery = false
+					bolt.CanTouch = false
+					bolt.CastShadow = false
+					bolt.Material = Enum.Material.Neon
+					bolt.Parent = getCorpseFolder()
+					table.insert(arcs, bolt)
+				end
+				rig.contactArcs = arcs
+			end
+			local isActive = phase == "contactActive"
+			if aura then
+				local diam = if isActive
+					then contactDiam * (0.96 + 0.06 * math.sin(clock * 28))
+					else math.max(contactDiam * (0.35 + 0.65 * phaseProgress), 2.2)
+				aura.Size = Vector3.new(0.24, diam, diam)
+				aura.CFrame = CFrame.new(pos.X, 0.24, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+				aura.Color = if isActive then Color3.fromRGB(55, 240, 255) else Color3.fromRGB(255, 230, 75)
+				aura.Transparency = if isActive then 0.52 + 0.14 * math.sin(clock * 32) else 0.72 - 0.25 * phaseProgress
+			end
+			if arcs then
+				local orbitR = if isActive then contactDiam * 0.44 else contactDiam * (0.2 + 0.22 * phaseProgress)
+				for k, bolt in ipairs(arcs) do
+					if bolt.Parent then
+						local angle = clock * (if isActive then 9.5 else 6.0) + (k - 1) * (math.pi * 2 / 3)
+						local jitter = math.sin(clock * 48 + k * 2) * 0.35
+						local h = if isActive then 3.2 + math.abs(jitter) else 1.8 + phaseProgress * 1.2
+						bolt.Size = Vector3.new(0.22, h, 0.22)
+						bolt.Color = if (k + math.floor(clock * 16)) % 2 == 0
+							then Color3.fromRGB(70, 245, 255)
+							else Color3.fromRGB(255, 238, 95)
+						bolt.Transparency = if isActive then 0.16 else 0.4
+						bolt.CFrame = CFrame.new(
+							pos.X + math.cos(angle) * orbitR,
+							h * 0.5 + 0.3,
+							pos.Z + math.sin(angle) * orbitR
+						) * CFrame.Angles(jitter * 0.6, angle, jitter * 0.6)
+					end
+				end
+			end
+		else
+			if rig.contactAura then
+				rig.contactAura:Destroy()
+				rig.contactAura = nil
+			end
+			if rig.contactArcs then
+				for _, arc in ipairs(rig.contactArcs) do
+					if arc.Parent then
+						arc:Destroy()
+					end
+				end
+				rig.contactArcs = nil
+			end
+		end
+
 		-- Overhead yellow warning triangle (`!`) for Grabber and single-sword Paso Fantasma abilities.
 		if model:GetAttribute("AlertIcon") == true then
 			local alert = rig.alertGui
@@ -1087,14 +1190,14 @@ local function onRenderStepped(dt: number)
 			rig.stunOrbs = nil
 		end
 
-		-- Hide the axe enemy's in-hand battle-axe while its thrown axe is flying or lying on the floor.
+		-- Hide every part of the axe enemy's in-hand battle-axe while its thrown axe is flying or
+		-- embedded in the floor (prefix match covers all detailed weapon parts automatically).
 		if rig.weapon == "axe" then
 			local axeHidden = model:GetAttribute("AxeThrown") == true
 			local targetAlpha = if axeHidden then 1 else 0
-			for _, partName in ipairs({ "AxeShaft", "AxeCollar", "AxeHead", "AxeEdge", "AxeBackSpike" }) do
-				local p = model:FindFirstChild(partName)
-				if p and p:IsA("BasePart") and p.Transparency ~= targetAlpha then
-					p.Transparency = targetAlpha
+			for _, child in ipairs(model:GetChildren()) do
+				if child:IsA("BasePart") and child.Name:sub(1, 3) == "Axe" and child.Transparency ~= targetAlpha then
+					child.Transparency = targetAlpha
 				end
 			end
 		end

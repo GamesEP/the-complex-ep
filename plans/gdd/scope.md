@@ -24,7 +24,7 @@ Lo que se planeó:
 
 Lo que se añadió después, durante el desarrollo del corte:
 
-- **Kit del jugador:** ataque cargado de 2 s, bloqueo con ventana de parry (aturde a los cuerpo a
+- **Kit del jugador:** ataque cargado de 1,4 s, bloqueo con ventana de parry (aturde a los cuerpo a
   cuerpo y devuelve los disparos), apuntado con "pegado" al objetivo y un pequeño avance al atacar.
 - **3 habilidades intercambiables** en lugar de 1: Giro, Stinger y Over Drive (ver
   [systems.md](systems.md)).

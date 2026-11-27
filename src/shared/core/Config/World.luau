@@ -17,21 +17,66 @@ Config.ROOM_FLOOR_MATERIAL = Enum.Material.Concrete
 -- Offset from the arena's pivot where players arrive (centre entry elevator pad).
 Config.SPAWN_OFFSET = CFrame.new(0, 4, 0)
 
--- Solid interior cover structures in ComplexArena.rbxmx: 4 quadrant reactor pillars at (±38, ±38)
--- plus 5 low tactical cover bunkers along the outer flanks (leaving the center and North Boss
--- corridor wide open). Shared with Waves/EnemyService/CombatService/DropService so enemies steer
--- cleanly around them and projectiles stop against cover instead of clipping through.
+-- Solid structures and perimeter props in ComplexArena.rbxmx (matching every `addNoClimbHull`
+-- and `BunkerCollider` in `scripts/generate-arena.luau`). Shared with Waves, EnemyService,
+-- CombatService, and DropService so enemies, lunges, rushes, and projectiles never clip through
+-- pillars, bunkers, cryo clusters, crates, consoles, racks, pallets, or barrels.
 Config.ARENA_PILLARS = {
-	{ x = -38, z = -38, radius = 5.6 },
-	{ x = 38, z = -38, radius = 5.6 },
-	{ x = -38, z = 38, radius = 5.6 },
-	{ x = 38, z = 38, radius = 5.6 },
-	-- Low tactical cover bunkers (chest-high so isometric sightlines stay clear)
-	{ x = -22, z = -48, radius = 3.8 },
-	{ x = 22, z = -48, radius = 3.8 },
-	{ x = -46, z = 0, radius = 3.8 },
-	{ x = 46, z = 0, radius = 3.8 },
-	{ x = 0, z = 44, radius = 3.8 },
+	-- 4 quadrant reactor pillars (`PillarHull` = 9.2 x 9.2)
+	{ x = -38, z = -38, halfX = 4.6, halfZ = 4.6 },
+	{ x = 38, z = -38, halfX = 4.6, halfZ = 4.6 },
+	{ x = -38, z = 38, halfX = 4.6, halfZ = 4.6 },
+	{ x = 38, z = 38, halfX = 4.6, halfZ = 4.6 },
+	-- 5 low tactical cover bunkers (`BunkerCollider` = 6.8 x 3.6, yaw 0 or 90)
+	{ x = -22, z = -48, halfX = 3.4, halfZ = 1.8 },
+	{ x = 22, z = -48, halfX = 3.4, halfZ = 1.8 },
+	{ x = -46, z = 0, halfX = 1.8, halfZ = 3.4 },
+	{ x = 46, z = 0, halfX = 1.8, halfZ = 3.4 },
+	{ x = 0, z = 44, halfX = 3.4, halfZ = 1.8 },
+	-- 3 corner cryo tank clusters (rotated 45 deg, 8.4 x 4.6)
+	{ x = -62.5, z = -62.5, halfX = 4.6, halfZ = 4.6 },
+	{ x = 62.5, z = -62.5, halfX = 4.6, halfZ = 4.6 },
+	{ x = -62.5, z = 62.5, halfX = 4.6, halfZ = 4.6 },
+	-- North & West supply crate clusters
+	{ x = -54, z = -65.4, halfX = 2.9, halfZ = 2.6 },
+	{ x = -48, z = -65.8, halfX = 2.3, halfZ = 2.2 },
+	{ x = 52, z = -65.4, halfX = 3.2, halfZ = 2.7 },
+	{ x = 45, z = -65.8, halfX = 2.4, halfZ = 2.3 },
+	{ x = -65.5, z = -48, halfX = 2.4, halfZ = 2.8 },
+	{ x = -65.5, z = 48, halfX = 2.6, halfZ = 3.0 },
+	-- Coolant barrel clusters
+	{ x = -41, z = -66.0, radius = 1.3 },
+	{ x = -38.5, z = -65.8, radius = 1.3 },
+	{ x = 39, z = -66.0, radius = 1.3 },
+	{ x = 36.4, z = -65.6, radius = 1.3 },
+	{ x = -66.0, z = -38, radius = 1.3 },
+	{ x = -66.0, z = -35.4, radius = 1.3 },
+	{ x = -65.8, z = 56.5, radius = 1.3 },
+	{ x = -63.4, z = 58.6, radius = 1.3 },
+	-- Control consoles flanking North Blast Door & West Observation Bay
+	{ x = -18.5, z = -66.2, halfX = 2.85, halfZ = 1.3 },
+	{ x = 18.5, z = -66.2, halfX = 2.85, halfZ = 1.3 },
+	{ x = -66.2, z = -19.5, halfX = 1.3, halfZ = 2.85 },
+	{ x = -66.2, z = 19.5, halfX = 1.3, halfZ = 2.85 },
+	-- Server racks lining North & West walls
+	{ x = -33, z = -67.2, halfX = 2.5, halfZ = 1.3 },
+	{ x = 33, z = -67.2, halfX = 2.5, halfZ = 1.3 },
+	{ x = -67.2, z = -31, halfX = 1.3, halfZ = 2.5 },
+	{ x = -67.2, z = 31, halfX = 1.3, halfZ = 2.5 },
+	-- Low foreground pallets along South & East curbs
+	{ x = -28, z = 65.8, halfX = 2.9, halfZ = 2.2 },
+	{ x = 28, z = 65.8, halfX = 2.9, halfZ = 2.2 },
+	{ x = 65.8, z = -26, halfX = 2.2, halfZ = 2.9 },
+	{ x = 65.8, z = 26, halfX = 2.2, halfZ = 2.9 },
+	-- South & East perimeter bollards
+	{ x = -42, z = 68.4, radius = 0.9 },
+	{ x = -14, z = 68.4, radius = 0.9 },
+	{ x = 14, z = 68.4, radius = 0.9 },
+	{ x = 42, z = 68.4, radius = 0.9 },
+	{ x = 68.4, z = -42, radius = 0.9 },
+	{ x = 68.4, z = -14, radius = 0.9 },
+	{ x = 68.4, z = 14, radius = 0.9 },
+	{ x = 68.4, z = 42, radius = 0.9 },
 }
 
 -- Facility lighting applied on server start so Studio Play matches default.project.json even

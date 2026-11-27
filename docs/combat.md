@@ -105,6 +105,8 @@ renamed. Read the name from Config anywhere it reaches a screen — never write 
 |---|---|---|
 | `melee` | Centinela | Melee line, four weapon variants |
 | `ranged` | Cazador | Ranged, four weapon variants |
+| `area` | Artillero | Mid-range mortar unit dropping telegraphed 3.5 s ground hazard zones |
+| `contact` | Voltaico | Fast spiral chaser with a 5.5-stud high-voltage contact aura |
 | `exploder` | Detonante | Fast suicide runner |
 | `grabber` | Coloso | Juggernaut that grabs and rushes |
 | `bossOh` | Oh | Wave 6 heavy mechanical titan boss (cone smash, seismic leap, 360° plasma nova) |

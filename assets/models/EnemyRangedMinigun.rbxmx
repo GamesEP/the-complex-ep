@@ -721,7 +721,7 @@
           <CoordinateFrame name="C1">
             <X>0.23999023</X>
             <Y>0.6599884</Y>
-            <Z>1.6499939</Z>
+            <Z>1.6699982</Z>
             <R00>1</R00>
             <R01>0</R01>
             <R02>0</R02>
@@ -737,6 +737,42 @@
         </Properties>
       </Item>
       <Item class="Motor6D" referent="40">
+        <Properties>
+          <string name="Name">Joint_CarryHandle</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>1.2599945</X>
+            <Y>0.47999573</Y>
+            <Z>-0.05000305</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0.23999023</X>
+            <Y>0.11999512</Y>
+            <Z>1.6499939</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">41</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="42">
         <Properties>
           <string name="Name">Joint_AmmoDrum</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -755,24 +791,24 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>-0.26000977</X>
-            <Y>0.9299927</Y>
-            <Z>1.5999908</Z>
-            <R00>1</R00>
+            <X>-1.5999908</X>
+            <Y>0.94000244</Y>
+            <Z>-0.2400055</Z>
+            <R00>0</R00>
             <R01>0</R01>
-            <R02>0</R02>
+            <R02>-1</R02>
             <R10>0</R10>
             <R11>1</R11>
             <R12>0</R12>
-            <R20>0</R20>
+            <R20>1</R20>
             <R21>0</R21>
-            <R22>1</R22>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">41</Ref>
+          <Ref name="Part1">43</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="42">
+      <Item class="Motor6D" referent="44">
         <Properties>
           <string name="Name">Joint_MinigunBarrel1</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -791,24 +827,24 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>0.3999939</X>
-            <Y>0.5</Y>
-            <Z>3.5999908</Z>
-            <R00>1</R00>
+            <X>-3.6699982</X>
+            <Y>0.47999573</Y>
+            <Z>0.3999939</Z>
+            <R00>0</R00>
             <R01>0</R01>
-            <R02>0</R02>
+            <R02>-1</R02>
             <R10>0</R10>
             <R11>1</R11>
             <R12>0</R12>
-            <R20>0</R20>
+            <R20>1</R20>
             <R21>0</R21>
-            <R22>1</R22>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">43</Ref>
+          <Ref name="Part1">45</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="44">
+      <Item class="Motor6D" referent="46">
         <Properties>
           <string name="Name">Joint_MinigunBarrel2</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -827,24 +863,24 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>0.08000183</X>
-            <Y>0.5</Y>
-            <Z>3.5999908</Z>
-            <R00>1</R00>
+            <X>-3.6699982</X>
+            <Y>0.47999573</Y>
+            <Z>0.08000183</Z>
+            <R00>0</R00>
             <R01>0</R01>
-            <R02>0</R02>
+            <R02>-1</R02>
             <R10>0</R10>
             <R11>1</R11>
             <R12>0</R12>
-            <R20>0</R20>
+            <R20>1</R20>
             <R21>0</R21>
-            <R22>1</R22>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">45</Ref>
+          <Ref name="Part1">47</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="46">
+      <Item class="Motor6D" referent="48">
         <Properties>
           <string name="Name">Joint_MinigunBarrel3</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -863,26 +899,26 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>0.23999023</X>
+            <X>-3.6699982</X>
             <Y>0.80000305</Y>
-            <Z>3.5999908</Z>
-            <R00>1</R00>
+            <Z>0.3999939</Z>
+            <R00>0</R00>
             <R01>0</R01>
-            <R02>0</R02>
+            <R02>-1</R02>
             <R10>0</R10>
             <R11>1</R11>
             <R12>0</R12>
-            <R20>0</R20>
+            <R20>1</R20>
             <R21>0</R21>
-            <R22>1</R22>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">47</Ref>
+          <Ref name="Part1">49</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="48">
+      <Item class="Motor6D" referent="50">
         <Properties>
-          <string name="Name">Joint_BarrelClamp</string>
+          <string name="Name">Joint_MinigunBarrel4</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
           <CoordinateFrame name="C0">
             <X>1.2599945</X>
@@ -899,9 +935,31 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>0.23999023</X>
-            <Y>0.6399994</Y>
-            <Z>4.199997</Z>
+            <X>-3.6699982</X>
+            <Y>0.80000305</Y>
+            <Z>0.08000183</Z>
+            <R00>0</R00>
+            <R01>0</R01>
+            <R02>-1</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>0</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">51</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="52">
+        <Properties>
+          <string name="Name">Joint_BarrelClampMid</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>1.2599945</X>
+            <Y>0.47999573</Y>
+            <Z>-0.05000305</Z>
             <R00>1</R00>
             <R01>0</R01>
             <R02>0</R02>
@@ -912,11 +970,61 @@
             <R21>0</R21>
             <R22>1</R22>
           </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-3.300003</X>
+            <Y>0.6399994</Y>
+            <Z>0.23999023</Z>
+            <R00>0</R00>
+            <R01>0</R01>
+            <R02>-1</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>0</R22>
+          </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">49</Ref>
+          <Ref name="Part1">53</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="50">
+      <Item class="Motor6D" referent="54">
+        <Properties>
+          <string name="Name">Joint_BarrelClampFront</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>1.2599945</X>
+            <Y>0.47999573</Y>
+            <Z>-0.05000305</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-4.330002</X>
+            <Y>0.6399994</Y>
+            <Z>0.23999023</Z>
+            <R00>0</R00>
+            <R01>0</R01>
+            <R02>-1</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>0</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">55</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="56">
         <Properties>
           <string name="Name">Joint_MuzzleFlashPort</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -935,21 +1043,21 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>0.23999023</X>
+            <X>-4.869995</X>
             <Y>0.6399994</Y>
-            <Z>4.7700043</Z>
-            <R00>1</R00>
+            <Z>0.23999023</Z>
+            <R00>0</R00>
             <R01>0</R01>
-            <R02>0</R02>
+            <R02>-1</R02>
             <R10>0</R10>
             <R11>1</R11>
             <R12>0</R12>
-            <R20>0</R20>
+            <R20>1</R20>
             <R21>0</R21>
-            <R22>1</R22>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">51</Ref>
+          <Ref name="Part1">57</Ref>
         </Properties>
       </Item>
     </Item>
@@ -1591,7 +1699,7 @@
         <CoordinateFrame name="CFrame">
           <X>1.0200043</X>
           <Y>-0.17999268</Y>
-          <Z>-1.699997</Z>
+          <Z>-1.7200012</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -1610,9 +1718,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>0.7200012</X>
+          <X>0.7400055</X>
           <Y>0.7200012</Y>
-          <Z>1.8500061</Z>
+          <Z>1.949997</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -1620,13 +1728,13 @@
     </Item>
     <Item class="Part" referent="41">
       <Properties>
-        <string name="Name">AmmoDrum</string>
+        <string name="Name">CarryHandle</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
-          <X>1.5200043</X>
-          <Y>-0.44999695</Y>
-          <Z>-1.6499939</Z>
+          <X>1.0200043</X>
+          <Y>0.3600006</Y>
+          <Z>-1.699997</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -1636,6 +1744,41 @@
           <R20>0</R20>
           <R21>0</R21>
           <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">5397614</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.16000366</X>
+          <Y>0.13999939</Y>
+          <Z>1.1499939</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="43">
+      <Properties>
+        <string name="Name">AmmoDrum</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>1.5</X>
+          <Y>-0.4600067</Y>
+          <Z>-1.6499939</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>-1</R20>
+          <R21>0</R21>
+          <R22>-0</R22>
         </CoordinateFrame>
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
@@ -1644,45 +1787,11 @@
         <Color3uint8 name="Color3uint8">15447594</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
+        <token name="shape">2</token>
         <Vector3 name="size">
-          <X>0.7599945</X>
-          <Y>0.8600006</Y>
-          <Z>0.8600006</Z>
-        </Vector3>
-        <token name="TopSurface">0</token>
-        <float name="Transparency">0</float>
-      </Properties>
-    </Item>
-    <Item class="Part" referent="43">
-      <Properties>
-        <string name="Name">MinigunBarrel1</string>
-        <bool name="Anchored">false</bool>
-        <token name="BottomSurface">0</token>
-        <CoordinateFrame name="CFrame">
-          <X>0.8600006</X>
-          <Y>-0.020004272</Y>
-          <Z>-3.649994</Z>
-          <R00>1</R00>
-          <R01>0</R01>
-          <R02>0</R02>
-          <R10>0</R10>
-          <R11>1</R11>
-          <R12>0</R12>
-          <R20>0</R20>
-          <R21>0</R21>
-          <R22>1</R22>
-        </CoordinateFrame>
-        <bool name="CanCollide">false</bool>
-        <bool name="CanQuery">false</bool>
-        <bool name="CanTouch">false</bool>
-        <bool name="CastShadow">true</bool>
-        <Color3uint8 name="Color3uint8">8688296</Color3uint8>
-        <bool name="Massless">true</bool>
-        <token name="Material">1088</token>
-        <Vector3 name="size">
-          <X>0.17999268</X>
-          <Y>0.17999268</Y>
-          <Z>2.25</Z>
+          <X>0.7200012</X>
+          <Y>0.91999817</Y>
+          <Z>0.91999817</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -1690,22 +1799,22 @@
     </Item>
     <Item class="Part" referent="45">
       <Properties>
-        <string name="Name">MinigunBarrel2</string>
+        <string name="Name">MinigunBarrel1</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
-          <X>1.1799927</X>
-          <Y>-0.020004272</Y>
-          <Z>-3.649994</Z>
-          <R00>1</R00>
+          <X>0.8600006</X>
+          <Y>0</Y>
+          <Z>-3.7200012</Z>
+          <R00>-0</R00>
           <R01>0</R01>
-          <R02>0</R02>
+          <R02>1</R02>
           <R10>0</R10>
           <R11>1</R11>
           <R12>0</R12>
-          <R20>0</R20>
+          <R20>-1</R20>
           <R21>0</R21>
-          <R22>1</R22>
+          <R22>-0</R22>
         </CoordinateFrame>
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
@@ -1714,10 +1823,11 @@
         <Color3uint8 name="Color3uint8">8688296</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
+        <token name="shape">2</token>
         <Vector3 name="size">
-          <X>0.17999268</X>
-          <Y>0.17999268</Y>
-          <Z>2.25</Z>
+          <X>2.350006</X>
+          <Y>0.16000366</Y>
+          <Z>0.16000366</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -1725,22 +1835,22 @@
     </Item>
     <Item class="Part" referent="47">
       <Properties>
-        <string name="Name">MinigunBarrel3</string>
+        <string name="Name">MinigunBarrel2</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
-          <X>1.0200043</X>
-          <Y>-0.32000732</Y>
-          <Z>-3.649994</Z>
-          <R00>1</R00>
+          <X>1.1799927</X>
+          <Y>0</Y>
+          <Z>-3.7200012</Z>
+          <R00>-0</R00>
           <R01>0</R01>
-          <R02>0</R02>
+          <R02>1</R02>
           <R10>0</R10>
           <R11>1</R11>
           <R12>0</R12>
-          <R20>0</R20>
+          <R20>-1</R20>
           <R21>0</R21>
-          <R22>1</R22>
+          <R22>-0</R22>
         </CoordinateFrame>
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
@@ -1749,10 +1859,11 @@
         <Color3uint8 name="Color3uint8">8688296</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
+        <token name="shape">2</token>
         <Vector3 name="size">
-          <X>0.17999268</X>
-          <Y>0.17999268</Y>
-          <Z>2.25</Z>
+          <X>2.350006</X>
+          <Y>0.16000366</Y>
+          <Z>0.16000366</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
@@ -1760,22 +1871,94 @@
     </Item>
     <Item class="Part" referent="49">
       <Properties>
-        <string name="Name">BarrelClamp</string>
+        <string name="Name">MinigunBarrel3</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0.8600006</X>
+          <Y>-0.32000732</Y>
+          <Z>-3.7200012</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>-1</R20>
+          <R21>0</R21>
+          <R22>-0</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">8688296</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <token name="shape">2</token>
+        <Vector3 name="size">
+          <X>2.350006</X>
+          <Y>0.16000366</Y>
+          <Z>0.16000366</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="51">
+      <Properties>
+        <string name="Name">MinigunBarrel4</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>1.1799927</X>
+          <Y>-0.32000732</Y>
+          <Z>-3.7200012</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>-1</R20>
+          <R21>0</R21>
+          <R22>-0</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">8688296</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <token name="shape">2</token>
+        <Vector3 name="size">
+          <X>2.350006</X>
+          <Y>0.16000366</Y>
+          <Z>0.16000366</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="53">
+      <Properties>
+        <string name="Name">BarrelClampMid</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
           <X>1.0200043</X>
           <Y>-0.16000366</Y>
-          <Z>-4.25</Z>
-          <R00>1</R00>
+          <Z>-3.350006</Z>
+          <R00>-0</R00>
           <R01>0</R01>
-          <R02>0</R02>
+          <R02>1</R02>
           <R10>0</R10>
           <R11>1</R11>
           <R12>0</R12>
-          <R20>0</R20>
+          <R20>-1</R20>
           <R21>0</R21>
-          <R22>1</R22>
+          <R22>-0</R22>
         </CoordinateFrame>
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
@@ -1784,16 +1967,53 @@
         <Color3uint8 name="Color3uint8">2245770</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
+        <token name="shape">2</token>
         <Vector3 name="size">
-          <X>0.6199951</X>
-          <Y>0.6199951</Y>
-          <Z>0.27999878</Z>
+          <X>0.2400055</X>
+          <Y>0.6399994</Y>
+          <Z>0.6399994</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="51">
+    <Item class="Part" referent="55">
+      <Properties>
+        <string name="Name">BarrelClampFront</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>1.0200043</X>
+          <Y>-0.16000366</Y>
+          <Z>-4.380005</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>-1</R20>
+          <R21>0</R21>
+          <R22>-0</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">2245770</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <token name="shape">2</token>
+        <Vector3 name="size">
+          <X>0.27999878</X>
+          <Y>0.6799927</Y>
+          <Z>0.6799927</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="57">
       <Properties>
         <string name="Name">MuzzleFlashPort</string>
         <bool name="Anchored">false</bool>
@@ -1801,16 +2021,16 @@
         <CoordinateFrame name="CFrame">
           <X>1.0200043</X>
           <Y>-0.16000366</Y>
-          <Z>-4.8200073</Z>
-          <R00>1</R00>
+          <Z>-4.919998</Z>
+          <R00>-0</R00>
           <R01>0</R01>
-          <R02>0</R02>
+          <R02>1</R02>
           <R10>0</R10>
           <R11>1</R11>
           <R12>0</R12>
-          <R20>0</R20>
+          <R20>-1</R20>
           <R21>0</R21>
-          <R22>1</R22>
+          <R22>-0</R22>
         </CoordinateFrame>
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
@@ -1819,10 +2039,11 @@
         <Color3uint8 name="Color3uint8">16761655</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">288</token>
+        <token name="shape">2</token>
         <Vector3 name="size">
-          <X>0.5399933</X>
-          <Y>0.5399933</Y>
-          <Z>0.19999695</Z>
+          <X>0.19999695</X>
+          <Y>0.55999756</Y>
+          <Z>0.55999756</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>

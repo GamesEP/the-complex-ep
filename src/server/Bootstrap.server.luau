@@ -40,7 +40,6 @@ local Server = script.Parent
 
 local Dispatcher = require(Server.core.Net.Dispatcher)
 
-local ClassService = require(Server.features.classes.ClassService)
 local CombatService = require(Server.features.combat.CombatService)
 local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
@@ -172,7 +171,6 @@ Dispatcher.connect("Stinger", CombatService.stinger)
 Dispatcher.connect("OverDrive", CombatService.overDrive)
 Dispatcher.connect("Block", CombatService.block)
 Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
-Dispatcher.connect("ChooseClass", ClassService.choose)
 Dispatcher.connect("ChooseDifficulty", RunDirector.chooseDifficulty)
 Dispatcher.connect("StartRun", RunDirector.startRun)
 Dispatcher.connect("RetryRun", RunDirector.retryRun)

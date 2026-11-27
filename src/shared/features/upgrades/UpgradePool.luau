@@ -86,6 +86,15 @@ function UpgradePool.levelMultipliers(level: number): (number, number)
 	return dmgMult, cdMult
 end
 
+local function upgradeEffectCopy(abilityId: string): string
+	if abilityId == "bulwark" or abilityId == "protectField" then
+		return "+20% duración · -10% recarga"
+	elseif abilityId == "healPulse" then
+		return "+25% curación · -10% recarga"
+	end
+	return "+25% daño · -10% recarga"
+end
+
 local function makeAbilityCard(abilityId: string, kind: "newAbility" | "upgradeAbility" | "replaceAbility", level: number): UpgradeCard
 	local def = Config.ABILITIES[abilityId]
 	local name = if def then def.name else abilityId
@@ -96,7 +105,7 @@ local function makeAbilityCard(abilityId: string, kind: "newAbility" | "upgradeA
 		elseif kind == "replaceAbility" then `Cambiar: {name}`
 		else name
 	local effect = if kind == "upgradeAbility"
-		then `+25% daño · -10% recarga`
+		then upgradeEffectCopy(abilityId)
 		elseif kind == "replaceAbility" then `Reemplaza hueco · {copy}`
 		else copy
 	return {
@@ -233,17 +242,21 @@ function UpgradePool.rollRoomOffer(build: PlayerBuild, rng: (() -> number)?): Of
 			table.insert(candidates, makeAbilityCard(shuffledUnowned[i], "newAbility", 1))
 		end
 	elseif #shuffledUnowned > 0 then
-		-- Slots full: convert an unowned active roll into one of the 3 GDD rules.
-		local roll = rand()
-		if roll < 0.34 and #upgradeableOwned > 0 then
-			local pickIdx = math.clamp(math.floor(rand() * #upgradeableOwned) + 1, 1, #upgradeableOwned)
-			local ownedId = upgradeableOwned[pickIdx]
-			table.insert(candidates, makeAbilityCard(ownedId, "upgradeAbility", (build.levels[ownedId] or 1) + 1))
-		elseif roll < 0.67 then
-			table.insert(candidates, makeAbilityCard(shuffledUnowned[1], "replaceAbility", 1))
-		else
-			local statIdx = math.clamp(math.floor(rand() * #Config.STAT_UPGRADES) + 1, 1, #Config.STAT_UPGRADES)
-			table.insert(candidates, makeStatCard(Config.STAT_UPGRADES[statIdx]))
+		-- Slots full (3/3): each of the 3 rolled unowned active slots converts randomly into one
+		-- of the 3 GDD rules (owned level-up, slot replacement, or stat boost) so probabilities
+		-- stay balanced even after deduplicating `card.id` below.
+		for i = 1, math.min(3, #shuffledUnowned) do
+			local roll = rand()
+			if roll < 0.34 and #upgradeableOwned > 0 then
+				local pickIdx = math.clamp(math.floor(rand() * #upgradeableOwned) + 1, 1, #upgradeableOwned)
+				local ownedId = upgradeableOwned[pickIdx]
+				table.insert(candidates, makeAbilityCard(ownedId, "upgradeAbility", (build.levels[ownedId] or 1) + 1))
+			elseif roll < 0.67 then
+				table.insert(candidates, makeAbilityCard(shuffledUnowned[i], "replaceAbility", 1))
+			else
+				local statIdx = math.clamp(math.floor(rand() * #Config.STAT_UPGRADES) + 1, 1, #Config.STAT_UPGRADES)
+				table.insert(candidates, makeStatCard(Config.STAT_UPGRADES[statIdx]))
+			end
 		end
 	end
 
@@ -279,6 +292,69 @@ end
 
 function UpgradePool.pendingBehind(build: PlayerBuild): number
 	return math.max(#build.queue - 1, 0)
+end
+
+-- Refreshes the new queue head after an earlier pick changed the player's build, so queued offers
+-- can never waste a pick on an already-owned passive, an already-maxed ability, or an ability
+-- that was replaced out of the player's slots.
+local function sanitizeHeadOffer(build: PlayerBuild, rng: (() -> number)?)
+	local head = build.queue[1]
+	if not head or head.isStarter then
+		return
+	end
+	local rand = rng or math.random
+	local usedIds: { [string]: boolean } = {}
+	for _, card in ipairs(head.cards) do
+		usedIds[card.id] = true
+	end
+
+	local function pickFreshStat(): UpgradeCard
+		local stats = shuffleCopy(Config.STAT_UPGRADES, rand)
+		for _, statDef in ipairs(stats) do
+			if not usedIds[statDef.id] then
+				usedIds[statDef.id] = true
+				return makeStatCard(statDef)
+			end
+		end
+		return makeStatCard(Config.STAT_UPGRADES[1])
+	end
+
+	for i, card in ipairs(head.cards) do
+		local stale = false
+		if card.kind == "passive" then
+			local def = findPassiveDef(card.passiveId)
+			if def then
+				local owned = if def.attribute == "HasDoubleJump" then build.hasDoubleJump else build.hasDoubleDash
+				stale = owned
+			end
+		elseif card.kind == "upgradeAbility" and card.abilityId then
+			local ownedSlot = UpgradePool.slotOf(build, card.abilityId)
+			local curLevel = build.levels[card.abilityId] or 0
+			if not ownedSlot or curLevel >= Config.ABILITY_MAX_LEVEL then
+				stale = true
+			elseif card.nextLevel ~= curLevel + 1 then
+				head.cards[i] = makeAbilityCard(card.abilityId, "upgradeAbility", curLevel + 1)
+			end
+		elseif card.kind == "replaceAbility" and card.abilityId then
+			if UpgradePool.slotOf(build, card.abilityId) ~= nil then
+				local curLevel = build.levels[card.abilityId] or 1
+				if curLevel < Config.ABILITY_MAX_LEVEL then
+					local upgraded = makeAbilityCard(card.abilityId, "upgradeAbility", curLevel + 1)
+					if not usedIds[upgraded.id] then
+						usedIds[upgraded.id] = true
+						head.cards[i] = upgraded
+					else
+						stale = true
+					end
+				else
+					stale = true
+				end
+			end
+		end
+		if stale then
+			head.cards[i] = pickFreshStat()
+		end
+	end
 end
 
 -- Applies a player's pick from the head of the queue. Returns `(ok, healAmount, pickedCard)`.
@@ -327,15 +403,21 @@ function UpgradePool.applyPick(
 			build.levels[card.abilityId] = 1
 		end
 	elseif card.kind == "replaceAbility" and card.abilityId then
-		if not replaceSlot or replaceSlot < 1 or replaceSlot > Config.ABILITY_SLOTS or math.floor(replaceSlot) ~= replaceSlot then
-			return false, 0, nil
+		local existingSlot = UpgradePool.slotOf(build, card.abilityId)
+		if existingSlot then
+			local cur = build.levels[card.abilityId] or 1
+			build.levels[card.abilityId] = math.min(cur + 1, Config.ABILITY_MAX_LEVEL)
+		else
+			if not replaceSlot or replaceSlot < 1 or replaceSlot > Config.ABILITY_SLOTS or math.floor(replaceSlot) ~= replaceSlot then
+				return false, 0, nil
+			end
+			local oldId = build.slots[replaceSlot]
+			if oldId then
+				build.levels[oldId] = nil
+			end
+			build.slots[replaceSlot] = card.abilityId
+			build.levels[card.abilityId] = 1
 		end
-		local oldId = build.slots[replaceSlot]
-		if oldId then
-			build.levels[oldId] = nil
-		end
-		build.slots[replaceSlot] = card.abilityId
-		build.levels[card.abilityId] = 1
 	elseif card.kind == "stat" then
 		local def = findStatDef(card.statId)
 		if not def then
@@ -366,6 +448,7 @@ function UpgradePool.applyPick(
 	end
 
 	table.remove(build.queue, 1)
+	sanitizeHeadOffer(build)
 	return true, healDelta, card
 end
 
@@ -446,10 +529,40 @@ function UpgradePool.selfTest()
 	UpgradePool.autoResolveAll(build, detRng)
 	assert(#build.queue == 0, "autoResolveAll empties the queue")
 
-	-- Level scaling math.
+	-- Level scaling math and honest upgrade copy per ability type.
 	local d1, c1 = UpgradePool.levelMultipliers(1)
 	local d3, c3 = UpgradePool.levelMultipliers(3)
 	assert(d1 == 1 and c1 == 1 and d3 > d1 and c3 < c1, "ability levels boost damage and lower cooldown")
+	assert(string.find(makeAbilityCard("bulwark", "upgradeAbility", 2).effect, "duración") ~= nil, "bulwark level copy mentions duration")
+	assert(string.find(makeAbilityCard("protectField", "upgradeAbility", 2).effect, "duración") ~= nil, "protectField level copy mentions duration")
+	assert(string.find(makeAbilityCard("healPulse", "upgradeAbility", 2).effect, "curación") ~= nil, "healPulse level copy mentions healing")
+	assert(string.find(makeAbilityCard("spin", "upgradeAbility", 2).effect, "daño") ~= nil, "spin level copy mentions damage")
+
+	-- Queued duplicate passive sanitization: picking Double Jump from Offer 1 replaces the
+	-- now-redundant Double Jump card in Offer 2 with a fresh stat card so no pick is wasted.
+	local qBuild = UpgradePool.initial()
+	qBuild.slots = { "spin", "stinger", "overdrive" }
+	qBuild.levels = { spin = Config.ABILITY_MAX_LEVEL, stinger = 1, overdrive = 1 }
+	local djDef = Config.PASSIVE_UPGRADES[1]
+	UpgradePool.enqueue(qBuild, {
+		offerId = 101,
+		isStarter = false,
+		cards = { makePassiveCard(djDef), makeStatCard(Config.STAT_UPGRADES[1]), makeStatCard(Config.STAT_UPGRADES[2]) },
+	})
+	UpgradePool.enqueue(qBuild, {
+		offerId = 102,
+		isStarter = false,
+		cards = {
+			makePassiveCard(djDef),
+			makeAbilityCard("spin", "upgradeAbility", 4),
+			makeStatCard(Config.STAT_UPGRADES[1]),
+		},
+	})
+	assert(UpgradePool.applyPick(qBuild, 101, 1), "picks Double Jump from Offer 1")
+	local nextHead = UpgradePool.currentOffer(qBuild)
+	assert(nextHead ~= nil and nextHead.offerId == 102, "Offer 2 becomes head")
+	assert(nextHead.cards[1].kind == "stat", "redundant Double Jump in Offer 2 converted to stat card")
+	assert(nextHead.cards[2].kind == "stat", "already-maxed spin upgrade in Offer 2 converted to stat card")
 end
 
 return UpgradePool

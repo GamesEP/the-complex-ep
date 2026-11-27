@@ -48,9 +48,8 @@ siempre haya progresión: una run fallida nunca es tiempo tirado.
 jugar con ese grupo espera en el hub a que vuelva.
 
 **Qué pasa si quedan pocos jugadores:** la run sigue mientras quede al menos un jugador en pie,
-aunque sea uno solo. **Open:** si un jugador abandona la run (se sale del juego), ¿la dificultad
-de las salas siguientes baja para los que quedan? Bloquea el escalado de enemigos en el hito de
-Grupos.
+aunque sea uno solo. Si un jugador abandona la run (se desconecta), las **salas siguientes**
+re-escalan la dificultad cooperativa al número de jugadores activos restantes (`HS-03`).
 
 ## La sesión
 

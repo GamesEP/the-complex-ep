@@ -409,6 +409,9 @@ function CombatService.clear()
 	for _, bolt in ipairs(playerBolts) do
 		Remotes.CombatVfx:FireAllClients("boltImpact", bolt.id, bolt.position, "cancel", 0)
 	end
+	if #healZones > 0 then
+		Remotes.CombatVfx:FireAllClients("clearZones")
+	end
 	table.clear(playerBolts)
 	table.clear(boomerangs)
 	table.clear(healZones)

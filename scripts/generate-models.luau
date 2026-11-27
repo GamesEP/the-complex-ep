@@ -586,6 +586,244 @@ local function buildDropDefense(): any
 	return model
 end
 
+-- Shared sculpted industrial plasma battle-axe geometry used by BOTH `EnemyMeleeAxe` (rigged to
+-- its right arm, with every part prefixed "Axe" so `EnemyAnimator` hides them while thrown) AND
+-- the standalone `EnemyBattleAxe.rbxmx` projectile/dropped-weapon model.
+--
+-- Local space of `baseCF`: shaft runs along Z (pommel at +1.55, head at -1.25), crescent blade
+-- sweeps toward -Y, rear armor-piercing war-pick spikes toward +Y.
+local function addBattleAxeParts(
+	addPart: (props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		transparency: number?,
+		shape: any?,
+		castShadow: boolean?,
+	}) -> (),
+	baseCF: any,
+	palette: {
+		chassis: any,
+		steel: any,
+		steelLight: any,
+		armorDarkRed: any,
+		hazard: any,
+		bladeGlow: any,
+	}
+)
+	local function localCF(cf: any): any
+		return baseCF * cf
+	end
+
+	-- Reinforced cylindrical haft + pommel cap + grip bands + inlaid energy conduit.
+	addPart({
+		name = "AxeShaft",
+		size = Vector3.new(3.65, 0.24, 0.24),
+		cframe = localCF(CFrame.new(0, 0, 0.05) * CFrame.Angles(0, math.rad(90), 0)),
+		color = palette.chassis,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxePommel",
+		size = Vector3.new(0.28, 0.42, 0.42),
+		cframe = localCF(CFrame.new(0, 0, 1.88) * CFrame.Angles(0, math.rad(90), 0)),
+		color = palette.steel,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxePommelSpike",
+		size = Vector3.new(0.22, 0.22, 0.34),
+		cframe = localCF(CFrame.new(0, 0, 2.12) * CFrame.Angles(0, 0, math.rad(45))),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+	})
+	addPart({
+		name = "AxeGripBandA",
+		size = Vector3.new(0.16, 0.32, 0.32),
+		cframe = localCF(CFrame.new(0, 0, 1.15) * CFrame.Angles(0, math.rad(90), 0)),
+		color = palette.hazard,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+	})
+	addPart({
+		name = "AxeGripBandB",
+		size = Vector3.new(0.16, 0.32, 0.32),
+		cframe = localCF(CFrame.new(0, 0, 0.35) * CFrame.Angles(0, math.rad(90), 0)),
+		color = palette.steel,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+	})
+	addPart({
+		name = "AxeConduit",
+		size = Vector3.new(0.28, 0.09, 2.15),
+		cframe = localCF(CFrame.new(0, 0, -0.3)),
+		color = palette.bladeGlow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Armored head socket collar + reinforced cheek plates + top cap finial.
+	addPart({
+		name = "AxeCollar",
+		size = Vector3.new(0.46, 0.54, 0.92),
+		cframe = localCF(CFrame.new(0, -0.02, -1.2)),
+		color = palette.armorDarkRed,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxeCheekPlate",
+		size = Vector3.new(0.52, 0.36, 0.56),
+		cframe = localCF(CFrame.new(0, -0.14, -1.2) * CFrame.Angles(math.rad(45), 0, 0)),
+		color = palette.steel,
+		material = Enum.Material.Metal,
+	})
+	addPart({
+		name = "AxeHeadFinial",
+		size = Vector3.new(0.24, 0.24, 0.52),
+		cframe = localCF(CFrame.new(0, 0, -1.92) * CFrame.Angles(0, 0, math.rad(45))),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- Sculpted 3-part bearded crescent battle-axe head (tapered neck + swept upper horn + hooked beard).
+	addPart({
+		name = "AxeBladeNeck",
+		size = Vector3.new(0.22, 0.85, 0.78),
+		cframe = localCF(CFrame.new(0, -0.58, -1.22)),
+		color = palette.steel,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxeBladeMid",
+		size = Vector3.new(0.18, 0.78, 1.38),
+		cframe = localCF(CFrame.new(0, -1.04, -1.26)),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxeBladeUpper",
+		size = Vector3.new(0.17, 0.66, 0.88),
+		cframe = localCF(CFrame.new(0, -0.88, -1.86) * CFrame.Angles(math.rad(-32), 0, 0)),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxeBladeBeard",
+		size = Vector3.new(0.17, 0.72, 0.96),
+		cframe = localCF(CFrame.new(0, -0.96, -0.56) * CFrame.Angles(math.rad(34), 0, 0)),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxeBladeFuller",
+		size = Vector3.new(0.24, 0.22, 0.92),
+		cframe = localCF(CFrame.new(0, -0.82, -1.24)),
+		color = palette.armorDarkRed,
+		material = Enum.Material.Metal,
+	})
+
+	-- Curved 3-segment glowing plasma cutting edge tracing the swept crescent arc.
+	addPart({
+		name = "AxeEdgeMid",
+		size = Vector3.new(0.12, 0.24, 1.28),
+		cframe = localCF(CFrame.new(0, -1.46, -1.26)),
+		color = palette.bladeGlow,
+		material = Enum.Material.Neon,
+	})
+	addPart({
+		name = "AxeEdgeUpper",
+		size = Vector3.new(0.12, 0.22, 0.98),
+		cframe = localCF(CFrame.new(0, -1.2, -2.02) * CFrame.Angles(math.rad(-34), 0, 0)),
+		color = palette.bladeGlow,
+		material = Enum.Material.Neon,
+	})
+	addPart({
+		name = "AxeEdgeLower",
+		size = Vector3.new(0.12, 0.22, 1.02),
+		cframe = localCF(CFrame.new(0, -1.26, -0.44) * CFrame.Angles(math.rad(34), 0, 0)),
+		color = palette.bladeGlow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Rear curved armor-piercing war-pick spike with hazard trim.
+	addPart({
+		name = "AxePickTrim",
+		size = Vector3.new(0.32, 0.22, 0.42),
+		cframe = localCF(CFrame.new(0, 0.34, -1.16)),
+		color = palette.hazard,
+		material = Enum.Material.SmoothPlastic,
+	})
+	addPart({
+		name = "AxePickBase",
+		size = Vector3.new(0.2, 0.46, 0.42),
+		cframe = localCF(CFrame.new(0, 0.58, -1.1) * CFrame.Angles(math.rad(18), 0, 0)),
+		color = palette.steel,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addPart({
+		name = "AxePickTip",
+		size = Vector3.new(0.14, 0.56, 0.24),
+		cframe = localCF(CFrame.new(0, 0.92, -0.94) * CFrame.Angles(math.rad(34), 0, 0)),
+		color = palette.steelLight,
+		material = Enum.Material.Metal,
+	})
+end
+
+-- Standalone `.rbxmx` enemy battle-axe cloned by EnemyService when thrown or embedded on the floor.
+local function buildEnemyBattleAxe(): any
+	local model = Instance.new("Model")
+	model.Name = "EnemyBattleAxe"
+
+	local pivot = makePart({
+		name = "Pivot",
+		size = Vector3.new(0.2, 0.2, 0.2),
+		cframe = CFrame.new(0, 0, 0),
+		color = Color3.fromRGB(255, 115, 40),
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	pivot.Parent = model
+
+	addBattleAxeParts(function(props)
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			transparency = props.transparency,
+			shape = props.shape,
+			anchored = true,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+	end, CFrame.new(0, 0.32, 0.42), {
+		chassis = Color3.fromRGB(44, 48, 58),
+		steel = Color3.fromRGB(78, 86, 100),
+		steelLight = Color3.fromRGB(132, 142, 160),
+		armorDarkRed = Color3.fromRGB(132, 30, 36),
+		hazard = Color3.fromRGB(230, 178, 42),
+		bladeGlow = Color3.fromRGB(255, 115, 40),
+	})
+
+	model.PrimaryPart = pivot
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
 -- Armored industrial melee striker ("Complex Enforcer") facing -Z (CFrame.lookAt forward).
 -- Built in 4 weapon variants (`sword`, `dual`, `axe`, `mace`) sharing the same crimson-and-steel
 -- chassis with Motor6D joint pivots (`torso`, `head`, `leftLeg`, `rightLeg`, `leftArm`, `rightArm`)
@@ -801,7 +1039,7 @@ local function buildEnemyMeleeVariant(modelName: string, weapon: string): any
 		material = Enum.Material.Neon,
 	})
 
-	-- Left arm + variant off-hand gear (second blade for `dual`, tactical buckler otherwise).
+	-- Left arm + variant off-hand gear (second tapered plasma blade for `dual`, layered buckler otherwise).
 	if weapon == "dual" then
 		addLimb("leftArm", PIVOT_LEFT_ARM, {
 			name = "LeftArm",
@@ -811,26 +1049,63 @@ local function buildEnemyMeleeVariant(modelName: string, weapon: string): any
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
+		local lBase = CFrame.new(-1.78, -0.34, -1.28) * CFrame.Angles(math.rad(-8), 0, 0)
+		addLimb("leftArm", PIVOT_LEFT_ARM, {
+			name = "LeftBladePommel",
+			size = Vector3.new(0.28, 0.28, 0.34),
+			cframe = lBase * CFrame.new(0, 0, 0.42) * CFrame.Angles(0, 0, math.rad(45)),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
 		addLimb("leftArm", PIVOT_LEFT_ARM, {
 			name = "LeftBladeGuard",
-			size = Vector3.new(0.5, 0.82, 0.42),
-			cframe = CFrame.new(-1.78, -0.36, -1.32),
-			color = steel,
+			size = Vector3.new(0.32, 0.62, 0.28),
+			cframe = lBase * CFrame.new(0, 0, -0.05),
+			color = armorDarkRed,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("leftArm", PIVOT_LEFT_ARM, {
+			name = "LeftBladeGuardWing",
+			size = Vector3.new(0.22, 0.42, 0.22),
+			cframe = lBase * CFrame.new(0, -0.4, -0.16) * CFrame.Angles(math.rad(-26), 0, 0),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
+		addLimb("leftArm", PIVOT_LEFT_ARM, {
 			name = "LeftBladeSpine",
-			size = Vector3.new(0.18, 0.42, 2.2),
-			cframe = CFrame.new(-1.78, -0.25, -2.45) * CFrame.Angles(math.rad(-8), 0, 0),
+			size = Vector3.new(0.17, 0.26, 2.05),
+			cframe = lBase * CFrame.new(0, 0.08, -1.16),
+			color = chassis,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("leftArm", PIVOT_LEFT_ARM, {
+			name = "LeftBladeBody",
+			size = Vector3.new(0.13, 0.34, 2.1),
+			cframe = lBase * CFrame.new(0, -0.08, -1.2),
 			color = steelLight,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("leftArm", PIVOT_LEFT_ARM, {
 			name = "LeftBladeEdge",
-			size = Vector3.new(0.13, 0.28, 2.4),
-			cframe = CFrame.new(-1.78, -0.5, -2.55) * CFrame.Angles(math.rad(-8), 0, 0),
+			size = Vector3.new(0.09, 0.16, 2.18),
+			cframe = lBase * CFrame.new(0, -0.26, -1.25),
+			color = bladeGlow,
+			material = Enum.Material.Neon,
+		})
+		addLimb("leftArm", PIVOT_LEFT_ARM, {
+			name = "LeftBladeTip",
+			size = Vector3.new(0.12, 0.34, 0.56),
+			cframe = lBase * CFrame.new(0, -0.04, -2.42) * CFrame.Angles(math.rad(-32), 0, 0),
+			color = steelLight,
+			material = Enum.Material.Metal,
+		})
+		addLimb("leftArm", PIVOT_LEFT_ARM, {
+			name = "LeftBladeTipEdge",
+			size = Vector3.new(0.09, 0.16, 0.48),
+			cframe = lBase * CFrame.new(0, -0.14, -2.5) * CFrame.Angles(math.rad(-32), 0, 0),
 			color = bladeGlow,
 			material = Enum.Material.Neon,
 		})
@@ -844,13 +1119,44 @@ local function buildEnemyMeleeVariant(modelName: string, weapon: string): any
 			castShadow = true,
 		})
 		if weapon == "sword" then
+			local shCF = CFrame.new(-2.0, -0.35, -0.78) * CFrame.Angles(math.rad(22), math.rad(20), 0)
 			addLimb("leftArm", PIVOT_LEFT_ARM, {
 				name = "LeftGuard",
-				size = Vector3.new(0.32, 1.35, 1.15),
-				cframe = CFrame.new(-1.98, -0.35, -0.78) * CFrame.Angles(math.rad(25), math.rad(20), 0),
+				size = Vector3.new(0.24, 1.38, 1.18),
+				cframe = shCF,
 				color = armorDarkRed,
 				material = Enum.Material.Metal,
 				castShadow = true,
+			})
+			addLimb("leftArm", PIVOT_LEFT_ARM, {
+				name = "LeftGuardTip",
+				size = Vector3.new(0.22, 0.72, 0.72),
+				cframe = shCF * CFrame.new(0, -0.72, 0) * CFrame.Angles(math.rad(45), 0, 0),
+				color = armorDarkRed,
+				material = Enum.Material.Metal,
+				castShadow = true,
+			})
+			addLimb("leftArm", PIVOT_LEFT_ARM, {
+				name = "LeftGuardPlate",
+				size = Vector3.new(0.18, 0.96, 0.82),
+				cframe = shCF * CFrame.new(-0.1, 0.04, 0),
+				color = steel,
+				material = Enum.Material.Metal,
+			})
+			addLimb("leftArm", PIVOT_LEFT_ARM, {
+				name = "LeftGuardHazard",
+				size = Vector3.new(0.2, 0.18, 0.98),
+				cframe = shCF * CFrame.new(-0.11, 0.52, 0),
+				color = hazard,
+				material = Enum.Material.SmoothPlastic,
+			})
+			addLimb("leftArm", PIVOT_LEFT_ARM, {
+				name = "LeftGuardCore",
+				size = Vector3.new(0.24, 0.34, 0.34),
+				cframe = shCF * CFrame.new(-0.14, -0.04, 0),
+				color = bladeGlow,
+				material = Enum.Material.Neon,
+				shape = Enum.PartType.Ball,
 			})
 		else
 			-- Reinforced gauntlet brace for heavy axe/mace units.
@@ -876,109 +1182,181 @@ local function buildEnemyMeleeVariant(modelName: string, weapon: string): any
 	})
 
 	if weapon == "axe" then
-		-- Heavy industrial plasma battle-axe: long gunmetal haft + broad crescent blade + glowing edge.
-		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "AxeShaft",
-			size = Vector3.new(0.28, 0.28, 3.85),
-			cframe = CFrame.new(1.78, -0.38, -2.1) * CFrame.Angles(math.rad(-12), 0, 0),
-			color = steel,
-			material = Enum.Material.Metal,
-			castShadow = true,
-		})
-		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "AxeCollar",
-			size = Vector3.new(0.55, 0.55, 0.75),
-			cframe = CFrame.new(1.78, -0.68, -3.35) * CFrame.Angles(math.rad(-12), 0, 0),
-			color = armorDarkRed,
-			material = Enum.Material.Metal,
-			castShadow = true,
-		})
-		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "AxeHead",
-			size = Vector3.new(0.24, 1.95, 1.35),
-			cframe = CFrame.new(1.78, -0.92, -3.45) * CFrame.Angles(math.rad(-12), 0, 0),
-			color = steelLight,
-			material = Enum.Material.Metal,
-			castShadow = true,
-		})
-		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "AxeEdge",
-			size = Vector3.new(0.16, 2.2, 0.34),
-			cframe = CFrame.new(1.78, -1.06, -4.15) * CFrame.Angles(math.rad(-12), 0, 0),
-			color = bladeGlow,
-			material = Enum.Material.Neon,
-		})
-		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "AxeBackSpike",
-			size = Vector3.new(0.22, 0.45, 0.8),
-			cframe = CFrame.new(1.78, -0.1, -3.2) * CFrame.Angles(math.rad(-12), 0, 0),
-			color = hazard,
-			material = Enum.Material.SmoothPlastic,
+		-- Heavy sculpted industrial plasma bearded battle-axe (shared geometry with EnemyBattleAxe.rbxmx).
+		addBattleAxeParts(function(props)
+			addLimb("rightArm", PIVOT_RIGHT_ARM, props)
+		end, CFrame.new(1.78, -0.45, -2.28) * CFrame.Angles(math.rad(-12), 0, 0), {
+			chassis = chassis,
+			steel = steel,
+			steelLight = steelLight,
+			armorDarkRed = armorDarkRed,
+			hazard = hazard,
+			bladeGlow = bladeGlow,
 		})
 	elseif weapon == "mace" then
-		-- Heavy crusher mace/maul: reinforced shaft + chunky octagonal-style steel head + molten core.
+		-- Heavy sculpted seismic crusher mace: cylindrical banded haft + octagonal spiked head + molten core.
+		local mBase = CFrame.new(1.78, -0.36, -2.05) * CFrame.Angles(math.rad(-10), 0, 0)
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MaceShaft",
-			size = Vector3.new(0.32, 0.32, 3.65),
-			cframe = CFrame.new(1.78, -0.35, -2.0) * CFrame.Angles(math.rad(-10), 0, 0),
+			size = Vector3.new(3.55, 0.26, 0.26),
+			cframe = mBase * CFrame.Angles(0, math.rad(90), 0),
+			color = chassis,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MacePommel",
+			size = Vector3.new(0.32, 0.44, 0.44),
+			cframe = mBase * CFrame.new(0, 0, 1.82) * CFrame.Angles(0, math.rad(90), 0),
+			color = steel,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MaceCollar",
+			size = Vector3.new(0.64, 0.64, 0.34),
+			cframe = mBase * CFrame.new(0, 0, -0.82) * CFrame.Angles(0, 0, math.rad(45)),
+			color = armorDarkRed,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MaceHeadA",
+			size = Vector3.new(1.18, 1.18, 1.45),
+			cframe = mBase * CFrame.new(0, 0, -1.55),
 			color = steel,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "MaceHead",
-			size = Vector3.new(1.32, 1.32, 1.55),
-			cframe = CFrame.new(1.78, -0.62, -3.45) * CFrame.Angles(math.rad(-10), 0, math.rad(45)),
-			color = steelLight,
+			name = "MaceHeadB",
+			size = Vector3.new(1.18, 1.18, 1.45),
+			cframe = mBase * CFrame.new(0, 0, -1.55) * CFrame.Angles(0, 0, math.rad(45)),
+			color = armorDarkRed,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "MaceFlange",
-			size = Vector3.new(1.52, 0.35, 1.15),
-			cframe = CFrame.new(1.78, -0.62, -3.45) * CFrame.Angles(math.rad(-10), 0, 0),
-			color = armorDarkRed,
+			name = "MaceBandRear",
+			size = Vector3.new(1.32, 1.32, 0.22),
+			cframe = mBase * CFrame.new(0, 0, -1.04) * CFrame.Angles(0, 0, math.rad(45)),
+			color = hazard,
 			material = Enum.Material.Metal,
-			castShadow = true,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MaceBandFront",
+			size = Vector3.new(1.32, 1.32, 0.22),
+			cframe = mBase * CFrame.new(0, 0, -2.06) * CFrame.Angles(0, 0, math.rad(45)),
+			color = hazard,
+			material = Enum.Material.Metal,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MaceCore",
-			size = Vector3.new(0.5, 1.5, 1.15),
-			cframe = CFrame.new(1.78, -0.62, -3.45) * CFrame.Angles(math.rad(-10), 0, 0),
+			size = Vector3.new(1.38, 1.38, 0.32),
+			cframe = mBase * CFrame.new(0, 0, -1.55) * CFrame.Angles(0, 0, math.rad(22.5)),
 			color = bladeGlow,
 			material = Enum.Material.Neon,
 		})
+		for s = 0, 3 do
+			local rot = mBase * CFrame.new(0, 0, -1.55) * CFrame.Angles(0, 0, math.rad(s * 90))
+			addLimb("rightArm", PIVOT_RIGHT_ARM, {
+				name = `MaceSpikeBase_{s + 1}`,
+				size = Vector3.new(0.32, 0.36, 0.32),
+				cframe = rot * CFrame.new(0, 0.78, 0) * CFrame.Angles(0, math.rad(45), 0),
+				color = steelLight,
+				material = Enum.Material.Metal,
+			})
+			addLimb("rightArm", PIVOT_RIGHT_ARM, {
+				name = `MaceSpikeTip_{s + 1}`,
+				size = Vector3.new(0.16, 0.38, 0.16),
+				cframe = rot * CFrame.new(0, 1.06, 0) * CFrame.Angles(0, math.rad(45), 0),
+				color = steelLight,
+				material = Enum.Material.Metal,
+			})
+		end
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MaceTipBase",
+			size = Vector3.new(0.46, 0.46, 0.38),
+			cframe = mBase * CFrame.new(0, 0, -2.42) * CFrame.Angles(0, 0, math.rad(45)),
+			color = steelLight,
+			material = Enum.Material.Metal,
+		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MaceTip",
-			size = Vector3.new(0.55, 0.55, 0.55),
-			cframe = CFrame.new(1.78, -0.74, -4.25) * CFrame.Angles(math.rad(-10), 0, math.rad(45)),
-			color = hazard,
+			size = Vector3.new(0.24, 0.24, 0.44),
+			cframe = mBase * CFrame.new(0, 0, -2.74) * CFrame.Angles(0, 0, math.rad(45)),
+			color = bladeGlow,
 			material = Enum.Material.Neon,
 		})
 	else
-		-- `sword` and `dual` right-hand plasma cleaver blade.
-		local bladeLen = if weapon == "dual" then 2.2 else 2.35
-		local edgeLen = if weapon == "dual" then 2.4 else 2.55
+		-- `sword` and `dual` right-hand tapered cyber-cleaver blade with swept guard & pointed tip.
+		local bladeLen = if weapon == "dual" then 2.05 else 2.25
+		local rBase = CFrame.new(1.78, -0.34, -1.28) * CFrame.Angles(math.rad(-8), 0, 0)
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladePommel",
+			size = Vector3.new(0.3, 0.3, 0.36),
+			cframe = rBase * CFrame.new(0, 0, 0.44) * CFrame.Angles(0, 0, math.rad(45)),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "BladeGuard",
-			size = Vector3.new(0.55, 0.9, 0.45),
-			cframe = CFrame.new(1.78, -0.38, -1.35),
-			color = steel,
+			size = Vector3.new(0.36, 0.68, 0.3),
+			cframe = rBase * CFrame.new(0, 0, -0.05),
+			color = armorDarkRed,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladeGuardWingUp",
+			size = Vector3.new(0.22, 0.42, 0.24),
+			cframe = rBase * CFrame.new(0, 0.44, -0.18) * CFrame.Angles(math.rad(28), 0, 0),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladeGuardWingDown",
+			size = Vector3.new(0.22, 0.46, 0.24),
+			cframe = rBase * CFrame.new(0, -0.44, -0.18) * CFrame.Angles(math.rad(-28), 0, 0),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "BladeSpine",
-			size = Vector3.new(0.2, 0.48, bladeLen),
-			cframe = CFrame.new(1.78, -0.25, -2.5) * CFrame.Angles(math.rad(-8), 0, 0),
+			size = Vector3.new(0.19, 0.28, bladeLen),
+			cframe = rBase * CFrame.new(0, 0.1, -(0.18 + bladeLen / 2)),
+			color = chassis,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladeBody",
+			size = Vector3.new(0.14, 0.38, bladeLen + 0.08),
+			cframe = rBase * CFrame.new(0, -0.08, -(0.2 + bladeLen / 2)),
 			color = steelLight,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "BladeEdge",
-			size = Vector3.new(0.14, 0.32, edgeLen),
-			cframe = CFrame.new(1.78, -0.54, -2.6) * CFrame.Angles(math.rad(-8), 0, 0),
+			size = Vector3.new(0.1, 0.18, bladeLen + 0.14),
+			cframe = rBase * CFrame.new(0, -0.28, -(0.22 + bladeLen / 2)),
+			color = bladeGlow,
+			material = Enum.Material.Neon,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladeTip",
+			size = Vector3.new(0.13, 0.38, 0.62),
+			cframe = rBase * CFrame.new(0, -0.04, -(bladeLen + 0.42)) * CFrame.Angles(math.rad(-32), 0, 0),
+			color = steelLight,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BladeTipEdge",
+			size = Vector3.new(0.1, 0.18, 0.54),
+			cframe = rBase * CFrame.new(0, -0.16, -(bladeLen + 0.5)) * CFrame.Angles(math.rad(-32), 0, 0),
 			color = bladeGlow,
 			material = Enum.Material.Neon,
 		})
@@ -1200,158 +1578,238 @@ local function buildEnemyRangedVariant(modelName: string, weapon: string): any
 	})
 
 	if weapon == "minigun" then
-		-- Heavy rotary machine gun (3 clustered barrels + side ammo drum + amber tracer muzzle).
+		-- Heavy rotary machine gun: armored housing, top carry handle, cylindrical ammo drum,
+		-- 4 cylindrical rotary barrels with dual clamp rings, and glowing muzzle flash cage.
 		local ammoYellow = Color3.fromRGB(235, 182, 42)
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "GunHousing",
-			size = Vector3.new(0.72, 0.72, 1.85),
-			cframe = CFrame.new(1.02, -0.18, -1.7),
+			size = Vector3.new(0.74, 0.72, 1.95),
+			cframe = CFrame.new(1.02, -0.18, -1.72),
 			color = chassis,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "CarryHandle",
+			size = Vector3.new(0.16, 0.14, 1.15),
+			cframe = CFrame.new(1.02, 0.36, -1.7),
+			color = steel,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "AmmoDrum",
-			size = Vector3.new(0.76, 0.86, 0.86),
-			cframe = CFrame.new(1.52, -0.45, -1.65),
+			size = Vector3.new(0.72, 0.92, 0.92),
+			cframe = CFrame.new(1.5, -0.46, -1.65) * CFrame.Angles(0, math.rad(90), 0),
 			color = ammoYellow,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 			castShadow = true,
 		})
-		-- 3 clustered gun barrels with front clamp ring.
-		for i, off in ipairs({ { -0.16, 0.14 }, { 0.16, 0.14 }, { 0, -0.16 } }) do
+		-- 4 cylindrical rotary barrels with mid & front cooling clamp rings.
+		for i, off in ipairs({ { -0.16, 0.16 }, { 0.16, 0.16 }, { -0.16, -0.16 }, { 0.16, -0.16 } }) do
 			addLimb("rightArm", PIVOT_RIGHT_ARM, {
 				name = `MinigunBarrel{i}`,
-				size = Vector3.new(0.18, 0.18, 2.25),
-				cframe = CFrame.new(1.02 + off[1], -0.16 + off[2], -3.65),
+				size = Vector3.new(2.35, 0.16, 0.16),
+				cframe = CFrame.new(1.02 + off[1], -0.16 + off[2], -3.72) * CFrame.Angles(0, math.rad(90), 0),
 				color = steelLight,
 				material = Enum.Material.Metal,
+				shape = Enum.PartType.Cylinder,
 				castShadow = true,
 			})
 		end
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
-			name = "BarrelClamp",
-			size = Vector3.new(0.62, 0.62, 0.28),
-			cframe = CFrame.new(1.02, -0.16, -4.25),
+			name = "BarrelClampMid",
+			size = Vector3.new(0.24, 0.64, 0.64),
+			cframe = CFrame.new(1.02, -0.16, -3.35) * CFrame.Angles(0, math.rad(90), 0),
 			color = armorDarkBlue,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "BarrelClampFront",
+			size = Vector3.new(0.28, 0.68, 0.68),
+			cframe = CFrame.new(1.02, -0.16, -4.38) * CFrame.Angles(0, math.rad(90), 0),
+			color = armorDarkBlue,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MuzzleFlashPort",
-			size = Vector3.new(0.54, 0.54, 0.2),
-			cframe = CFrame.new(1.02, -0.16, -4.82),
+			size = Vector3.new(0.2, 0.56, 0.56),
+			cframe = CFrame.new(1.02, -0.16, -4.92) * CFrame.Angles(0, math.rad(90), 0),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
 		})
 	elseif weapon == "shotgun" then
-		-- Wide twin-barrel energy scattergun.
+		-- Sculpted twin-barrel energy scattergun: heavy stock, contoured receiver, twin cylindrical
+		-- barrels, glowing pump grip, and wide slotted energy muzzle choke.
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "GunStock",
+			size = Vector3.new(0.42, 0.48, 0.95),
+			cframe = CFrame.new(0.92, -0.16, -0.68),
+			color = chassis,
+			material = Enum.Material.Metal,
+		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "GunBody",
-			size = Vector3.new(0.66, 0.56, 2.2),
-			cframe = CFrame.new(0.92, -0.1, -1.85),
+			size = Vector3.new(0.64, 0.56, 1.95),
+			cframe = CFrame.new(0.92, -0.08, -1.9),
 			color = steel,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "GunTopRail",
+			size = Vector3.new(0.32, 0.14, 1.65),
+			cframe = CFrame.new(0.92, 0.24, -1.95),
+			color = armorDarkBlue,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "BarrelLeft",
-			size = Vector3.new(0.24, 0.26, 1.45),
-			cframe = CFrame.new(0.75, 0.02, -3.15),
+			size = Vector3.new(1.55, 0.24, 0.24),
+			cframe = CFrame.new(0.75, 0.04, -3.22) * CFrame.Angles(0, math.rad(90), 0),
 			color = chassis,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "BarrelRight",
-			size = Vector3.new(0.24, 0.26, 1.45),
-			cframe = CFrame.new(1.09, 0.02, -3.15),
+			size = Vector3.new(1.55, 0.24, 0.24),
+			cframe = CFrame.new(1.09, 0.04, -3.22) * CFrame.Angles(0, math.rad(90), 0),
 			color = chassis,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "PumpGlow",
-			size = Vector3.new(0.72, 0.28, 0.95),
-			cframe = CFrame.new(0.92, -0.24, -2.55),
+			size = Vector3.new(0.68, 0.26, 0.98),
+			cframe = CFrame.new(0.92, -0.24, -2.65),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "MuzzleChoke",
+			size = Vector3.new(0.72, 0.34, 0.28),
+			cframe = CFrame.new(0.92, 0.04, -3.96),
+			color = armorDarkBlue,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MuzzleGlow",
-			size = Vector3.new(0.62, 0.24, 0.18),
-			cframe = CFrame.new(0.92, 0.02, -3.9),
+			size = Vector3.new(0.6, 0.2, 0.16),
+			cframe = CFrame.new(0.92, 0.04, -4.12),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 		})
 	elseif weapon == "plasma" then
-		-- Bulky heavy plasma cannon with glowing side coils and energy core.
+		-- Sculpted heavy plasma cannon: contoured chassis, 3 cooling radiator fins, cylindrical
+		-- accelerator shroud, glowing core chamber, and suspended plasma muzzle orb.
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "GunBody",
-			size = Vector3.new(0.78, 0.82, 2.45),
-			cframe = CFrame.new(1.02, -0.06, -1.95),
+			size = Vector3.new(0.76, 0.78, 2.35),
+			cframe = CFrame.new(1.02, -0.06, -1.92),
 			color = armorDarkBlue,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "PlasmaCore",
-			size = Vector3.new(0.86, 0.36, 1.35),
-			cframe = CFrame.new(1.02, 0.02, -2.05),
+			size = Vector3.new(0.86, 0.34, 1.4),
+			cframe = CFrame.new(1.02, 0.02, -2.02),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 		})
+		for f = 1, 3 do
+			addLimb("rightArm", PIVOT_RIGHT_ARM, {
+				name = `PlasmaFin{f}`,
+				size = Vector3.new(0.96, 0.56, 0.16),
+				cframe = CFrame.new(1.02, 0.02, -1.42 - f * 0.42),
+				color = steel,
+				material = Enum.Material.Metal,
+			})
+		end
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "PlasmaShroud",
-			size = Vector3.new(0.54, 0.54, 0.95),
-			cframe = CFrame.new(1.02, -0.02, -3.35),
+			size = Vector3.new(1.05, 0.58, 0.58),
+			cframe = CFrame.new(1.02, -0.02, -3.38) * CFrame.Angles(0, math.rad(90), 0),
 			color = steelLight,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MuzzleOrb",
-			size = Vector3.new(0.48, 0.48, 0.48),
-			cframe = CFrame.new(1.02, -0.02, -3.88),
+			size = Vector3.new(0.5, 0.5, 0.5),
+			cframe = CFrame.new(1.02, -0.02, -3.96),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 			shape = Enum.PartType.Ball,
 		})
 	else
-		-- Default `rifle`: long precision plasma rail-rifle with top scope & glowing barrel rail.
+		-- Default `rifle`: precision plasma rail-rifle with stock, angled cell mag, twin rail
+		-- prongs, cylindrical barrel, cylindrical sniper optic scope, and muzzle brake.
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "RifleStock",
+			size = Vector3.new(0.32, 0.42, 0.85),
+			cframe = CFrame.new(0.92, -0.14, -0.62),
+			color = chassis,
+			material = Enum.Material.Metal,
+		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "GunBody",
-			size = Vector3.new(0.44, 0.52, 2.65),
-			cframe = CFrame.new(0.92, -0.08, -2.0),
+			size = Vector3.new(0.42, 0.48, 2.35),
+			cframe = CFrame.new(0.92, -0.08, -2.02),
 			color = steel,
 			material = Enum.Material.Metal,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "RifleMag",
+			size = Vector3.new(0.24, 0.62, 0.34),
+			cframe = CFrame.new(0.92, -0.46, -1.92) * CFrame.Angles(math.rad(14), 0, 0),
+			color = armorDarkBlue,
+			material = Enum.Material.Metal,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "RifleBarrel",
-			size = Vector3.new(0.24, 0.24, 1.85),
-			cframe = CFrame.new(0.92, 0.02, -3.85),
+			size = Vector3.new(1.95, 0.2, 0.2),
+			cframe = CFrame.new(0.92, 0.02, -3.9) * CFrame.Angles(0, math.rad(90), 0),
 			color = chassis,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
 			castShadow = true,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "RifleRail",
-			size = Vector3.new(0.16, 0.14, 3.25),
-			cframe = CFrame.new(0.92, 0.16, -2.85),
+			size = Vector3.new(0.14, 0.14, 3.35),
+			cframe = CFrame.new(0.92, 0.15, -2.92),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "RifleScope",
-			size = Vector3.new(0.22, 0.24, 1.05),
-			cframe = CFrame.new(0.92, 0.36, -1.75),
+			size = Vector3.new(1.12, 0.26, 0.26),
+			cframe = CFrame.new(0.92, 0.38, -1.78) * CFrame.Angles(0, math.rad(90), 0),
 			color = armorDarkBlue,
 			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+		})
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = "ScopeLens",
+			size = Vector3.new(0.12, 0.22, 0.22),
+			cframe = CFrame.new(0.92, 0.38, -2.36) * CFrame.Angles(0, math.rad(90), 0),
+			color = cyanGlow,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
 		})
 		addLimb("rightArm", PIVOT_RIGHT_ARM, {
 			name = "MuzzleTip",
-			size = Vector3.new(0.28, 0.28, 0.22),
-			cframe = CFrame.new(0.92, 0.02, -4.82),
+			size = Vector3.new(0.32, 0.32, 0.32),
+			cframe = CFrame.new(0.92, 0.02, -4.92),
 			color = cyanGlow,
 			material = Enum.Material.Neon,
 		})
@@ -2105,45 +2563,582 @@ local function buildBossOh(): any
 		material = Enum.Material.Metal,
 		castShadow = true,
 	})
-	-- Titanic Seismic Maul (shaft + massive head + glowing plasma core + smash spikes).
+	-- Titanic Seismic Maul (cylindrical banded shaft + armored collar + octagonal spiked head + plasma core).
+	local maulBase = CFrame.new(3.75, -0.65, -4.55) * CFrame.Angles(math.rad(-8), 0, 0)
 	addLimb("rightArm", PIVOT_RIGHT_ARM, {
 		name = "MaulShaft",
-		size = Vector3.new(0.58, 0.58, 6.8),
-		cframe = CFrame.new(3.75, -0.6, -4.4) * CFrame.Angles(math.rad(-8), 0, 0),
+		size = Vector3.new(6.9, 0.56, 0.56),
+		cframe = maulBase * CFrame.Angles(0, math.rad(90), 0),
 		color = steel,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "MaulPommel",
+		size = Vector3.new(0.62, 0.92, 0.92),
+		cframe = maulBase * CFrame.new(0, 0, 3.45) * CFrame.Angles(0, math.rad(90), 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "MaulCollar",
+		size = Vector3.new(1.35, 1.35, 0.72),
+		cframe = maulBase * CFrame.new(0, 0, -1.35) * CFrame.Angles(0, 0, math.rad(45)),
+		color = hazard,
+		material = Enum.Material.Metal,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "MaulHeadA",
+		size = Vector3.new(2.35, 2.35, 3.05),
+		cframe = maulBase * CFrame.new(0, 0, -2.75),
+		color = armorCrimson,
 		material = Enum.Material.Metal,
 		castShadow = true,
 	})
 	addLimb("rightArm", PIVOT_RIGHT_ARM, {
-		name = "MaulHead",
-		size = Vector3.new(2.45, 2.45, 3.05),
-		cframe = CFrame.new(3.75, -1.05, -7.25) * CFrame.Angles(math.rad(-8), 0, math.rad(45)),
+		name = "MaulHeadB",
+		size = Vector3.new(2.35, 2.35, 3.05),
+		cframe = maulBase * CFrame.new(0, 0, -2.75) * CFrame.Angles(0, 0, math.rad(45)),
 		color = armorDark,
 		material = Enum.Material.DiamondPlate,
 		castShadow = true,
 	})
 	addLimb("rightArm", PIVOT_RIGHT_ARM, {
 		name = "MaulPlasmaBand",
-		size = Vector3.new(2.65, 2.65, 0.72),
-		cframe = CFrame.new(3.75, -1.05, -7.25) * CFrame.Angles(math.rad(-8), 0, math.rad(45)),
+		size = Vector3.new(2.68, 2.68, 0.72),
+		cframe = maulBase * CFrame.new(0, 0, -2.75) * CFrame.Angles(0, 0, math.rad(22.5)),
 		color = coreGlow,
 		material = Enum.Material.Neon,
 	})
+	for s = 0, 3 do
+		local rot = maulBase * CFrame.new(0, 0, -2.75) * CFrame.Angles(0, 0, math.rad(s * 90))
+		addLimb("rightArm", PIVOT_RIGHT_ARM, {
+			name = `MaulSideSpike_{s + 1}`,
+			size = Vector3.new(0.55, 0.92, 0.55),
+			cframe = rot * CFrame.new(0, 1.56, 0) * CFrame.Angles(0, math.rad(45), 0),
+			color = steelLight,
+			material = Enum.Material.Metal,
+		})
+	end
 	addLimb("rightArm", PIVOT_RIGHT_ARM, {
 		name = "MaulFrontPlate",
-		size = Vector3.new(2.15, 2.15, 0.55),
-		cframe = CFrame.new(3.75, -1.25, -8.85) * CFrame.Angles(math.rad(-8), 0, 0),
+		size = Vector3.new(2.1, 2.1, 0.52),
+		cframe = maulBase * CFrame.new(0, 0, -4.35) * CFrame.Angles(0, 0, math.rad(45)),
 		color = steelLight,
 		material = Enum.Material.Metal,
 		castShadow = true,
 	})
 	addLimb("rightArm", PIVOT_RIGHT_ARM, {
 		name = "MaulCrownSpike",
-		size = Vector3.new(0.85, 0.85, 1.35),
-		cframe = CFrame.new(3.75, -1.35, -9.55) * CFrame.Angles(math.rad(-8), 0, math.rad(45)),
+		size = Vector3.new(0.82, 0.82, 1.38),
+		cframe = maulBase * CFrame.new(0, 0, -5.08) * CFrame.Angles(0, 0, math.rad(45)),
 		color = reactorHot,
 		material = Enum.Material.Neon,
 	})
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
+-- Rigged artillery area-denial specialist ("Artillero", `area`): olive-slate & dark bronze
+-- tactical chassis carrying a twin-tube dorsal plasma mortar backpack and amber-lime hazard optics.
+-- Fits inside `Config.ENEMY_KINDS.area.size` (3.6 x 5.2 x 3.6) with feet planted at local Y = -2.6.
+local function buildEnemyArea(): any
+	local model = Instance.new("Model")
+	model.Name = "EnemyArea"
+
+	local armorOlive = Color3.fromRGB(76, 94, 62)
+	local armorDark = Color3.fromRGB(46, 56, 42)
+	local chassis = Color3.fromRGB(36, 40, 46)
+	local steel = Color3.fromRGB(92, 98, 108)
+	local hazard = Color3.fromRGB(235, 185, 42)
+	local limeGlow = Color3.fromRGB(145, 255, 65)
+	local amberGlow = Color3.fromRGB(255, 170, 42)
+
+	local PIVOT_TORSO = CFrame.new(0, -0.5, 0)
+	local PIVOT_HEAD = CFrame.new(0, 1.0, -0.06)
+	local PIVOT_LEFT_LEG = CFrame.new(-0.62, -0.84, 0)
+	local PIVOT_RIGHT_LEG = CFrame.new(0.62, -0.84, 0)
+	local PIVOT_LEFT_ARM = CFrame.new(-1.42, 0.45, -0.04)
+	local PIVOT_RIGHT_ARM = CFrame.new(1.42, 0.45, -0.04)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(2.1, 1.6, 1.5),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorOlive,
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	body.Parent = model
+
+	local function addLimb(group: string, pivot: any, props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		shape: any?,
+		castShadow: boolean?,
+	})
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			shape = props.shape,
+			anchored = false,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+		rigJoint(body, p, pivot, group)
+	end
+
+	-- Core torso & reinforced stabilizer hips.
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TorsoCore",
+		size = Vector3.new(2.05, 1.55, 1.48),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorOlive,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestPlate",
+		size = Vector3.new(1.88, 1.02, 0.46),
+		cframe = CFrame.new(0, 0.14, -0.7) * CFrame.Angles(math.rad(-10), 0, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestHazard",
+		size = Vector3.new(1.72, 0.24, 0.5),
+		cframe = CFrame.new(0, -0.28, -0.68),
+		color = hazard,
+		material = Enum.Material.SmoothPlastic,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestCore",
+		size = Vector3.new(0.54, 0.42, 0.2),
+		cframe = CFrame.new(0, 0.2, -0.9),
+		color = limeGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "Pelvis",
+		size = Vector3.new(1.75, 0.54, 1.24),
+		cframe = CFrame.new(0, -0.82, 0.04),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- Dorsal Twin Mortar Launcher Pack (unmistakable artillery silhouette from isometric camera).
+	addLimb("torso", PIVOT_TORSO, {
+		name = "MortarPack",
+		size = Vector3.new(1.92, 1.62, 1.02),
+		cframe = CFrame.new(0, 0.34, 1.08),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "MortarCanister",
+		size = Vector3.new(1.45, 0.62, 0.62),
+		cframe = CFrame.new(0, -0.24, 1.56),
+		color = limeGlow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Cylinder,
+	})
+	for side = -1, 1, 2 do
+		local tag = if side < 0 then "Left" else "Right"
+		local tubeCF = CFrame.new(side * 0.62, 1.48, 0.88) * CFrame.Angles(math.rad(-26), 0, math.rad(side * -8))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}MortarTube`,
+			size = Vector3.new(2.05, 0.62, 0.62),
+			cframe = tubeCF * CFrame.Angles(0, 0, math.rad(90)),
+			color = steel,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}MortarCollar`,
+			size = Vector3.new(0.28, 0.78, 0.78),
+			cframe = tubeCF * CFrame.new(0, 0.72, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			color = hazard,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}MortarMuzzle`,
+			size = Vector3.new(0.22, 0.54, 0.54),
+			cframe = tubeCF * CFrame.new(0, 0.98, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			color = limeGlow,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
+		})
+	end
+
+	-- Braced wide artillery legs & heavy recoil boots (planted flush at local Y = -2.6).
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftLeg" else "rightLeg"
+		local pvt = if side < 0 then PIVOT_LEFT_LEG else PIVOT_RIGHT_LEG
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Leg`,
+			size = Vector3.new(0.74, 1.48, 0.82),
+			cframe = CFrame.new(side * 0.64, -1.66, 0),
+			color = chassis,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}KneeGuard`,
+			size = Vector3.new(0.8, 0.44, 0.36),
+			cframe = CFrame.new(side * 0.64, -1.5, -0.42),
+			color = armorOlive,
+			material = Enum.Material.Metal,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Foot`,
+			size = Vector3.new(0.92, 0.4, 1.38),
+			cframe = CFrame.new(side * 0.64, -2.4, -0.18),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+	end
+
+	-- Armored dome sensor head with bright amber-lime rangefinder optic.
+	addLimb("head", PIVOT_HEAD, {
+		name = "Head",
+		size = Vector3.new(1.36, 1.08, 1.36),
+		cframe = CFrame.new(0, 1.46, -0.1),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "SensorAntenna",
+		size = Vector3.new(0.14, 0.72, 0.14),
+		cframe = CFrame.new(-0.56, 2.24, 0.08),
+		color = steel,
+		material = Enum.Material.Metal,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "VisorBand",
+		size = Vector3.new(1.16, 0.32, 0.24),
+		cframe = CFrame.new(0, 1.48, -0.74),
+		color = amberGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "RangefinderLens",
+		size = Vector3.new(0.38, 0.38, 0.28),
+		cframe = CFrame.new(0.32, 1.5, -0.82),
+		color = limeGlow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Ball,
+	})
+
+	-- Arms: left targeting console gauntlet, right plasma mortar controller pod.
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftShoulder",
+		size = Vector3.new(1.04, 0.96, 1.36),
+		cframe = CFrame.new(-1.48, 0.56, 0) * CFrame.Angles(0, 0, math.rad(12)),
+		color = armorOlive,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftArm",
+		size = Vector3.new(0.7, 1.24, 0.76),
+		cframe = CFrame.new(-1.58, -0.2, -0.45) * CFrame.Angles(math.rad(55), math.rad(14), 0),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftHoloPad",
+		size = Vector3.new(0.52, 0.14, 0.72),
+		cframe = CFrame.new(-1.52, -0.34, -1.04) * CFrame.Angles(math.rad(12), math.rad(14), 0),
+		color = limeGlow,
+		material = Enum.Material.Neon,
+	})
+
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightShoulder",
+		size = Vector3.new(1.04, 0.96, 1.36),
+		cframe = CFrame.new(1.48, 0.56, 0) * CFrame.Angles(0, 0, math.rad(-12)),
+		color = armorOlive,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightArm",
+		size = Vector3.new(0.7, 1.24, 0.76),
+		cframe = CFrame.new(1.58, -0.2, -0.45) * CFrame.Angles(math.rad(55), math.rad(-14), 0),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightStabilizer",
+		size = Vector3.new(0.48, 0.48, 1.15),
+		cframe = CFrame.new(1.62, -0.38, -1.16),
+		color = steel,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightStabilizerGlow",
+		size = Vector3.new(0.28, 0.28, 0.24),
+		cframe = CFrame.new(1.62, -0.38, -1.74),
+		color = amberGlow,
+		material = Enum.Material.Neon,
+	})
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
+-- Rigged high-voltage contact hazard unit ("Voltaico", `contact`): sleek dark-titanium & indigo
+-- chassis armed with twin shoulder Tesla arc pylons, glowing chest dynamo, and forearm discharge prongs.
+-- Fits inside `Config.ENEMY_KINDS.contact.size` (3.8 x 4.8 x 3.8) with feet planted at local Y = -2.4.
+local function buildEnemyContact(): any
+	local model = Instance.new("Model")
+	model.Name = "EnemyContact"
+
+	local armorIndigo = Color3.fromRGB(48, 54, 96)
+	local armorDark = Color3.fromRGB(28, 32, 54)
+	local chassis = Color3.fromRGB(34, 38, 48)
+	local copper = Color3.fromRGB(178, 118, 56)
+	local steel = Color3.fromRGB(108, 120, 140)
+	local voltCyan = Color3.fromRGB(55, 240, 255)
+	local voltYellow = Color3.fromRGB(255, 232, 78)
+
+	local PIVOT_TORSO = CFrame.new(0, -0.45, 0)
+	local PIVOT_HEAD = CFrame.new(0, 0.92, -0.1)
+	local PIVOT_LEFT_LEG = CFrame.new(-0.58, -0.78, 0)
+	local PIVOT_RIGHT_LEG = CFrame.new(0.58, -0.78, 0)
+	local PIVOT_LEFT_ARM = CFrame.new(-1.38, 0.46, -0.05)
+	local PIVOT_RIGHT_ARM = CFrame.new(1.38, 0.46, -0.05)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(2.0, 1.5, 1.4),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorIndigo,
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	body.Parent = model
+
+	local function addLimb(group: string, pivot: any, props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		shape: any?,
+		castShadow: boolean?,
+	})
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			shape = props.shape,
+			anchored = false,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+		rigJoint(body, p, pivot, group)
+	end
+
+	-- Sleek dynamo torso & glowing chest arc sphere.
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TorsoCore",
+		size = Vector3.new(1.96, 1.48, 1.38),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorIndigo,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestCowl",
+		size = Vector3.new(1.76, 0.96, 0.42),
+		cframe = CFrame.new(0, 0.12, -0.64),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestArcCore",
+		size = Vector3.new(0.76, 0.76, 0.76),
+		cframe = CFrame.new(0, 0.14, -0.78),
+		color = voltCyan,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Ball,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "BackDynamo",
+		size = Vector3.new(1.42, 1.32, 0.76),
+		cframe = CFrame.new(0, 0.24, 0.92),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "BackDynamoRing",
+		size = Vector3.new(0.32, 1.18, 1.18),
+		cframe = CFrame.new(0, 0.26, 1.32) * CFrame.Angles(0, math.rad(90), 0),
+		color = voltYellow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Cylinder,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "Pelvis",
+		size = Vector3.new(1.56, 0.48, 1.12),
+		cframe = CFrame.new(0, -0.76, 0),
+		color = chassis,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- Twin angled dorsal Tesla coil pylons (signature high-voltage silhouette from above).
+	for side = -1, 1, 2 do
+		local tag = if side < 0 then "Left" else "Right"
+		local pylonCF = CFrame.new(side * 1.08, 1.42, 0.44) * CFrame.Angles(math.rad(-14), 0, math.rad(side * -26))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}TeslaRod`,
+			size = Vector3.new(1.85, 0.34, 0.34),
+			cframe = pylonCF * CFrame.Angles(0, 0, math.rad(90)),
+			color = copper,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		for r = 1, 3 do
+			addLimb("torso", PIVOT_TORSO, {
+				name = `{tag}TeslaRing_{r}`,
+				size = Vector3.new(0.16, 0.68 - r * 0.06, 0.68 - r * 0.06),
+				cframe = pylonCF * CFrame.new(0, -0.45 + r * 0.42, 0) * CFrame.Angles(0, 0, math.rad(90)),
+				color = if r == 2 then voltYellow else voltCyan,
+				material = Enum.Material.Neon,
+				shape = Enum.PartType.Cylinder,
+			})
+		end
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}TeslaOrb`,
+			size = Vector3.new(0.56, 0.56, 0.56),
+			cframe = pylonCF * CFrame.new(0, 1.04, 0),
+			color = voltCyan,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Ball,
+		})
+	end
+
+	-- Agile sprinter legs (feet planted flush at local Y = -2.4).
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftLeg" else "rightLeg"
+		local pvt = if side < 0 then PIVOT_LEFT_LEG else PIVOT_RIGHT_LEG
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Leg`,
+			size = Vector3.new(0.62, 1.38, 0.72),
+			cframe = CFrame.new(side * 0.58, -1.56, 0),
+			color = chassis,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}ShinSpark`,
+			size = Vector3.new(0.24, 0.85, 0.24),
+			cframe = CFrame.new(side * 0.66, -1.6, -0.34),
+			color = voltCyan,
+			material = Enum.Material.Neon,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Foot`,
+			size = Vector3.new(0.74, 0.34, 1.24),
+			cframe = CFrame.new(side * 0.58, -2.23, -0.16),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+	end
+
+	-- Angular visor-mask head with glowing electric eye chevron.
+	addLimb("head", PIVOT_HEAD, {
+		name = "Head",
+		size = Vector3.new(1.24, 1.04, 1.28),
+		cframe = CFrame.new(0, 1.36, -0.12),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "HeadFin",
+		size = Vector3.new(0.22, 0.44, 1.36),
+		cframe = CFrame.new(0, 1.96, -0.06),
+		color = voltCyan,
+		material = Enum.Material.Neon,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "Visor",
+		size = Vector3.new(1.06, 0.32, 0.24),
+		cframe = CFrame.new(0, 1.38, -0.74),
+		color = voltYellow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Arms with twin forearm arc discharge prongs.
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftArm" else "rightArm"
+		local pvt = if side < 0 then PIVOT_LEFT_ARM else PIVOT_RIGHT_ARM
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Shoulder`,
+			size = Vector3.new(0.96, 0.88, 1.24),
+			cframe = CFrame.new(side * 1.44, 0.52, -0.04) * CFrame.Angles(0, 0, math.rad(side * -16)),
+			color = armorIndigo,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Arm`,
+			size = Vector3.new(0.64, 1.2, 0.72),
+			cframe = CFrame.new(side * 1.62, -0.2, -0.44) * CFrame.Angles(math.rad(62), math.rad(side * -14), 0),
+			color = chassis,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}ArcProngTop`,
+			size = Vector3.new(0.16, 0.16, 1.38),
+			cframe = CFrame.new(side * 1.72, -0.22, -1.48),
+			color = voltCyan,
+			material = Enum.Material.Neon,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}ArcProngBot`,
+			size = Vector3.new(0.14, 0.14, 1.12),
+			cframe = CFrame.new(side * 1.72, -0.5, -1.36),
+			color = voltYellow,
+			material = Enum.Material.Neon,
+		})
+	end
 
 	model.PrimaryPart = body
 	model.WorldPivot = CFrame.new(0, 0, 0)
@@ -2163,6 +3158,7 @@ writeModel("DropDefense.rbxmx", buildDropDefense())
 writeModel("EnemyMelee.rbxmx", buildEnemyMeleeVariant("EnemyMelee", "sword"))
 writeModel("EnemyMeleeDual.rbxmx", buildEnemyMeleeVariant("EnemyMeleeDual", "dual"))
 writeModel("EnemyMeleeAxe.rbxmx", buildEnemyMeleeVariant("EnemyMeleeAxe", "axe"))
+writeModel("EnemyBattleAxe.rbxmx", buildEnemyBattleAxe())
 writeModel("EnemyMeleeMace.rbxmx", buildEnemyMeleeVariant("EnemyMeleeMace", "mace"))
 writeModel("EnemyRanged.rbxmx", buildEnemyRangedVariant("EnemyRanged", "rifle"))
 writeModel("EnemyRangedShotgun.rbxmx", buildEnemyRangedVariant("EnemyRangedShotgun", "shotgun"))
@@ -2170,4 +3166,6 @@ writeModel("EnemyRangedCarbine.rbxmx", buildEnemyRangedVariant("EnemyRangedCarbi
 writeModel("EnemyRangedMinigun.rbxmx", buildEnemyRangedVariant("EnemyRangedMinigun", "minigun"))
 writeModel("EnemyExploder.rbxmx", buildEnemyExploder())
 writeModel("EnemyGrabber.rbxmx", buildEnemyGrabber())
+writeModel("EnemyArea.rbxmx", buildEnemyArea())
+writeModel("EnemyContact.rbxmx", buildEnemyContact())
 writeModel("BossOh.rbxmx", buildBossOh())

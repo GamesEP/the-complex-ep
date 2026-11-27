@@ -35,6 +35,7 @@ local runGeneration = 0
 local doorLeftClosed: CFrame? = nil
 local doorRightClosed: CFrame? = nil
 local doorStatusBaseColor: Color3? = nil
+local doorOpenedAt = 0
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -60,6 +61,7 @@ local function getArenaPivot(): CFrame
 end
 
 local function setBlastDoorOpen(open: boolean, instant: boolean?)
+	doorOpenedAt = if open then now() else 0
 	if world then
 		world:SetAttribute("DoorOpen", open)
 	end
@@ -199,6 +201,11 @@ local function stepDoorTrigger()
 	if flow.status ~= "transition" then
 		return
 	end
+	-- Wait for the Blast Door slide animation so clearing the final enemy near the North wall
+	-- never teleports the player out on frame 1 before they can see the door open or grab drops.
+	if now() - doorOpenedAt < (Config.BLAST_DOOR_ANIM_SECONDS or 0.7) then
+		return
+	end
 	for _, player in ipairs(Players:GetPlayers()) do
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -309,6 +316,9 @@ local function watchCharacter(character: Model)
 			end
 			if combatService then
 				combatService.clear()
+			end
+			if upgradeService then
+				upgradeService.resetAll()
 			end
 			setBlastDoorOpen(false, false)
 			flow = RunFlow.onWipe(flow, now())

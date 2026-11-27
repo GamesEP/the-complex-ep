@@ -25,14 +25,16 @@ Written by `UpgradeService` and read directly by `CombatService`, `CombatInput`,
 - `HasDoubleJump` (`boolean`): unlocks 1 mid-air jump (`UserInputService.JumpRequest`, `Config.DOUBLE_JUMP_POWER`) with air-ring VFX and `doubleJump` SFX
 - `HasDoubleDash` (`boolean`): grants +1 permanent base dash charge (`Drops.maxDashCharges`), stacking cleanly with Speed Buff drops
 
-## Input ergonomics (`Q` / `E` / `F`)
+## Input ergonomics (`Q` / `E` / `F` & Gamepad D-Pad)
 
-While `UpgradeChoice` has an active offer:
+While `UpgradeChoice` has an active offer during `"fighting"` or `"transition"`:
 
-- `Q`, `E`, `F` are bound via `ContextActionService:BindActionAtPriority` at `High.Value + 50` (higher than `CombatInput`'s `High.Value`), picking cards 1 / 2 / 3 (or slots 1 / 2 / 3 in replace mode) and sinking those keys so they do not trigger Dash/Ability/Block.
+- `Q`, `E`, `F` (PC) and `DPadLeft`, `DPadUp`, `DPadRight` (Gamepad) are bound via `ContextActionService:BindActionAtPriority` at `High.Value + 50` (higher than `CombatInput`'s `High.Value`), picking cards 1 / 2 / 3 (or slots 1 / 2 / 3 in replace mode) and sinking those keys so they do not trigger Dash/Ability/Block.
+- For the first `0.35 s` after a new offer opens, keyboard/gamepad shortcuts pass through so a mid-combat reflex press of `E` or `F` never picks a card accidentally (clicking or tapping a ticket works immediately).
 - `LeftShift` (Dash), `LMB` (Attack), `RMB` (Block), `WASD`, `Space`, and `1`/`2`/`3` remain completely unobstructed mid-fight.
-- `Escape` / `ButtonB` cancels 3-slot replacement mode back to the 3 cards.
-- Clicking or tapping any ticket works on desktop and touch; when no offer is open, `UpgradeChoice` returns `Pass` so `Q`/`E`/`F` work normally in combat.
+- `Escape` / `ButtonB` / `DPadDown` cancels 3-slot replacement mode back to the 3 cards.
+- Clicking or tapping any ticket works on desktop and touch; when no offer is open or the run is not active (`preparing` / `victory` / `defeat`), `UpgradeChoice` hides and returns `Pass` so combat controls work normally.
+- When advancing through a multi-offer queue, `UpgradePool` refreshes any newly redundant card in the next offer (e.g. an already-acquired passive or maxed/replaced ability) into a fresh stat card so no queued pick is wasted.
 
 ## Remotes
 

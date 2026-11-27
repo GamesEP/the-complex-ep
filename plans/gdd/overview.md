@@ -39,12 +39,12 @@ planta y volviendo más fuertes después de cada run.
 | Sección | Estado | Nota |
 |---|---|---|
 | pillars | agreed | 3 pilares con descartes y fantasía definidos |
-| loop | agreed | run de 5 plantas × 5 salas (15–20 min), momento, run y motivos de sesión cerrados; solo queda abierto escalado por abandono (hito Grupos) |
-| systems | drafted | Combate y Mejoras de run cerrados para el corto plazo; quedan abiertas decisiones de Hub, Grupos y Muerte/revivir (hitos posteriores) |
+| loop | agreed | run de 5 plantas × 5 salas (15–20 min), momento, run, abandono (`HS-03`) y motivos de sesión cerrados |
+| systems | agreed | Combate, Mejoras de run, Hub, Grupos (`HS-03`) y Abatido/Revivir (`HS-04`) cerrados; solo queda pendiente el detalle de pago de 10 Robux para monetización |
 | progression | drafted | fuentes de moneda, árbol, habilidades, ventajas y Robux decididos; faltan cantidades y detalle de nodos (hito v1) |
-| content | drafted | estructura de salas, plantas de Oh/My/Gon/OhMyGon y Detonante cerrados; faltan ataques de jefes (Oh bloquea cierre de Hito 2) y reglas del Coloso |
+| content | agreed | 6 arquetipos de enemigo (`HS-01`), 4 jefes Oh/My/Gon/OhMyGon (`HS-02`), estructura de salas y dificultad cerrados |
 | ui | agreed | CombatHud, UpgradeChoice (banner superior 1-de-3 sin pausa) y RunResult cerrados para Corte jugable y Hito 2; pantallas de Hub/Árbol pendientes de sus hitos |
-| technical | agreed | 25 enemigos simultáneos, 30 FPS móvil / 60 FPS PC, Streaming OFF, entrada unificada y descartes técnicos cerrados; solo falta `Config.HUB_MAX_PLAYERS` (hito Grupos) |
+| technical | agreed | 25 enemigos simultáneos, 30 FPS móvil / 60 FPS PC, Streaming OFF, `Config.HUB_MAX_PLAYERS = 24` (`HS-03`), entrada unificada y descartes técnicos cerrados |
 | scope | agreed | Corte jugable (programado y ampliado: 4 tipos de enemigo, 3 habilidades, bloqueo/parry, drops), Hito 2 (Una planta con Oh alineado con content.md), v1 e hitos cerrados |
 
 ## Preguntas abiertas
@@ -56,6 +56,5 @@ planta y volviendo más fuertes después de cada run.
 - **Open:** los números de ajuste del combate (velocidad, dash, combo, vida, daño). No bloquean el código: se ajustan jugando en Studio.
 
 ### Hitos posteriores (Run completa, Grupos y v1)
-- **Open:** ataques de My, Gon y fases 1/2 de OhMyGon ([content.md](content.md)). Bloquea Run en solitario.
-- **Open:** `Config.HUB_MAX_PLAYERS`, solicitudes de grupo privado, expulsión/traspaso de líder, reconexión, escalado por abandono y detalles de revivir ([systems.md](systems.md), [loop.md](loop.md), [technical.md](technical.md)). Bloquea el hito de Grupos.
+- **Resuelto (`HS-01`–`HS-04`):** Definidos **Artillero** (`area`) y **Voltaico** (`contact`), ataques de **My**, **Gon** y **OhMyGon** (2 fases) en [content.md](content.md); `HUB_MAX_PLAYERS = 24`, `PARTY_INVITE_SECONDS = 20`, privado solo por invitación, traspaso automático de líder, re-escalado por abandono y reglas de revivir (`8` studs, `5 s`, sin reinicio por daño normal, `50%` HP) en [systems.md](systems.md), [loop.md](loop.md) y [technical.md](technical.md).
 - **Open:** nombre y cantidades de moneda permanente, ramas del árbol y tipo de duplicador/buffos de Robux ([progression.md](progression.md)). Bloquea el hito de v1.

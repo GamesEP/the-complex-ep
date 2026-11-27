@@ -402,6 +402,45 @@ function Tactics.phantomStepWaypoint(
 	)
 end
 
+-- Curved spiral pursuit direction for Voltaico (`contact`): presses inward while sweeping
+-- laterally so the electrified unit circles menacingly into contact instead of straight-lining.
+function Tactics.spiralApproach(
+	position: Vector3,
+	targetPosition: Vector3,
+	orbitSign: number,
+	spiralWeight: number?
+): Vector3
+	local toTarget = Vector3.new(targetPosition.X - position.X, 0, targetPosition.Z - position.Z)
+	local dist = toTarget.Magnitude
+	local radial = if dist > 1e-3 then toTarget / dist else Vector3.new(0, 0, -1)
+	local sign = if orbitSign < 0 then -1 else 1
+	local tangent = Vector3.new(-radial.Z * sign, 0, radial.X * sign)
+	-- Taper lateral sweep down inside 4 studs so it still closes cleanly onto a stationary player.
+	local weight = (spiralWeight or 0.58) * math.clamp((dist - 2.5) / 10, 0.15, 1)
+	return flatUnit(radial + tangent * weight) or radial
+end
+
+-- Grab-exclusion safety rule for Artillero (`area`) mortar zones: returns false if dropping a
+-- hazard circle of `zoneRadius` at `zonePos` would overlap any player currently trapped by a
+-- Coloso (plus optional `padding`), preventing unfair unavoidable melts while immobilized.
+function Tactics.isGrabSafeZone(
+	zonePos: Vector3,
+	zoneRadius: number,
+	grabbedPositions: { Vector3 },
+	padding: number?
+): boolean
+	local clearance = math.max(zoneRadius, 0) + math.max(padding or 0, 0)
+	local clearSq = clearance * clearance
+	for _, pos in ipairs(grabbedPositions) do
+		local dx = zonePos.X - pos.X
+		local dz = zonePos.Z - pos.Z
+		if dx * dx + dz * dz < clearSq then
+			return false
+		end
+	end
+	return true
+end
+
 --=============================================================================
 -- Self test
 --=============================================================================
@@ -494,6 +533,14 @@ function Tactics.selfTest()
 	local d3 = Vector3.new(w3.X - w2.X, 0, w3.Z - w2.Z).Unit
 	assert(d1:Dot(d2) < 0.5 and d2:Dot(d3) < 0.7, "Paso Fantasma hops change direction sharply")
 	assert(w3.Z > 2 and Vector3.new(w3.X, 0, w3.Z).Magnitude < 6, "final hop lands close behind player")
+
+	-- Voltaico spiral approach bends laterally while closing distance.
+	local spiral = Tactics.spiralApproach(Vector3.new(0, 0, -14), Vector3.zero, 1, 0.6)
+	assert(spiral.Z > 0.5 and math.abs(spiral.X) > 0.25, "spiralApproach closes in with a lateral curve")
+
+	-- Artillero grab-exclusion safety prevents dropping hazard zones onto a held teammate.
+	assert(not Tactics.isGrabSafeZone(Vector3.new(5, 0, 0), 11, { Vector3.new(0, 0, 0) }, 2), "zone overlapping grabbed player is rejected")
+	assert(Tactics.isGrabSafeZone(Vector3.new(25, 0, 0), 11, { Vector3.new(0, 0, 0) }, 2), "zone well clear of grabbed player is safe")
 end
 
 return Tactics

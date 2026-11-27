@@ -24,28 +24,28 @@ Config.FLOOR_ROOMS = {
 			{ melee = 3, ranged = 2 },
 		},
 	},
-	-- Room 2: Crossfire & Detonantes — introduces explosive friendly-fire kiting.
+	-- Room 2: Crossfire, Detonantes & Artillero/Voltaico intro.
 	{
 		name = "PLANTA DE REFRIGERACIÓN",
 		waves = {
-			{ melee = 3, ranged = 2, exploder = 1 },
-			{ melee = 3, ranged = 3, exploder = 2 },
+			{ melee = 2, ranged = 2, exploder = 1, area = 1 },
+			{ melee = 3, ranged = 2, contact = 1, area = 1 },
 		},
 	},
-	-- Room 3: Heavy breach — introduces the Coloso (grabber + bull rush).
+	-- Room 3: Heavy breach — introduces the Coloso alongside Voltaico & Artillero pressure.
 	{
 		name = "BAHÍA DE CONTENCIÓN",
 		waves = {
-			{ melee = 4, ranged = 2, exploder = 2 },
-			{ melee = 3, ranged = 2, grabber = 1 },
+			{ melee = 3, ranged = 2, exploder = 1, contact = 2 },
+			{ melee = 2, ranged = 2, area = 1, grabber = 1 },
 		},
 	},
-	-- Room 4: Pre-boss gauntlet — full squad pressure before entering Oh's chamber.
+	-- Room 4: Pre-boss gauntlet — all 6 enemy archetypes active together before Oh's chamber.
 	{
 		name = "ANTESALA DEL NÚCLEO",
 		waves = {
-			{ melee = 4, ranged = 3, exploder = 2, grabber = 1 },
-			{ melee = 3, ranged = 3, exploder = 2, grabber = 2 },
+			{ melee = 3, ranged = 2, exploder = 1, area = 2, contact = 1, grabber = 1 },
+			{ melee = 3, ranged = 2, exploder = 1, area = 1, contact = 2, grabber = 1 },
 		},
 	},
 	-- Room 5: Floor Boss — Oh (first part of OhMyGon).

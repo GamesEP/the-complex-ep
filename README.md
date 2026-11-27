@@ -15,7 +15,7 @@ implemented on `develop` and passes the offline checks (`make check`). See
 
 - **Player kit (Pillar 1 — equal start, build during the run)**: everyone starts identical with the
   base sword, isometric camera, movement/jump, 3-hit combo with soft lock-on, tracked wall-safe
-  lunges, progressive enemy hitstun, a 2 s charged heavy attack, dash with i-frames, and
+  lunges, progressive enemy hitstun, a 1.4 s charged heavy attack, dash with i-frames, and
   hold-to-block with parry (melee stun + projectile reflection).
 - **1-of-3 Zero-Pause Upgrades (`UpgradePool` / `UpgradeService` / `UpgradeChoice`)**: players
   choose 1 of 3 cards on run start and on every room clear without pausing (using **`Q` / `E` /

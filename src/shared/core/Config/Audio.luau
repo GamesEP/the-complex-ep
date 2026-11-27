@@ -38,7 +38,7 @@ Config.SFX = {
 		pitchSpread = 0.05,
 		maxDistance = 75,
 	},
-	-- Rising power hum while holding Attack to charge the heavy attack (2 s total hold).
+	-- Rising power hum while holding Attack to charge the heavy attack (1.4 s total hold).
 	playerHeavyCharge = {
 		file = "player-heavy-charge.ogg",
 		fallbackId = 9117060347,
@@ -46,7 +46,7 @@ Config.SFX = {
 		pitch = 0.72,
 		pitchSpread = 0.03,
 		maxDistance = 75,
-		maxDuration = 1.85,
+		maxDuration = 1.25,
 	},
 	-- Devastating shockwave cleave unleashed at the end of a full charge.
 	playerHeavyAttack = {
@@ -239,6 +239,42 @@ Config.SFX = {
 		pitch = 1.0,
 		pitchSpread = 0.02,
 		maxDistance = 140,
+	},
+	-- Artillero (area) mortar launch & ground hazard detonation.
+	enemyAreaLaunch = {
+		file = "enemy-ranged-fire.ogg",
+		fallbackId = 71286443122760,
+		volume = 0.6,
+		pitch = 0.72,
+		pitchSpread = 0.06,
+		maxDistance = 105,
+	},
+	enemyAreaDetonate = {
+		file = "enemy-exploder-blast.ogg",
+		fallbackId = 138533090376585,
+		volume = 0.7,
+		pitch = 1.18,
+		pitchSpread = 0.06,
+		maxDistance = 110,
+	},
+	-- Voltaico (contact) electric aura overcharge & shock tick.
+	enemyContactSurge = {
+		file = "player-heavy-charge.ogg",
+		fallbackId = 9117060347,
+		volume = 0.55,
+		pitch = 1.42,
+		pitchSpread = 0.05,
+		maxDistance = 85,
+		maxDuration = 0.55,
+	},
+	enemyContactZap = {
+		file = "player-parry.ogg",
+		fallbackId = 109675024264804,
+		volume = 0.6,
+		pitch = 1.55,
+		pitchSpread = 0.08,
+		maxDistance = 75,
+		maxDuration = 0.28,
 	},
 } :: { [string]: SfxSpec }
 

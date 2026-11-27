@@ -14,9 +14,11 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared").core.Config)
 
 local UpgradeStore = {}
 
+export type CardKind = "newAbility" | "upgradeAbility" | "replaceAbility" | "stat" | "passive"
+
 export type CardData = {
 	id: string,
-	kind: "ability" | "stat" | "passive",
+	kind: CardKind,
 	title: string,
 	effect: string,
 	category: string,
@@ -76,33 +78,132 @@ function UpgradeStore.reset()
 	UpgradeStore.replacingCardIndex(nil)
 end
 
+-- Matches `UpgradePool.applyPick`: returns true when picking `card` requires choosing one of the
+-- `Config.ABILITY_SLOTS` active slots to replace (`replaceAbility`, or a queued `newAbility`
+-- whose slots filled up before the player picked it).
+function UpgradeStore.needsSlotReplacement(card: CardData, ownedSlots: { string }): boolean
+	if card.kind == "replaceAbility" then
+		return card.abilityId ~= nil
+	end
+	if card.kind ~= "newAbility" or not card.abilityId then
+		return false
+	end
+	for i = 1, Config.ABILITY_SLOTS do
+		local id = ownedSlots[i]
+		if not id or id == "" or id == card.abilityId then
+			return false
+		end
+	end
+	return true
+end
+
+function UpgradeStore.categoryLabel(card: CardData, willReplace: boolean?): string
+	if card.kind == "replaceAbility" or willReplace == true then
+		return "REEMPLAZAR"
+	elseif card.kind == "upgradeAbility" then
+		return "SUBIR NIVEL"
+	elseif card.kind == "newAbility" then
+		return "HABILIDAD"
+	elseif card.kind == "stat" then
+		return "ESTADÍSTICA"
+	elseif card.kind == "passive" then
+		return "PASIVA"
+	end
+	return string.upper(card.category)
+end
+
 function UpgradeStore.selfTest()
 	UpgradeStore.reset()
 	assert(not UpgradeStore.hasOffer(), "starts with no active offer")
 	assert(UpgradeStore.pending() == 0, "starts with 0 pending offers")
 	assert(UpgradeStore.replacingCardIndex() == nil, "starts outside replace mode")
 
+	local cardNew: CardData = {
+		id = "newAbility_spin",
+		kind = "newAbility",
+		title = "Torbellino",
+		effect = "Giro 360°",
+		category = "ability",
+		abilityId = "spin",
+		nextLevel = 1,
+		color = nil,
+	}
+	local cardUpgrade: CardData = {
+		id = "upgradeAbility_taunt",
+		kind = "upgradeAbility",
+		title = "Rugido Nv.2",
+		effect = "+25% daño · -10% recarga",
+		category = "ability",
+		abilityId = "taunt",
+		nextLevel = 2,
+		color = nil,
+	}
+	local cardReplace: CardData = {
+		id = "replaceAbility_healPulse",
+		kind = "replaceAbility",
+		title = "Cambiar: Santuario",
+		effect = "Reemplaza hueco · Zona curativa",
+		category = "ability",
+		abilityId = "healPulse",
+		nextLevel = 1,
+		color = nil,
+	}
+	local cardStat: CardData = {
+		id = "stat_dmg",
+		kind = "stat",
+		title = "Filo Sobrecargado",
+		effect = "+20% Daño total",
+		category = "stat",
+		color = nil,
+	}
+	local cardPassive: CardData = {
+		id = "passive_double_jump",
+		kind = "passive",
+		title = "Doble Salto",
+		effect = "Salto extra en el aire",
+		category = "passive",
+		color = nil,
+	}
+
+	-- Slot replacement rules match server UpgradePool.applyPick.
+	local emptySlots = { "", "", "" }
+	local partialSlots = { "taunt", "stinger", "" }
+	local fullSlots = { "taunt", "stinger", "overdrive" }
+	local fullWithSpin = { "spin", "stinger", "overdrive" }
+
+	assert(not UpgradeStore.needsSlotReplacement(cardNew, emptySlots), "newAbility into empty slots does not replace")
+	assert(not UpgradeStore.needsSlotReplacement(cardNew, partialSlots), "newAbility into partial slots does not replace")
+	assert(UpgradeStore.needsSlotReplacement(cardNew, fullSlots), "queued newAbility into 3/3 full slots requires replacement")
+	assert(not UpgradeStore.needsSlotReplacement(cardNew, fullWithSpin), "queued newAbility already owned upgrades instead of replacing")
+	assert(UpgradeStore.needsSlotReplacement(cardReplace, fullSlots), "replaceAbility requires choosing a slot")
+	assert(not UpgradeStore.needsSlotReplacement(cardUpgrade, fullSlots), "upgradeAbility never opens replace picker")
+	assert(not UpgradeStore.needsSlotReplacement(cardStat, fullSlots), "stat card never opens replace picker")
+	assert(not UpgradeStore.needsSlotReplacement(cardPassive, fullSlots), "passive card never opens replace picker")
+
+	assert(UpgradeStore.categoryLabel(cardNew, false) == "HABILIDAD", "newAbility label")
+	assert(UpgradeStore.categoryLabel(cardNew, true) == "REEMPLAZAR", "queued newAbility into full slots shows REEMPLAZAR")
+	assert(UpgradeStore.categoryLabel(cardReplace) == "REEMPLAZAR", "replaceAbility label")
+	assert(UpgradeStore.categoryLabel(cardUpgrade) == "SUBIR NIVEL", "upgradeAbility label")
+	assert(UpgradeStore.categoryLabel(cardStat) == "ESTADÍSTICA", "stat label")
+	assert(UpgradeStore.categoryLabel(cardPassive) == "PASIVA", "passive label")
+
 	local sampleOffer: OfferData = {
 		offerId = 1,
 		isStarter = true,
-		cards = {
-			{ id = "ability_spin", kind = "ability", title = "Torbellino", effect = "Giro 360°", category = "HABILIDAD", abilityId = "spin", nextLevel = 1, color = nil },
-			{ id = "ability_taunt", kind = "ability", title = "Rugido", effect = "Aturde", category = "HABILIDAD", abilityId = "taunt", nextLevel = 1, color = nil },
-			{ id = "ability_stinger", kind = "ability", title = "Estocada", effect = "Embestida", category = "HABILIDAD", abilityId = "stinger", nextLevel = 1, color = nil },
-		},
+		cards = { cardNew, cardUpgrade, cardReplace },
 	}
 
 	UpgradeStore.setServerState(sampleOffer, 2)
 	assert(UpgradeStore.hasOffer(), "hasOffer is true when offer has cards")
 	assert(UpgradeStore.pending() == 2, "tracks queued offers behind active offer")
 
-	assert(UpgradeStore.beginReplace(2), "enters replace mode for valid card index")
-	assert(UpgradeStore.replacingCardIndex() == 2, "stores selected card index for replacement")
+	assert(UpgradeStore.beginReplace(3), "enters replace mode for valid card index")
+	assert(UpgradeStore.replacingCardIndex() == 3, "stores selected card index for replacement")
 	assert(not UpgradeStore.beginReplace(99), "rejects out-of-range card index")
 
 	-- Same offerId update preserves replace mode; new offerId clears replace mode.
 	UpgradeStore.setServerState(sampleOffer, 1)
-	assert(UpgradeStore.replacingCardIndex() == 2, "same offerId preserves replace mode")
+	assert(UpgradeStore.replacingCardIndex() == 3, "same offerId preserves replace mode")
 
 	local nextOffer: OfferData = {
 		offerId = 2,

@@ -42,6 +42,9 @@ export type Phase =
 	| "bossLeapWindup"
 	| "bossLeap"
 	| "bossNovaWindup"
+	| "areaWindup"
+	| "contactWindup"
+	| "contactActive"
 
 export type State = {
 	phase: Phase,
@@ -61,10 +64,12 @@ export type State = {
 	nextRushAt: number?,
 	nextLeapAt: number?,
 	nextNovaAt: number?,
+	nextAreaAt: number?,
+	nextContactAt: number?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "axeRetrieve" | "evade" | "rush" | "bossLeap",
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "axeRetrieve" | "evade" | "rush" | "bossLeap" | "contactSurge",
 	action: (
 		"strike"
 		| "spinTick"
@@ -85,6 +90,8 @@ export type Intent = {
 		| "bossLeapLaunch"
 		| "bossLeapLand"
 		| "bossNovaFire"
+		| "areaLaunch"
+		| "contactSurgeStart"
 	)?,
 }
 
@@ -140,6 +147,13 @@ export type Kind = {
 	leapCooldown: number?,
 	novaWindup: number?,
 	novaCooldown: number?,
+	areaMaxRange: number?,
+	areaWindup: number?,
+	areaCooldown: number?,
+	contactTriggerRange: number?,
+	contactWindup: number?,
+	contactDuration: number?,
+	contactCooldown: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -172,6 +186,8 @@ function Brain.initial(now: number): State
 		nextRushAt = now + 2.5,
 		nextLeapAt = now + 3.0,
 		nextNovaAt = now + 5.5,
+		nextAreaAt = now + 1.4,
+		nextContactAt = now + 1.2,
 	}
 end
 
@@ -192,7 +208,9 @@ local function with(
 	nextRushAt: number?,
 	nextLeapAt: number?,
 	nextNovaAt: number?,
-	nextAxeThrowAt: number?
+	nextAxeThrowAt: number?,
+	nextAreaAt: number?,
+	nextContactAt: number?
 ): State
 	return {
 		phase = phase,
@@ -212,6 +230,8 @@ local function with(
 		nextRushAt = if nextRushAt ~= nil then nextRushAt else state.nextRushAt,
 		nextLeapAt = if nextLeapAt ~= nil then nextLeapAt else state.nextLeapAt,
 		nextNovaAt = if nextNovaAt ~= nil then nextNovaAt else state.nextNovaAt,
+		nextAreaAt = if nextAreaAt ~= nil then nextAreaAt else state.nextAreaAt,
+		nextContactAt = if nextContactAt ~= nil then nextContactAt else state.nextContactAt,
 	}
 end
 
@@ -520,11 +540,78 @@ local function bossOh(kind: Kind, state: State, distance: number, now: number, _
 	return state, { move = "toward" }
 end
 
+local function area(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
+	if state.phase == "areaWindup" then
+		if now >= state.endsAt then
+			local cd = kind.areaCooldown or 4.2
+			local rec = kind.recover or 0.75
+			return with(state, "recover", now + rec, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, now + cd, nil),
+				{ move = "hold", action = "areaLaunch" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	local keepAway = kind.keepAway or 30
+	local maxRange = kind.areaMaxRange or (keepAway * Brain.FIRE_REACH)
+	if canAttack and now >= (state.nextAreaAt or 0) and distance <= maxRange then
+		local windup = kind.areaWindup or 0.65
+		return with(state, "areaWindup", now + windup), { move = "hold" }
+	end
+
+	local move: "toward" | "away" | "hold" = "hold"
+	if distance < keepAway * 0.65 then
+		move = "away"
+	elseif distance > keepAway * 1.15 then
+		move = "toward"
+	end
+	return state, { move = move }
+end
+
+local function contact(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
+	if state.phase == "contactWindup" then
+		if now >= state.endsAt then
+			local dur = kind.contactDuration or 2.8
+			return with(state, "contactActive", now + dur), { move = "contactSurge", action = "contactSurgeStart" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "contactActive" then
+		if now >= state.endsAt then
+			local cd = kind.contactCooldown or 3.2
+			local rec = kind.recover or 0.65
+			return with(state, "recover", now + rec, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, now + cd),
+				{ move = "hold" }
+		end
+		return state, { move = "contactSurge" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return with(state, "chase", 0), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	local triggerRange = kind.contactTriggerRange or 18
+	if now >= (state.nextContactAt or 0) and distance <= triggerRange then
+		local windup = kind.contactWindup or 0.55
+		return with(state, "contactWindup", now + windup), { move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
 local BEHAVIOURS = {
 	melee = melee,
 	ranged = ranged,
 	exploder = exploder,
 	grabber = grabber,
+	area = area,
+	contact = contact,
 	bossOh = bossOh,
 }
 
@@ -605,7 +692,9 @@ function Brain.applyHitstun(
 		math.max(state.nextRushAt or 0, readyAfter),
 		nil,
 		nil,
-		math.max(state.nextAxeThrowAt or 0, readyAfter)
+		math.max(state.nextAxeThrowAt or 0, readyAfter),
+		math.max(state.nextAreaAt or 0, readyAfter),
+		math.max(state.nextContactAt or 0, readyAfter)
 	)
 	pushed.nextFireAt = math.max(state.nextFireAt, readyAfter)
 	return pushed, true
@@ -1043,6 +1132,50 @@ function Brain.selfTest()
 	rushReady.nextRushAt = 0
 	local rushStunned = Brain.applyHitstun("grabber", rushReady, 0.6, 2.0, 0.4)
 	assert((rushStunned.nextRushAt or 0) >= 3.0, "hitstun delays the grabber rush")
+
+	-- Area (Artillero): holds mid-range, telegraphs mortar windup, launches hazard zone, recovers & respects cooldown.
+	local areaKind: Kind = { keepAway = 30, areaMaxRange = 48, areaWindup = 0.65, areaCooldown = 4.2, recover = 0.75 }
+	local ar: any = Brain.initial(0)
+	ar, intent = Brain.step("area", areaKind, ar, 12, 0.5, true)
+	assert(is(intent.move, "away") and is(intent.action, nil), "area unit backs off when player closes in")
+	ar, intent = Brain.step("area", areaKind, ar, 30, 1.5, false)
+	assert(is(ar.phase, "chase") and is(intent.action, nil), "area unit respects stagger gate")
+	ar, intent = Brain.step("area", areaKind, ar, 30, 1.5, true)
+	assert(is(ar.phase, "areaWindup") and is(intent.move, "hold"), "area unit winds up mortar launch in range")
+	ar, intent = Brain.step("area", areaKind, ar, 30, 2.2, true)
+	assert(is(ar.phase, "recover") and is(intent.action, "areaLaunch"), "area unit emits areaLaunch when windup finishes")
+	ar, intent = Brain.step("area", areaKind, ar, 30, 3.0, true)
+	assert(is(ar.phase, "chase"), "area unit exits recover")
+	ar, intent = Brain.step("area", areaKind, ar, 30, 4.0, true)
+	assert(is(ar.phase, "chase"), "area unit waits out areaCooldown before launching again")
+	local arHit, arFl = Brain.applyHitstun("area", { phase = "areaWindup", endsAt = 5, nextFireAt = 0, nextAreaAt = 0 }, 0.6, 2.0, 0.4)
+	assert(arFl and is(arHit.phase, "hitstun") and (arHit.nextAreaAt or 0) >= 3.0, "hitstun interrupts areaWindup and delays next launch")
+
+	-- Contact (Voltaico): chases -> winds up electric surge -> moves in contactSurge -> recovers & respects cooldown.
+	local contactKind: Kind = {
+		contactTriggerRange = 18,
+		contactWindup = 0.55,
+		contactDuration = 2.8,
+		contactCooldown = 3.2,
+		recover = 0.65,
+	}
+	local ct: any = Brain.initial(0)
+	ct, intent = Brain.step("contact", contactKind, ct, 30, 2.0, true)
+	assert(is(ct.phase, "chase") and is(intent.move, "toward"), "contact unit chases when outside trigger range")
+	ct, intent = Brain.step("contact", contactKind, ct, 14, 2.0, true)
+	assert(is(ct.phase, "contactWindup") and is(intent.move, "hold"), "contact unit telegraphs surge windup")
+	ct, intent = Brain.step("contact", contactKind, ct, 14, 2.6, true)
+	assert(is(ct.phase, "contactActive") and is(intent.move, "contactSurge") and is(intent.action, "contactSurgeStart"), "contact unit enters active electric surge")
+	ct, intent = Brain.step("contact", contactKind, ct, 8, 4.0, true)
+	assert(is(ct.phase, "contactActive") and is(intent.move, "contactSurge") and is(intent.action, nil), "contact unit keeps surging during duration")
+	ct, intent = Brain.step("contact", contactKind, ct, 8, 5.5, true)
+	assert(is(ct.phase, "recover") and is(intent.move, "hold"), "contact surge ends in recover")
+	ct, intent = Brain.step("contact", contactKind, ct, 8, 6.2, true)
+	assert(is(ct.phase, "chase"), "contact unit resumes chasing after recover")
+	ct, intent = Brain.step("contact", contactKind, ct, 8, 7.0, true)
+	assert(is(ct.phase, "chase"), "contact unit waits out contactCooldown before surging again")
+	local ctHit, ctFl = Brain.applyHitstun("contact", { phase = "contactActive", endsAt = 9, nextFireAt = 0, nextContactAt = 0 }, 0.6, 2.0, 0.4)
+	assert(ctFl and is(ctHit.phase, "hitstun") and (ctHit.nextContactAt or 0) >= 3.0, "hitstun interrupts contactActive and delays next surge")
 
 	-- Progressive daze speed factors drop with each stack and clamp cleanly.
 	local factors = { 0.6, 0.4, 0.25, 0.15 }

@@ -38,7 +38,6 @@ return {
 	GrabEscape = remote("GrabEscape"),
 
 	-- Run start, retry, difficulty, and active ability dispatch.
-	ChooseClass = remote("ChooseClass"),
 	ChooseDifficulty = remote("ChooseDifficulty"),
 	StartRun = remote("StartRun"),
 	RetryRun = remote("RetryRun"),

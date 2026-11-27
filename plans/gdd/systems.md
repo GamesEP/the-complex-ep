@@ -20,14 +20,11 @@ Status: drafted
 
 | | |
 |---|---|
-| Jugadores por servidor de hub | <n> (`Config.HUB_MAX_PLAYERS`) |
+| Jugadores por servidor de hub | 24 (`Config.HUB_MAX_PLAYERS`) |
 
 **Habla con el cliente mediante:** la lista se arma con los jugadores del servidor; el estado de
-grupo de cada uno se publica como atributos del jugador (ver Grupos).
-
-**Open:** cuántos jugadores caben en un servidor de hub. Con pocos, la lista está vacía y no hay
-con quién formar grupo; con muchos, la lista es difícil de leer en móvil. Bloquea
-`Config.HUB_MAX_PLAYERS` y el diseño de la pantalla de la lista.
+grupo de cada uno se publica como atributos del jugador (ver Grupos). *(Cerrado en `HS-03`: 24
+jugadores por servidor de hub para equilibrar población y legibilidad en móvil.)*
 
 ---
 
@@ -57,24 +54,16 @@ con quién formar grupo; con muchos, la lista es difícil de leer en móvil. Blo
 | | |
 |---|---|
 | Máximo de jugadores por grupo | 4 (`Config.PARTY_MAX_PLAYERS`) |
-| Tiempo para responder a una invitación | <n> segundos (`Config.PARTY_INVITE_SECONDS`) |
+| Tiempo para responder a una invitación | 20 segundos (`Config.PARTY_INVITE_SECONDS`) |
 
 **Habla con el cliente mediante:** el grupo de cada jugador, su rol (líder o miembro) y si el
 grupo es abierto o privado, como atributos en el jugador. Invitar, aceptar, rechazar, entrar,
 salir, expulsar e iniciar la run son remotos declarados en el contrato.
 
-**Open:** ¿un grupo privado también acepta solicitudes de entrada ("pedir unirse"), o solo
-invitaciones del líder? Bloquea la pantalla de la lista.
-
-**Open:** ¿el líder puede expulsar a un miembro? ¿Qué pasa con el grupo si el líder se va del
-juego? (Propuesta: el liderazgo pasa al miembro que lleva más tiempo.) Bloquea las reglas del
-grupo; no bloquea el combate.
-
-**Open:** cuánto dura una invitación sin respuesta antes de caducar. Bloquea
-`Config.PARTY_INVITE_SECONDS`.
-
-**Open:** si un jugador se desconecta durante la run, ¿puede volver a esa misma run? Bloquea el
-servidor de run.
+**Reglas cerradas (`HS-03`):**
+- **Grupo privado:** solo por invitación del líder (sin botón de "pedir unirse" para evitar spam en móvil).
+- **Expulsión y traspaso de líder:** el líder puede expulsar miembros mientras están en el Hub; si el líder se desconecta, el liderazgo pasa automáticamente al miembro más antiguo del grupo.
+- **Desconexión en run:** no hay reconexión a mitad de una run en v1 (coherente con el cierre del grupo al iniciar). Si un jugador abandona la run, las **salas siguientes** re-escalan la dificultad al número de jugadores activos restantes.
 
 ---
 
@@ -103,9 +92,9 @@ mejoras de estadísticas y pasivas de movimiento (`Doble Salto`, `Doble Dash`).
 
 - Movimientos básicos, que todo jugador tiene siempre: moverse, saltar, dash, **bloqueo / parry**,
   el ataque básico que encadena un combo y el **ataque pesado cargado** (manteniendo pulsado el
-  botón de ataque durante 2 segundos). Son los que definen la alta velocidad del juego, así que su
+  botón de ataque durante 1,4 segundos). Son los que definen la alta velocidad del juego, así que su
   rapidez y fluidez son lo primero que se ajusta.
-- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo.
+- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **1,4 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
   `"Bloquear"`) pone al personaje en guardia, con la espada cruzada delante del pecho y la mano
   izquierda apoyándola, para que se lea de un vistazo que está cubriéndose de frente. Reduce el
@@ -169,7 +158,7 @@ Valores de prueba del corte de combate, para ajustar jugando:
 |---|---|
 | Vida del jugador | 100 (`Config.PLAYER_MAX_HEALTH`) |
 | Golpes del combo básico | 3, con daño 10 / 10 / 20: el último es el fuerte (`Config.COMBO_HITS`, `Config.COMBO_DAMAGE`) |
-| Ataque pesado cargado | Mantener Atacar 2 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
+| Ataque pesado cargado | Mantener Atacar 1,4 s (`Config.HEAVY_CHARGE_SECONDS`): 55 de daño en arco frontal de 160° y 13 studs (`Config.HEAVY_ATTACK_DAMAGE`, `Config.HEAVY_ATTACK_RANGE`, `Config.HEAVY_ATTACK_ARC`) |
 | Tiempo para encadenar el combo | 1,15 s (`Config.COMBO_WINDOW`); cadencia cancelable 0,36 s golpes ligeros / 0,50 s remate (`Config.ATTACK_INTERVAL`, `Config.ATTACK_FINISHER_INTERVAL`), búfer 0,18 s (`Config.COMBO_INPUT_BUFFER`) |
 | Enganche y bloqueo suave de objetivo | Cono de 120° hasta 18 studs (retención en 120° o sin dirección pulsada hasta 22 studs durante 2,4 s), con impulso frenado en punto dulce de hasta 12 studs (11 en Giro) a 78 studs/s (`Config.AIM_ASSIST_CONE`, `Config.TARGET_LOCK_CONE`, `Config.AIM_ASSIST_RANGE`, `Config.TARGET_LOCK_BREAK_RANGE`, `Config.ATTACK_LUNGE_MAX_DISTANCE`, `Config.ATTACK_LUNGE_SPEED`) |
 | Hitstun y supresión de enemigos | 0,62 s ligero / 0,82 s medio / 1,05 s pesado (+0,10 s por acumulación hasta 4), retraso de acción +0,35 s y ralentización progresiva 60% → 40% → 25% → 15% durante 1,8 s (`Config.ENEMY_HITSTUN_*`, `Config.ENEMY_DAZE_*`) |
@@ -261,14 +250,15 @@ corresponde reemplazar). Ver pantalla `UpgradeChoice` en [ui.md](ui.md).
 | Precio del revivir del grupo | 10 Robux (producto de desarrollador; su id va en `Config.ENV_IDS`, no en el código) |
 | Tiempo del cartel de revivir | 20 segundos (`Config.WIPE_REVIVE_SECONDS`) |
 | Tiempo junto a un compañero para revivirlo | 5 segundos (`Config.ALLY_REVIVE_SECONDS`) |
+| Radio de proximidad para revivir | 8 studs (`Config.ALLY_REVIVE_RADIUS`) |
+| Vida restaurada al revivir un compañero | 50% de vida máxima (`Config.ALLY_REVIVE_HEALTH_FRACTION`) |
 
-**Habla con el cliente mediante:** <pendiente>.
+**Habla con el cliente mediante:** atributos `Downed` (bool) y `ReviveProgress` (`0..1`) replicados
+en cada `Player`, consumidos por el anillo diegético de revivir y el HUD de escuadrón.
 
-**Open:** a qué distancia cuenta como "al lado" (`Config.ALLY_REVIVE_RADIUS`), y si recibir daño
-mientras revives reinicia los 5 segundos. Bloquea el revivir entre compañeros.
+**Reglas cerradas (`HS-04`, revivir entre compañeros sin Robux en Fase 2):**
+- **Interrupción del canal:** recibir daño normal **no** reinicia los `5 s` de canalización; el progreso solo se detiene/reinicia si el compañero sale del radio de `8` studs, queda abatido o recibe un **stun duro / agarre** (ej. Coloso o mazo).
+- **Vida al revivir:** el compañero vuelve al combate con el **50%** de su vida máxima y una breve inmunidad al levantarse.
+- **Derrota total en Fase 2 (sin monetización aún):** cuando todo el grupo cae, `ReviveRules` invoca un hook de extensión (`onWipeOffer`) que en Fase 2 lleva directamente a la derrota (`RunResult`), dejando el punto exacto preparado para el cartel de `10 Robux` cuando se implemente monetización.
 
-**Open:** ¿hay un máximo de pagos por run? Pagar sin límite deja comprar la victoria. Bloquea el
-producto de desarrollador.
-
-**Open:** al revivir pagando, ¿con cuánta vida vuelve el grupo, y qué pasa con los enemigos que
-había en la sala? Bloquea las reglas de revivir.
+**Open (fase de monetización):** ¿hay un máximo de pagos de 10 Robux por run, y con cuánta vida / estado de enemigos vuelve el grupo al revivir pagando? Bloquea únicamente el producto de desarrollador.

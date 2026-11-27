@@ -330,7 +330,7 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
 
 ### 2A. Breadth Design Lock (Unblocking Phase 2)
 
-- [ ] **HS-01 · Design the 2 missing enemy archetypes (`En área` & `Por contacto`)**
+- [x] **HS-01 · Design the 2 missing enemy archetypes (`En área` & `Por contacto`)**
   - **Area:** Design / GDD · **Depends on:** `VS-25`
   - **Work:** Specify player-facing Spanish names, roles, silhouettes, attacks, counterplay, HP
     ladder entries, and `Config.ENEMY_KINDS` keys for the 2 remaining enemy types in
@@ -338,9 +338,9 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     telegraphed zones) and **Por contacto** (e.g., electrified/sawblade charger or orbiter that
     punishes body contact and rewards ranged/spacing/parry).
   - **Verify:** `plans/gdd/content.md` has complete rules and starting HP/damage numbers for all 6
-    enemy archetypes.
+    enemy archetypes. *(Resolved: **Artillero** (`area`, 28 HP) + **Voltaico** (`contact`, 34 HP).)*
 
-- [ ] **HS-02 · Design Bosses `My`, `Gon`, and 2-phase `OhMyGon`**
+- [x] **HS-02 · Design Bosses `My`, `Gon`, and 2-phase `OhMyGon`**
   - **Area:** Design / GDD · **Depends on:** `VS-25`
   - **Work:** Define concrete, telegraphed attacks and counterplay in `plans/gdd/content.md` for:
     - **My** (Floor 3 Room 5) — distinct identity complementing Oh's heavy melee (e.g., high-speed
@@ -350,68 +350,68 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     - **OhMyGon** (Floor 5 Room 5) — **Phase 1** recombining attacks players learned from Oh, My,
       and Gon (Pillar 3: *Aprender peleando*), and **Phase 2** (e.g., at 50% HP) escalating combo
       patterns without introducing untaught mechanics.
-  - **Verify:** Open boss questions removed from `plans/gdd/overview.md` and `content.md`.
+  - **Verify:** Open boss questions removed from `plans/gdd/overview.md` and `content.md`. *(Resolved in `plans/gdd/content.md`.)*
 
-- [ ] **HS-03 · Lock Hub, Party & Co-op Disconnect rules**
+- [x] **HS-03 · Lock Hub, Party & Co-op Disconnect rules**
   - **Area:** Design / GDD · **Depends on:** `VS-25`
   - **Work:** Close the open Hub/Party questions in `plans/gdd/systems.md`, `loop.md`, and
     `technical.md`: `Config.HUB_MAX_PLAYERS` (e.g., 20–30 for readable mobile list),
     `Config.PARTY_INVITE_SECONDS` (e.g., 20 s), whether private parties allow join requests or
     invite-only, leader kick & leader transfer on disconnect (longest-standing member), mid-run
     reconnect policy, and whether enemy scaling adjusts on player abandonment.
-  - **Verify:** All Hub/Party `Open:` markers resolved in `plans/gdd/`.
+  - **Verify:** All Hub/Party `Open:` markers resolved in `plans/gdd/`. *(Resolved: 24 max Hub, 20 s invite, invite-only private, leader transfer, no reconnect, rescale on abandon.)*
 
-- [ ] **HS-04 · Lock Downed & Ally Revive rules (non-Robux)**
+- [x] **HS-04 · Lock Downed & Ally Revive rules (non-Robux)**
   - **Area:** Design / GDD · **Depends on:** `VS-25`
   - **Work:** Close the open Revive questions in `plans/gdd/systems.md`: `Config.ALLY_REVIVE_RADIUS`
     (e.g., 8 studs), whether taking damage interrupts/resets the 5 s revive channel, HP percentage
     restored on ally revive (e.g., 50%), and non-monetized wipe flow (short surrender/defeat beat
     straight to `RunResult` with a documented hook for Phase 4's 10-Robux wipe revive).
-  - **Verify:** Revive rules documented cleanly in `plans/gdd/systems.md`.
+  - **Verify:** Revive rules documented cleanly in `plans/gdd/systems.md`. *(Resolved: 8 studs, normal damage does not reset, hard stun/grab/leaving radius interrupts, 50% HP restore.)*
 
 ### 2B. Completing the 6-Enemy Roster
 
-- [ ] **HS-05 · Author `.rbxmx` rigged model & animations for `En área` enemy**
+- [x] **HS-05 · Author `.rbxmx` rigged model & animations for `En área` enemy**
   - **Area:** 3D / Assets · **Depends on:** `HS-01`
   - **Work:** Generate `assets/models/EnemyArea.rbxmx` via `scripts/generate-models.luau` (`@lune/roblox`)
     with anchored invisible `Body`, explicit `PrimaryPart`/pivot, and `Group`-tagged `Motor6D` rig.
     Mount in `default.project.json`. Add procedural walk/cast/hitstun/death poses in `EnemyAnim.luau`
     + `EnemyAnimator.luau`.
   - **Verify:** `EnemyAnim.selfTest` and `make check` pass; Studio visual check confirms distinct
-    silhouette readable from isometric camera.
+    silhouette readable from isometric camera. *(Generated `EnemyArea.rbxmx` + `EnemyAnim.areaWindupPose`.)*
 
-- [ ] **HS-06 · Implement `En área` pure AI, hitboxes & server/client ground-zone behavior**
+- [x] **HS-06 · Implement `En área` pure AI, hitboxes & server/client ground-zone behavior**
   - **Area:** Enemies / Combat · **Depends on:** `HS-05`
   - **Work:** Add `En área` config in `Config/Enemies.luau`, state transitions in `Brain.luau` +
     `Tactics.luau` + `Hitbox.luau` (with `selfTest`), server hazard-zone lifecycle in `EnemyService`
     (telegraphed ground warning → active damage/DoT zone → cleanup on room clear), and client VFX +
     SFX cues. Ensure jumping / dashing out of the zone behaves fairly.
   - **Verify:** `make check` passes; Studio test confirms telegraph timing, clean zone damage,
-    pillar avoidance, and zero lingering zones after kill or room transition.
+    pillar avoidance, and zero lingering zones after kill or room transition. *(Implemented with `Hitbox.inGroundZone`, `Tactics.isGrabSafeZone`, mortar shell arc + floor hazard pool + cleanup in `EnemyService.clear()`.)*
 
-- [ ] **HS-07 · Author `.rbxmx` rigged model & animations for `Por contacto` enemy**
+- [x] **HS-07 · Author `.rbxmx` rigged model & animations for `Por contacto` enemy**
   - **Area:** 3D / Assets · **Depends on:** `HS-01`
   - **Work:** Generate `assets/models/EnemyContact.rbxmx` via Lune with anchored `Body`, explicit
     `PrimaryPart`/pivot, and `Group`-tagged `Motor6D` rig. Mount in `default.project.json`. Add
     procedural locomotion/active-aura/hitstun/death poses in `EnemyAnim.luau` + `EnemyAnimator.luau`.
-  - **Verify:** `EnemyAnim.selfTest` and `make check` pass; distinct silhouette verified in Studio.
+  - **Verify:** `EnemyAnim.selfTest` and `make check` pass; distinct silhouette verified in Studio. *(Generated `EnemyContact.rbxmx` + `contactWindupPose`/`contactActivePose` + electric aura VFX.)*
 
-- [ ] **HS-08 · Implement `Por contacto` pure AI, contact hitbox & server/client behavior**
+- [x] **HS-08 · Implement `Por contacto` pure AI, contact hitbox & server/client behavior**
   - **Area:** Enemies / Combat · **Depends on:** `HS-07`
   - **Work:** Add `Por contacto` config in `Config/Enemies.luau`, state/movement rules in `Brain.luau`
     + `Tactics.luau` + `Hitbox.luau` (`selfTest`), contact-damage tick with brief invulnerability
     debounce in `EnemyService` (routed through `CombatService.hurt` so Dash i-frames and Block
     work), and unmistakable active-hazard VFX/SFX around its body.
   - **Verify:** `make check` passes; Studio test confirms players take damage on contact, can dash
-    through with i-frames, and kill it cleanly at melee sweet-spot or range.
+    through with i-frames, and kill it cleanly at melee sweet-spot or range. *(Implemented with `Tactics.spiralApproach`, debounced `applyContactDamage`, and electric cyan/yellow aura + orbiting arcs.)*
 
-- [ ] **HS-09 · Integrate all 6 enemy types into wave compositions & squad AI balance**
+- [x] **HS-09 · Integrate all 6 enemy types into wave compositions & squad AI balance**
   - **Area:** Enemies / Balance · **Depends on:** `HS-06`, `HS-08`
   - **Work:** Update `Tactics.luau` and `SpatialGrid` interactions so all 6 archetypes combine
     cleanly without clumping or unfair unavoidable overlaps (e.g., Grabber holding while `En área`
     drops a zone on the trapped player — apply the same grab-exclusion safety rule).
   - **Verify:** `Tactics.selfTest` and `Brain.selfTest` pass; Studio mixed-wave test with all 6
-    types active simultaneously stays legible and fair.
+    types active simultaneously stays legible and fair. *(Integrated into `Config/Run.luau`, `Config/Enemies.luau`, `Difficulty.luau`, staggered mortar launches, and grab-exclusion safety.)*
 
 ### 2C. 5-Floor World, Randomized Room Pools & Content Breadth
 

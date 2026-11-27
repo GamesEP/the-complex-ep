@@ -147,6 +147,30 @@ export type EnemyKind = {
 	blastRadius: number?,
 	blastHeight: number?,
 	enemyDamage: number?,
+	-- area (Artillero: ground hazard mortar zones)
+	areaMaxRange: number?,
+	areaWindup: number?,
+	areaTelegraph: number?,
+	areaDuration: number?,
+	areaTickEvery: number?,
+	areaRadius: number?,
+	areaHeight: number?,
+	areaImpactDamage: number?,
+	areaTickDamage: number?,
+	areaCooldown: number?,
+	-- contact (Voltaico: electrified contact surge aura)
+	contactTriggerRange: number?,
+	contactWindup: number?,
+	contactDuration: number?,
+	contactRadius: number?,
+	contactHeight: number?,
+	contactTickEvery: number?,
+	contactDamage: number?,
+	contactCooldown: number?,
+	contactSpeedFactor: number?,
+	passiveContactRadius: number?,
+	passiveContactDamage: number?,
+	passiveContactTickEvery: number?,
 }
 
 -- Health ladder, starting values to tune by playing. Against the basic combo (40 damage in about
@@ -367,6 +391,55 @@ Config.ENEMY_KINDS = {
 		rushKnockbackUp = 28,
 		rushStunDuration = 1.3,
 	},
+	-- Area-denial artillery unit ("Artillero"): holds mid-range and lobs arcing mortar rounds
+	-- that telegraph circular ground zones (1.05 s warning) before detonating into 3.5 s plasma
+	-- hazard pools. Jumpable / dashable, and respects grab-exclusion over held players.
+	area = {
+		displayName = "Artillero",
+		model = "EnemyArea",
+		health = 28,
+		speed = 11,
+		size = Vector3.new(3.6, 5.2, 3.6),
+		color = Color3.fromRGB(150, 235, 65),
+		keepAway = 30,
+		areaMaxRange = 48,
+		areaWindup = 0.65,
+		areaTelegraph = 1.05,
+		areaDuration = 3.5,
+		areaTickEvery = 0.5,
+		areaRadius = 11,
+		areaHeight = 3.6,
+		areaImpactDamage = 14,
+		areaTickDamage = 10,
+		areaCooldown = 4.2,
+		recover = 0.75,
+		damage = 10,
+	},
+	-- High-voltage contact hazard unit ("Voltaico"): fast spiral chaser with twin Tesla coils
+	-- that overcharges a vivid 5.5-stud electric aura dealing automatic contact damage every 0.6 s.
+	-- Rewards melee sweet-spot spacing, skills, range, or Dash i-frames instead of hugging it.
+	contact = {
+		displayName = "Voltaico",
+		model = "EnemyContact",
+		health = 34,
+		speed = 17.5,
+		size = Vector3.new(3.8, 4.8, 3.8),
+		color = Color3.fromRGB(60, 235, 255),
+		contactTriggerRange = 18,
+		contactWindup = 0.55,
+		contactDuration = 2.8,
+		contactRadius = 5.5,
+		contactHeight = 4.6,
+		contactTickEvery = 0.6,
+		contactDamage = 10,
+		contactCooldown = 3.2,
+		contactSpeedFactor = 1.18,
+		passiveContactRadius = 2.9,
+		passiveContactDamage = 5,
+		passiveContactTickEvery = 0.75,
+		recover = 0.65,
+		damage = 10,
+	},
 	-- Boss "Oh" (Oleada 6 — first part of OhMyGon): colossal heavy mechanical titan with three
 	-- telegraphed signature attacks: frontal cone smash, seismic meteor leap, and 360-deg plasma nova.
 	bossOh = {
@@ -430,9 +503,9 @@ Config.ENEMY_GRID_CELL_SIZE = 12
 Config.WAVES = {
 	{ melee = 3 },
 	{ melee = 3, ranged = 2 },
-	{ melee = 3, ranged = 2, exploder = 2 },
-	{ melee = 3, ranged = 2, exploder = 1, grabber = 1 },
-	{ melee = 4, ranged = 3, exploder = 2, grabber = 2 },
+	{ melee = 2, ranged = 2, exploder = 1, area = 1 },
+	{ melee = 3, ranged = 2, exploder = 1, contact = 1, grabber = 1 },
+	{ melee = 3, ranged = 2, exploder = 1, area = 2, contact = 2, grabber = 1 },
 	{ bossOh = 1 },
 } :: { { [string]: number } }
 

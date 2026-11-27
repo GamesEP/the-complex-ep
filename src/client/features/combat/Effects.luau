@@ -1118,6 +1118,26 @@ local function boomerangVfx(caster: any, startPos: Vector3, apexPos: Vector3)
 	end)
 end
 
+type ActiveHealZone = {
+	disc: Part,
+	rim: Part,
+	conn: RBXScriptConnection,
+}
+local activeHealZones: { ActiveHealZone } = {}
+
+local function clearHealZones()
+	for _, zone in ipairs(activeHealZones) do
+		zone.conn:Disconnect()
+		if zone.disc.Parent then
+			zone.disc:Destroy()
+		end
+		if zone.rim.Parent then
+			zone.rim:Destroy()
+		end
+	end
+	table.clear(activeHealZones)
+end
+
 -- Support persistent 10 s Healing Zone: glowing emerald ground circle + rising heal orbs.
 local function healZoneVfx(position: Vector3, radius: number, seconds: number)
 	floorRing(position, radius, Color3.fromRGB(85, 245, 145), 0.45)
@@ -1141,11 +1161,16 @@ local function healZoneVfx(position: Vector3, radius: number, seconds: number)
 
 	local startedAt = os.clock()
 	local lastParticleAt = -1
+	local entry: ActiveHealZone
 	local conn: RBXScriptConnection
 	conn = RunService.RenderStepped:Connect(function()
 		local elapsed = os.clock() - startedAt
 		if elapsed >= seconds or not disc.Parent then
 			conn:Disconnect()
+			local idx = table.find(activeHealZones, entry)
+			if idx then
+				table.remove(activeHealZones, idx)
+			end
 			if disc.Parent then
 				TweenService:Create(disc, TweenInfo.new(0.35), { Transparency = 1 }):Play()
 			end
@@ -1181,6 +1206,8 @@ local function healZoneVfx(position: Vector3, radius: number, seconds: number)
 			Debris:AddItem(mote, 0.9)
 		end
 	end)
+	entry = { disc = disc, rim = rim, conn = conn }
+	table.insert(activeHealZones, entry)
 end
 
 -- Support Squad Shield: expanding cyan aura + protective ForceField bubble on EVERY living player.
@@ -1425,6 +1452,8 @@ Remotes.CombatVfx.OnClientEvent:Connect(function(kind: string, arg1: any, arg2: 
 		if typeof(arg1) == "Vector3" and type(arg2) == "number" then
 			shockwaveVfx(arg1, arg2)
 		end
+	elseif kind == "clearZones" then
+		clearHealZones()
 	end
 end)
 

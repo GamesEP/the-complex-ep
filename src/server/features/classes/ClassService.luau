@@ -92,7 +92,9 @@ function ClassService.choose(player: Player, classId: string)
 		return
 	end
 	player:SetAttribute("Class", classId)
-	applyClass(player)
+	if applyClass then
+		applyClass(player)
+	end
 end
 
 return ClassService

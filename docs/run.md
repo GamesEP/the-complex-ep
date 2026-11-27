@@ -25,9 +25,9 @@ How a 5-room run moves from the start screen to Boss Oh, Victory/Defeat, and Ret
 ## Room transitions & retry invariants
 
 1. Clearing all waves in Rooms 1–4 transitions `RunState` to `"transition"`, opens `ComplexArena.BlastDoor` (`DoorLeft` / `DoorRight` slide apart `8.4` studs, `DoorStatusBar` turns `#44F098`), plays `doorOpen`, and enqueues a zero-pause 1-of-3 upgrade offer for every player.
-2. Stepping into the open North Blast Door doorway (`Z <= -60`, `|X| <= 12`) clears leftover drops/projectiles, repositions all players to `SPAWN_OFFSET`, closes the door, and launches the next room.
-3. Defeating Boss Oh in Room 5 auto-resolves any pending upgrades, plays `bossOhVictory`, and sets `RunState = "victory"`. If every player dies during combat/transition, `RunState` switches to `"defeat"`.
-4. `RetryRun` increments `runGeneration`, stops active wave loops, clears enemies/drops/projectiles, resets player upgrades and health (`UpgradeService.resetAll`, `CombatService.resetPlayerForRun`), closes the door, and starts a fresh Room 1 with a new starter 1-of-3 offer.
+2. After the door slide finishes (`BLAST_DOOR_ANIM_SECONDS`, preventing accidental instant transitions when finishing the last enemy near the North wall), stepping into the open North Blast Door doorway (`Z <= -60`, `|X| <= 12`) clears leftover drops, projectiles, and active `Santuario` VFX zones, repositions all players to `SPAWN_OFFSET`, closes the door, and launches the next room.
+3. Defeating Boss Oh in Room 5 auto-resolves any pending upgrades, plays `bossOhVictory`, and sets `RunState = "victory"`. If every player dies during combat/transition, `UpgradeService.resetAll()` clears open offers and `RunState` switches to `"defeat"`.
+4. `RetryRun` increments `runGeneration`, stops active wave loops, clears enemies/drops/projectiles/zones, resets player upgrades, health, and client predicted cooldowns/selected slot (`UpgradeService.resetAll`, `CombatService.resetPlayerForRun`, `RunStartedAt` signal), closes the door, and starts a fresh Room 1 with a new starter 1-of-3 offer.
 
 ## Remotes
 

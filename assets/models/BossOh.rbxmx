@@ -1223,18 +1223,18 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>-0.55000305</X>
-            <Y>2.2099</Y>
-            <Z>4.753845</Z>
-            <R00>1</R00>
-            <R01>0</R01>
-            <R02>0</R02>
+            <X>-4.9093475</X>
+            <Y>2.2385254</Y>
+            <Z>-0.55000305</Z>
+            <R00>0</R00>
+            <R01>-0.13917542</R01>
+            <R02>-0.9902649</R02>
             <R10>0</R10>
             <R11>0.9902649</R11>
             <R12>-0.13917542</R12>
-            <R20>0</R20>
-            <R21>0.13917542</R21>
-            <R22>0.9902649</R22>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>0</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
           <Ref name="Part1">67</Ref>
@@ -1242,7 +1242,7 @@
       </Item>
       <Item class="Motor6D" referent="68">
         <Properties>
-          <string name="Name">Joint_MaulHead</string>
+          <string name="Name">Joint_MaulPommel</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
           <CoordinateFrame name="C0">
             <X>3.199997</X>
@@ -1259,9 +1259,45 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>1.2083435</X>
-            <Y>1.9861603</Y>
-            <Z>7.6387177</Z>
+            <X>-1.4593353</X>
+            <Y>2.2385406</Y>
+            <Z>-0.55000305</Z>
+            <R00>0</R00>
+            <R01>-0.13917542</R01>
+            <R02>-0.9902649</R02>
+            <R10>0</R10>
+            <R11>0.9902649</R11>
+            <R12>-0.13917542</R12>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>0</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">69</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="70">
+        <Properties>
+          <string name="Name">Joint_MaulCollar</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>1.1939697</X>
+            <Y>1.9717865</Y>
+            <Z>6.259308</Z>
             <R00>0.70710754</R00>
             <R01>0.70022583</R01>
             <R02>-0.09841919</R02>
@@ -1273,10 +1309,82 @@
             <R22>0.9902649</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">69</Ref>
+          <Ref name="Part1">71</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="70">
+      <Item class="Motor6D" referent="72">
+        <Properties>
+          <string name="Name">Joint_MaulHeadA</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.55000305</X>
+            <Y>2.2385254</Y>
+            <Z>7.6593475</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>0.9902649</R11>
+            <R12>-0.13917542</R12>
+            <R20>0</R20>
+            <R21>0.13917542</R21>
+            <R22>0.9902649</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">73</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="74">
+        <Properties>
+          <string name="Name">Joint_MaulHeadB</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>1.1939697</X>
+            <Y>1.9717865</Y>
+            <Z>7.6593323</Z>
+            <R00>0.70710754</R00>
+            <R01>0.70022583</R01>
+            <R02>-0.09841919</R02>
+            <R10>-0.70710754</R10>
+            <R11>0.70022583</R11>
+            <R12>-0.09841919</R12>
+            <R20>0</R20>
+            <R21>0.13916016</R21>
+            <R22>0.9902649</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">75</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="76">
         <Properties>
           <string name="Name">Joint_MaulPlasmaBand</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -1295,24 +1403,168 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>1.2083435</X>
-            <Y>1.9861603</Y>
-            <Z>7.6387177</Z>
-            <R00>0.70710754</R00>
-            <R01>0.70022583</R01>
-            <R02>-0.09841919</R02>
-            <R10>-0.70710754</R10>
-            <R11>0.70022583</R11>
-            <R12>-0.09841919</R12>
-            <R20>0</R20>
-            <R21>0.13916016</R21>
+            <X>0.348526</X>
+            <Y>2.278595</Y>
+            <Z>7.659363</Z>
+            <R00>0.92388916</R00>
+            <R01>0.3789673</R01>
+            <R02>-0.053268433</R02>
+            <R10>-0.38267517</R10>
+            <R11>0.9148865</R11>
+            <R12>-0.12858582</R12>
+            <R20>-0</R20>
+            <R21>0.13917542</R21>
             <R22>0.9902649</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">71</Ref>
+          <Ref name="Part1">77</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="72">
+      <Item class="Motor6D" referent="78">
+        <Properties>
+          <string name="Name">Joint_MaulSideSpike_1</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-5.8048706</X>
+            <Y>0.6786194</Y>
+            <Z>5.027054</Z>
+            <R00>0.70710754</R00>
+            <R01>-0.09841919</R01>
+            <R02>-0.70022583</R02>
+            <R10>0</R10>
+            <R11>0.9902649</R11>
+            <R12>-0.13916016</R12>
+            <R20>0.70710754</R20>
+            <R21>0.09841919</R21>
+            <R22>0.70022583</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">79</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="80">
+        <Properties>
+          <string name="Name">Joint_MaulSideSpike_2</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-3.8330078</X>
+            <Y>-1.0099945</Y>
+            <Z>6.998886</Z>
+            <R00>0</R00>
+            <R01>0.6018219</R01>
+            <R02>-0.79862976</R02>
+            <R10>-1</R10>
+            <R11>0</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0.79862976</R21>
+            <R22>0.6018219</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">81</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="82">
+        <Properties>
+          <string name="Name">Joint_MaulSideSpike_3</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-5.027054</X>
+            <Y>-3.7986145</Y>
+            <Z>5.8048706</Z>
+            <R00>-0.70710754</R00>
+            <R01>-0.09841919</R01>
+            <R02>-0.70022583</R02>
+            <R10>0</R10>
+            <R11>-0.9902649</R11>
+            <R12>0.13916016</R12>
+            <R20>-0.70710754</R20>
+            <R21>0.09841919</R21>
+            <R22>0.70022583</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">83</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="84">
+        <Properties>
+          <string name="Name">Joint_MaulSideSpike_4</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>3.199997</X>
+            <Y>2.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-6.998886</X>
+            <Y>-2.1100006</Y>
+            <Z>3.8330078</Z>
+            <R00>0</R00>
+            <R01>-0.79862976</R01>
+            <R02>-0.6018219</R02>
+            <R10>1</R10>
+            <R11>0</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>-0.6018219</R21>
+            <R22>0.79862976</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">85</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="86">
         <Properties>
           <string name="Name">Joint_MaulFrontPlate</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -1331,24 +1583,24 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>-0.55000305</X>
-            <Y>2.2342377</Y>
-            <Z>9.251022</Z>
-            <R00>1</R00>
-            <R01>0</R01>
-            <R02>0</R02>
-            <R10>0</R10>
-            <R11>0.9902649</R11>
-            <R12>-0.13917542</R12>
+            <X>1.1939545</X>
+            <Y>1.9717712</Y>
+            <Z>9.259323</Z>
+            <R00>0.70710754</R00>
+            <R01>0.70022583</R01>
+            <R02>-0.09841919</R02>
+            <R10>-0.70710754</R10>
+            <R11>0.70022583</R11>
+            <R12>-0.09841919</R12>
             <R20>0</R20>
-            <R21>0.13917542</R21>
+            <R21>0.13916016</R21>
             <R22>0.9902649</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">73</Ref>
+          <Ref name="Part1">87</Ref>
         </Properties>
       </Item>
-      <Item class="Motor6D" referent="74">
+      <Item class="Motor6D" referent="88">
         <Properties>
           <string name="Name">Joint_MaulCrownSpike</string>
           <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
@@ -1367,9 +1619,9 @@
             <R22>1</R22>
           </CoordinateFrame>
           <CoordinateFrame name="C1">
-            <X>1.1920776</X>
-            <Y>1.9698944</Y>
-            <Z>9.958099</Z>
+            <X>1.1939545</X>
+            <Y>1.9717712</Y>
+            <Z>9.989334</Z>
             <R00>0.70710754</R00>
             <R01>0.70022583</R01>
             <R02>-0.09841919</R02>
@@ -1381,7 +1633,7 @@
             <R22>0.9902649</R22>
           </CoordinateFrame>
           <Ref name="Part0">1</Ref>
-          <Ref name="Part1">75</Ref>
+          <Ref name="Part1">89</Ref>
         </Properties>
       </Item>
     </Item>
@@ -1839,7 +2091,7 @@
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
       </Properties>
-      <Item class="PointLight" referent="76">
+      <Item class="PointLight" referent="90">
         <Properties>
           <string name="Name">PointLight</string>
           <float name="Brightness">1.6</float>
@@ -2526,8 +2778,115 @@
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
           <X>3.75</X>
-          <Y>-0.6000061</Y>
-          <Z>-4.399994</Z>
+          <Y>-0.6499939</Y>
+          <Z>-4.550003</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>-0.13917542</R10>
+          <R11>0.9902649</R11>
+          <R12>-0</R12>
+          <R20>-0.9902649</R20>
+          <R21>-0.13917542</R21>
+          <R22>-0</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">6187130</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <token name="shape">2</token>
+        <Vector3 name="size">
+          <X>6.899994</X>
+          <Y>0.55999756</Y>
+          <Z>0.55999756</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="69">
+      <Properties>
+        <string name="Name">MaulPommel</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>-0.16984558</Y>
+          <Z>-1.1335754</Z>
+          <R00>-0</R00>
+          <R01>0</R01>
+          <R02>1</R02>
+          <R10>-0.13917542</R10>
+          <R11>0.9902649</R11>
+          <R12>-0</R12>
+          <R20>-0.9902649</R20>
+          <R21>-0.13917542</R21>
+          <R22>-0</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">1974828</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <token name="shape">2</token>
+        <Vector3 name="size">
+          <X>0.6199951</X>
+          <Y>0.91999817</Y>
+          <Z>0.91999817</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="71">
+      <Properties>
+        <string name="Name">MaulCollar</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>-0.8378906</Y>
+          <Z>-5.886856</Z>
+          <R00>0.70710754</R00>
+          <R01>-0.70710754</R01>
+          <R02>0</R02>
+          <R10>0.70022583</R10>
+          <R11>0.70022583</R11>
+          <R12>0.13917542</R12>
+          <R20>-0.09840393</R20>
+          <R21>-0.09840393</R21>
+          <R22>0.9902649</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">15644710</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.3500061</X>
+          <Y>1.3500061</Y>
+          <Z>0.7200012</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="73">
+      <Properties>
+        <string name="Name">MaulHeadA</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>-1.0327301</Y>
+          <Z>-7.273239</Z>
           <R00>1</R00>
           <R01>0</R01>
           <R02>0</R02>
@@ -2542,27 +2901,27 @@
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
         <bool name="CastShadow">true</bool>
-        <Color3uint8 name="Color3uint8">6187130</Color3uint8>
+        <Color3uint8 name="Color3uint8">8659498</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>0.58000183</X>
-          <Y>0.58000183</Y>
-          <Z>6.800003</Z>
+          <X>2.350006</X>
+          <Y>2.350006</Y>
+          <Z>3.050003</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="69">
+    <Item class="Part" referent="75">
       <Properties>
-        <string name="Name">MaulHead</string>
+        <string name="Name">MaulHeadB</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
           <X>3.75</X>
-          <Y>-1.050003</Y>
-          <Z>-7.25</Z>
+          <Y>-1.0327301</Y>
+          <Z>-7.273239</Z>
           <R00>0.70710754</R00>
           <R01>-0.70710754</R01>
           <R02>0</R02>
@@ -2581,23 +2940,198 @@
         <bool name="Massless">true</bool>
         <token name="Material">1056</token>
         <Vector3 name="size">
-          <X>2.449997</X>
-          <Y>2.449997</Y>
+          <X>2.350006</X>
+          <Y>2.350006</Y>
           <Z>3.050003</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="71">
+    <Item class="Part" referent="77">
       <Properties>
         <string name="Name">MaulPlasmaBand</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
           <X>3.75</X>
-          <Y>-1.050003</Y>
-          <Z>-7.25</Z>
+          <Y>-1.0327301</Y>
+          <Z>-7.273239</Z>
+          <R00>0.9238739</R00>
+          <R01>-0.38269043</R01>
+          <R02>0</R02>
+          <R10>0.37895203</R10>
+          <R11>0.9148865</R11>
+          <R12>0.13917542</R12>
+          <R20>-0.053253174</R20>
+          <R21>-0.12858582</R21>
+          <R22>0.9902649</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">16736292</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>2.6799927</X>
+          <Y>2.6799927</Y>
+          <Z>0.7200012</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="79">
+      <Properties>
+        <string name="Name">MaulSideSpike_1</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>0.51208496</Y>
+          <Z>-7.490341</Z>
+          <R00>0.70710754</R00>
+          <R01>0</R01>
+          <R02>0.70710754</R02>
+          <R10>-0.09840393</R10>
+          <R11>0.9902649</R11>
+          <R12>0.09840393</R12>
+          <R20>-0.70022583</R20>
+          <R21>-0.13917542</R21>
+          <R22>0.70022583</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">11713740</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.55000305</X>
+          <Y>0.91999817</Y>
+          <Z>0.55000305</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="81">
+      <Properties>
+        <string name="Name">MaulSideSpike_2</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.1900024</X>
+          <Y>-1.0327301</Y>
+          <Z>-7.273239</Z>
+          <R00>-0</R00>
+          <R01>-1</R01>
+          <R02>-0</R02>
+          <R10>0.6018219</R10>
+          <R11>-0</R11>
+          <R12>0.79862976</R12>
+          <R20>-0.79862976</R20>
+          <R21>0</R21>
+          <R22>0.6018219</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">11713740</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.55000305</X>
+          <Y>0.91999817</Y>
+          <Z>0.55000305</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="83">
+      <Properties>
+        <string name="Name">MaulSideSpike_3</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>-2.5775452</Y>
+          <Z>-7.056122</Z>
+          <R00>-0.70710754</R00>
+          <R01>0</R01>
+          <R02>-0.70710754</R02>
+          <R10>-0.09840393</R10>
+          <R11>-0.9902649</R11>
+          <R12>0.09840393</R12>
+          <R20>-0.70022583</R20>
+          <R21>0.13917542</R21>
+          <R22>0.70022583</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">11713740</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.55000305</X>
+          <Y>0.91999817</Y>
+          <Z>0.55000305</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="85">
+      <Properties>
+        <string name="Name">MaulSideSpike_4</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>5.3099976</X>
+          <Y>-1.0327301</Y>
+          <Z>-7.273239</Z>
+          <R00>0</R00>
+          <R01>1</R01>
+          <R02>0</R02>
+          <R10>-0.79862976</R10>
+          <R11>0</R11>
+          <R12>-0.6018219</R12>
+          <R20>-0.6018219</R20>
+          <R21>-0</R21>
+          <R22>0.79862976</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">11713740</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.55000305</X>
+          <Y>0.91999817</Y>
+          <Z>0.55000305</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="87">
+      <Properties>
+        <string name="Name">MaulFrontPlate</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>3.75</X>
+          <Y>-1.2554016</Y>
+          <Z>-8.857666</Z>
           <R00>0.70710754</R00>
           <R01>-0.70710754</R01>
           <R02>0</R02>
@@ -2611,63 +3145,28 @@
         <bool name="CanCollide">false</bool>
         <bool name="CanQuery">false</bool>
         <bool name="CanTouch">false</bool>
-        <bool name="CastShadow">false</bool>
-        <Color3uint8 name="Color3uint8">16736292</Color3uint8>
-        <bool name="Massless">true</bool>
-        <token name="Material">288</token>
-        <Vector3 name="size">
-          <X>2.649994</X>
-          <Y>2.649994</Y>
-          <Z>0.7200012</Z>
-        </Vector3>
-        <token name="TopSurface">0</token>
-        <float name="Transparency">0</float>
-      </Properties>
-    </Item>
-    <Item class="Part" referent="73">
-      <Properties>
-        <string name="Name">MaulFrontPlate</string>
-        <bool name="Anchored">false</bool>
-        <token name="BottomSurface">0</token>
-        <CoordinateFrame name="CFrame">
-          <X>3.75</X>
-          <Y>-1.25</Y>
-          <Z>-8.850006</Z>
-          <R00>1</R00>
-          <R01>0</R01>
-          <R02>0</R02>
-          <R10>0</R10>
-          <R11>0.9902649</R11>
-          <R12>0.13917542</R12>
-          <R20>0</R20>
-          <R21>-0.13917542</R21>
-          <R22>0.9902649</R22>
-        </CoordinateFrame>
-        <bool name="CanCollide">false</bool>
-        <bool name="CanQuery">false</bool>
-        <bool name="CanTouch">false</bool>
         <bool name="CastShadow">true</bool>
         <Color3uint8 name="Color3uint8">11713740</Color3uint8>
         <bool name="Massless">true</bool>
         <token name="Material">1088</token>
         <Vector3 name="size">
-          <X>2.149994</X>
-          <Y>2.149994</Y>
-          <Z>0.55000305</Z>
+          <X>2.100006</X>
+          <Y>2.100006</Y>
+          <Z>0.5200043</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>
       </Properties>
     </Item>
-    <Item class="Part" referent="75">
+    <Item class="Part" referent="89">
       <Properties>
         <string name="Name">MaulCrownSpike</string>
         <bool name="Anchored">false</bool>
         <token name="BottomSurface">0</token>
         <CoordinateFrame name="CFrame">
           <X>3.75</X>
-          <Y>-1.3500061</Y>
-          <Z>-9.550003</Z>
+          <Y>-1.3569946</Y>
+          <Z>-9.580566</Z>
           <R00>0.70710754</R00>
           <R01>-0.70710754</R01>
           <R02>0</R02>
@@ -2686,9 +3185,9 @@
         <bool name="Massless">true</bool>
         <token name="Material">288</token>
         <Vector3 name="size">
-          <X>0.8500061</X>
-          <Y>0.8500061</Y>
-          <Z>1.3500061</Z>
+          <X>0.8200073</X>
+          <Y>0.8200073</Y>
+          <Z>1.3800049</Z>
         </Vector3>
         <token name="TopSurface">0</token>
         <float name="Transparency">0</float>

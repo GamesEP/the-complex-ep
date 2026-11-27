@@ -279,6 +279,39 @@ function screen.start()
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value + 60, Enum.KeyCode.Return, Enum.KeyCode.ButtonA)
 
+	local function cycleDifficulty(delta: number)
+		local order = Config.DIFFICULTY_ORDER
+		if #order == 0 then
+			return
+		end
+		local current = world:GetAttribute("Difficulty")
+		local idx = table.find(order, current) or table.find(order, Config.DEFAULT_DIFFICULTY) or 1
+		local nextIdx = ((idx - 1 + delta) % #order) + 1
+		Remotes.ChooseDifficulty:FireServer(order[nextIdx])
+	end
+
+	ContextActionService:BindActionAtPriority("StartRunDiffPrev", function(_, inputState: Enum.UserInputState)
+		local rs = world:GetAttribute("RunState")
+		if rs ~= nil and rs ~= "preparing" then
+			return Enum.ContextActionResult.Pass
+		end
+		if inputState == Enum.UserInputState.Begin then
+			cycleDifficulty(-1)
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value + 60, Enum.KeyCode.DPadLeft)
+
+	ContextActionService:BindActionAtPriority("StartRunDiffNext", function(_, inputState: Enum.UserInputState)
+		local rs = world:GetAttribute("RunState")
+		if rs ~= nil and rs ~= "preparing" then
+			return Enum.ContextActionResult.Pass
+		end
+		if inputState == Enum.UserInputState.Begin then
+			cycleDifficulty(1)
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value + 60, Enum.KeyCode.DPadRight)
+
 	-- Above every other screen while open.
 	return UI.mount("ClassSelect", function()
 		return React.createElement(StartRunScreen, { world = world })

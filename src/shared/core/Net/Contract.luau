@@ -36,8 +36,7 @@ return {
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
 	-- feel responsive without opening an unbounded channel.
 	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
-	-- Start screen difficulty, run start/retry, and legacy ChooseClass hook.
-	ChooseClass = { rate = 2, args = { Validate.string } },
+	-- Start screen difficulty and run start/retry.
 	ChooseDifficulty = { rate = 4, args = { Validate.string } },
 	StartRun = { rate = 2 },
 	RetryRun = { rate = 2 },

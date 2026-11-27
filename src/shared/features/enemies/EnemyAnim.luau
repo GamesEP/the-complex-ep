@@ -118,6 +118,30 @@ function EnemyAnim.walkPose(phase: number, speedFactor: number, weapon: string?,
 			leftArm = CFrame.Angles(0.06 + bounce * 0.05 * s, 0.08, 0),
 			rightArm = CFrame.Angles(0.04 + bounce * 0.04 * s, -0.04, 0),
 		}
+	elseif kind == "area" then
+		-- Heavy braced artillery march: slight forward lean to counterbalance the dorsal mortar tubes.
+		local heavy = math.sin(phase * 0.85)
+		local thump = math.abs(math.cos(phase * 0.85))
+		return {
+			torso = CFrame.new(0, thump * 0.1 * s + idleBreath, 0) * CFrame.Angles(-0.12 * s, heavy * 0.08 * s, 0),
+			head = CFrame.Angles(0.1 * s, -heavy * 0.06 * s, 0),
+			leftLeg = CFrame.Angles(heavy * 0.46 * s, 0, 0),
+			rightLeg = CFrame.Angles(-heavy * 0.46 * s, 0, 0),
+			leftArm = CFrame.Angles(0.18 + thump * 0.06 * s, 0.12, -0.06),
+			rightArm = CFrame.Angles(0.14 - thump * 0.06 * s, -0.1, 0.06),
+		}
+	elseif kind == "contact" then
+		-- Fast crouched electro-sprinter stride with Tesla discharge arms flared out slightly.
+		local fast = math.sin(phase * 1.3)
+		local zip = math.abs(math.cos(phase * 1.3))
+		return {
+			torso = CFrame.new(0, zip * 0.14 * s + idleBreath - 0.06, 0) * CFrame.Angles(-0.22 * s, fast * 0.16 * s, -fast * 0.08 * s),
+			head = CFrame.Angles(0.18 * s, -fast * 0.12 * s, 0),
+			leftLeg = CFrame.Angles(fast * 0.72 * s, 0, 0),
+			rightLeg = CFrame.Angles(-fast * 0.72 * s, 0, 0),
+			leftArm = CFrame.Angles(0.12 - fast * 0.32 * s, 0.2, -0.26),
+			rightArm = CFrame.Angles(0.12 + fast * 0.32 * s, -0.2, 0.26),
+		}
 	end
 
 	local legAmp = 0.62 * s
@@ -537,6 +561,51 @@ function EnemyAnim.bossNovaWindupPose(progress: number, clock: number): LimbPose
 	}
 end
 
+-- Artillero (`area`) mortar launch windup: drops into a braced artillery crouch tilting dorsal
+-- mortar tubes skyward while targeting on its left holo-gauntlet.
+function EnemyAnim.areaWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local hum = math.sin(clock * 30) * 0.035 * p
+	return {
+		torso = CFrame.new(0, -0.22 * p, 0.1 * p) * CFrame.Angles(-0.22 * p, hum, 0),
+		head = CFrame.Angles(0.18 * p, -hum, 0),
+		leftLeg = CFrame.Angles(0.34 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(-0.28 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(0.55 * p, 0.35 * p, -0.18 * p),
+		rightArm = CFrame.Angles(0.25 * p, -0.18 * p, 0.28 * p),
+	}
+end
+
+-- Voltaico (`contact`) electric surge windup: hunches tightly while flaring both Tesla arms out
+-- and vibrating rapidly as voltage builds around its coils.
+function EnemyAnim.contactWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local buzz = math.sin(clock * 46) * 0.06 * p
+	return {
+		torso = CFrame.new(buzz * 0.4, -0.26 * p, 0) * CFrame.Angles(-0.18 * p, buzz, buzz * 0.5),
+		head = CFrame.Angles(0.16 * p, -buzz, 0),
+		leftLeg = CFrame.Angles(0.32 * p, 0, -0.18 * p),
+		rightLeg = CFrame.Angles(0.32 * p, 0, 0.18 * p),
+		leftArm = CFrame.Angles(0.22 * p + buzz, 0.48 * p, -0.95 * p),
+		rightArm = CFrame.Angles(0.22 * p - buzz, -0.48 * p, 0.95 * p),
+	}
+end
+
+-- Voltaico (`contact`) active high-voltage surge: aggressive crackling charge stride with arms
+-- spread wide emitting live arcs.
+function EnemyAnim.contactActivePose(phase: number, clock: number): LimbPose
+	local stride = math.sin(phase * 1.55)
+	local buzz = math.sin(clock * 42) * 0.05
+	return {
+		torso = CFrame.new(buzz * 0.35, -0.16, -0.14) * CFrame.Angles(-0.3, stride * 0.14 + buzz, -stride * 0.07),
+		head = CFrame.Angles(0.24, -stride * 0.1 - buzz, 0),
+		leftLeg = CFrame.Angles(stride * 0.78, 0, -0.1),
+		rightLeg = CFrame.Angles(-stride * 0.78, 0, 0.1),
+		leftArm = CFrame.Angles(0.18 + buzz, 0.36, -0.92),
+		rightArm = CFrame.Angles(0.18 - buzz, -0.36, 0.92),
+	}
+end
+
 -- Dazed stagger pose while stunned (Tank war cry, Support shockwave, heavy slams).
 function EnemyAnim.stunPose(clock: number): LimbPose
 	local sway = math.sin(clock * 5.2)
@@ -669,6 +738,11 @@ function EnemyAnim.selfTest()
 	assert(EnemyAnim.bossLeapWindupPose(1, 0).torso.Position.Y < -0.5, "boss leap windup crouches low")
 	assert(EnemyAnim.bossLeapAirPose(0.2).rightArm ~= EnemyAnim.bossLeapAirPose(0.95).rightArm, "boss leap air transitions to slam")
 	assert(EnemyAnim.bossNovaWindupPose(1, 0).leftArm ~= CFrame.identity, "boss nova spreads arms wide")
+	assert(EnemyAnim.areaWindupPose(1, 0.2).torso.Position.Y < -0.1, "area mortar windup braces low")
+	assert(EnemyAnim.contactWindupPose(1, 0.2).leftArm ~= CFrame.identity, "contact surge windup flares Tesla arms")
+	local caA = EnemyAnim.contactActivePose(0, 0)
+	local caB = EnemyAnim.contactActivePose(1.0, 0.2)
+	assert(caA.leftLeg ~= caB.leftLeg and caA.torso.Position.Z < -0.05, "contact active surge strides forward aggressively")
 
 	local hs1 = EnemyAnim.hitstunPose(0.2, 1)
 	local hs2 = EnemyAnim.hitstunPose(0.2, 2)

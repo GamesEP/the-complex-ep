@@ -25,6 +25,10 @@ local DAMAGE_FIELDS = {
 	"coneDamage",
 	"leapDamage",
 	"novaDamage",
+	"areaImpactDamage",
+	"areaTickDamage",
+	"contactDamage",
+	"passiveContactDamage",
 }
 
 local SPEED_FIELDS = {

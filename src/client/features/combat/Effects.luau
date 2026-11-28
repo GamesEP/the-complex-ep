@@ -49,6 +49,37 @@ local function ghost(size: Vector3, cframe: CFrame, color: Color3, shape: Enum.P
 	return part
 end
 
+-- Crisp impact spark burst on confirmed hitstop (bright gold-white on normal hits, metallic
+-- amber-cyan ring on super-armored Boss hits so the player reads armor immediately).
+function Effects.hitSpark(position: Vector3, tier: string, armored: boolean?)
+	local scale = if tier == "heavy" then 1.55 elseif tier == "medium" then 1.2 else 0.9
+	local coreColor = if armored then Color3.fromRGB(255, 225, 110) else Color3.fromRGB(255, 248, 220)
+	local ringColor = if armored then Color3.fromRGB(110, 215, 255) else Color3.fromRGB(255, 155, 65)
+
+	local flash = ghost(Vector3.one * (1.2 * scale), CFrame.new(position), coreColor, Enum.PartType.Ball)
+	flash.Transparency = 0.08
+	TweenService:Create(
+		flash,
+		TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.one * (3.1 * scale), Transparency = 1 }
+	):Play()
+	Debris:AddItem(flash, 0.18)
+
+	local ring = ghost(
+		Vector3.new(0.18, 1.8 * scale, 1.8 * scale),
+		CFrame.new(position) * CFrame.Angles(math.rad(math.random(-25, 25)), math.rad(math.random(0, 180)), math.rad(90)),
+		ringColor,
+		Enum.PartType.Cylinder
+	)
+	ring.Transparency = 0.16
+	TweenService:Create(
+		ring,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(0.08, 5.2 * scale, 5.2 * scale), Transparency = 1 }
+	):Play()
+	Debris:AddItem(ring, 0.22)
+end
+
 -- Plays only the local attack pose (used when a lunge starts so the windup plays during the
 -- step-in and the attack audio fires at impact).
 function Effects.attackWindup(step: number)

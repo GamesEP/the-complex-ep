@@ -19,7 +19,7 @@ Config.ENV_STUDIO = "studio"
 ]]
 Config.ENV_UNIVERSES = {
 	-- [1234567890] = Config.ENV_PRODUCTION,
-	-- [9876543210] = Config.ENV_DEVELOPMENT,
+	[10779446885] = Config.ENV_DEVELOPMENT,
 } :: { [number]: string }
 
 --[[

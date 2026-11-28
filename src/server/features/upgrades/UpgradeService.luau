@@ -168,6 +168,75 @@ function UpgradeService.forget(player: Player)
 	builds[player] = nil
 end
 
+--=============================================================================
+-- Admin debug hooks (called only through DebugService)
+--=============================================================================
+
+function UpgradeService.debugSetSlot(player: Player, slot: number, abilityId: string, level: number?): (boolean, string?)
+	local build = ensureBuild(player)
+	if not UpgradePool.setSlot(build, slot, abilityId, level) then
+		return false, "invalid slot or abilityId"
+	end
+	syncAttributes(player, build)
+	if onUpgradesChanged then
+		onUpgradesChanged(player, 0)
+	end
+	return true, `Slot {slot} -> {abilityId} Lv.{level or 1}`
+end
+
+function UpgradeService.debugClearSlot(player: Player, slot: number): (boolean, string?)
+	local build = ensureBuild(player)
+	if not UpgradePool.clearSlot(build, slot) then
+		return false, "invalid slot"
+	end
+	syncAttributes(player, build)
+	if onUpgradesChanged then
+		onUpgradesChanged(player, 0)
+	end
+	return true, `Cleared slot {slot}`
+end
+
+function UpgradeService.debugPushOffer(player: Player, count: number?, isStarter: boolean?): (boolean, string?)
+	local build = ensureBuild(player)
+	local n = math.clamp(math.floor(count or 1), 1, 10)
+	for _ = 1, n do
+		local offer = if isStarter then UpgradePool.rollStarter(build) else UpgradePool.rollRoomOffer(build)
+		UpgradePool.enqueue(build, offer)
+	end
+	pushOffer(player, build)
+	return true, `Queued +{n} upgrade offer(s)`
+end
+
+function UpgradeService.debugApplyStat(player: Player, statId: string, count: number?): (boolean, string?)
+	local build = ensureBuild(player)
+	local ok, healDelta = UpgradePool.applyStatDirect(build, statId, count)
+	if not ok then
+		return false, `unknown stat "{statId}"`
+	end
+	syncAttributes(player, build)
+	if onUpgradesChanged then
+		onUpgradesChanged(player, healDelta)
+	end
+	return true, `Applied {statId} x{count or 1}`
+end
+
+function UpgradeService.debugSetPassive(player: Player, passiveId: string, enabled: boolean): (boolean, string?)
+	local build = ensureBuild(player)
+	if not UpgradePool.setPassiveDirect(build, passiveId, enabled) then
+		return false, `unknown passive "{passiveId}"`
+	end
+	syncAttributes(player, build)
+	if onUpgradesChanged then
+		onUpgradesChanged(player, 0)
+	end
+	return true, `{passiveId} -> {if enabled then "ON" else "OFF"}`
+end
+
+function UpgradeService.debugResetBuild(player: Player): (boolean, string?)
+	UpgradeService.resetPlayer(player)
+	return true, "Build reset to Pillar 1 baseline"
+end
+
 function UpgradeService.start(dependencies: { onUpgradesChanged: ((Player, number) -> ())? })
 	onUpgradesChanged = dependencies.onUpgradesChanged
 	Players.PlayerAdded:Connect(function(player)

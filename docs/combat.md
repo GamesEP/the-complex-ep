@@ -8,7 +8,8 @@ and [plans/gdd/scope.md](../plans/gdd/scope.md); this is how it is built.
 |---|---|
 | `shared/features/combat/CombatAnim` | Pure: procedural player poses (combo, block/parry, jump/land, dash, spin) and interrupt priorities. |
 | `shared/features/combat/CombatAudio` | Pure: combo cue selection, uploaded-vs-fallback id resolution, pitch variation. |
-| `shared/features/combat/Defense` | Pure: hit resolution priority (`invulnerable > parry > block > hit`), 50% defense buff stacking, and WalkSpeed calculation. |
+| `shared/features/combat/CombatState` | Pure: player combat state machine & movement policy (`WalkSpeed=0`/`AutoRotate=false` during Startup/Active/Lunge/Hitstop/Ability, opposite-direction lunge abort, Startup ±35° micro-pivot, hitstop/whiff cancel timing, Recovery move-cancel, heavy-only HeavyCharge interruption). |
+| `shared/features/combat/Defense` | Pure: hit resolution priority (`invulnerable > parry > block > hit`), 50% defense buff stacking, and WalkSpeed calculation (including `attackLocked`). |
 | `shared/features/combat/Melee` | Pure: the combo, the swing arc, the spin radius, forward target selection and attack lunge math. Both realms call it. |
 | `shared/features/drops/Drops` | Pure: 30% drop roll, weighted kind selection, heal clamp, and damage/speed buff math. |
 | `shared/features/enemies/Brain` | Pure: what an enemy (including Boss Oh) does each frame, as a state machine. |
@@ -268,11 +269,48 @@ inputs **any other direction** outside `TARGET_LOCK_CONE`, the lock breaks immed
 them walk away freely or attack/skill directly onto a different target in the new direction.
 
 Every attack and ability carries a longer, deliberate animation (`Config.ANIMATIONS` durations
-scaled ~1.5x–2.4x) with an explicit `cancelAt` recovery threshold: if left alone, the full
-follow-through recovery plays out, while pressing **any other attack or ability** once
-`elapsed >= cancelAt` (or within `COMBO_INPUT_BUFFER = 0.18 s` beforehand, queued for frame 1 of
-recovery) cancels the recovery animation cleanly into the next move. `Dash` and `Block` cancel
-immediately at any point via `lungeToken` / `clearLunge` so defensive reactions stay instant.
+scaled ~1.5x–2.4x) driven by the shared state machine in `shared/features/combat/CombatState.luau`:
+
+- **Committed attack movement (zero sideways/backward skating or jitter between hits):** During
+  `ApproachLunge` (stopping close at `targetRadius + ATTACK_LUNGE_STOP_DISTANCE` = `1.1` studs with
+  a `0.035 s` `ATTACK_POST_LUNGE_SETTLE_SECONDS` arrival-replication beat so the first hit always
+  connects on the server), `Startup`, `Active`, `Hitstop`, `AbilityCommit`, `Dash`, `ParryCounter`,
+  and `Recovery`, `CombatInput` keeps `Humanoid.WalkSpeed = 0` and `Humanoid.AutoRotate = false` so
+  **only the attack or ability's own motion** moves the player. While locked onto a target (neutral
+  or general-direction input inside `TARGET_LOCK_CONE`), the player continuously rotates to face the
+  target across `Startup`, `Active`, `Hitstop`, and `Recovery`, and never obeys `WalkSpeed` between
+  buffered/chained combo hits.
+- **Opposite-direction lunge abort (`LUNGE_ABORT_ANGLE = 120°`):** Steering more than 120° away
+  from an active melee `ApproachLunge` aborts the lunge immediately, drops the old lock, searches
+  `MoveDir` for a new target, and fires the swing/step along the new direction.
+- **Lingering multi-frame active hitboxes (`CombatService` + `Melee.inHitbox`):** Basic combo
+  swings (`ATTACK_ACTIVE_SECONDS = 0.16 s` light / `ATTACK_FINISHER_ACTIVE_SECONDS = 0.22 s`
+  finisher), Heavy Attack (`HEAVY_ATTACK_ACTIVE_SECONDS = 0.24 s`), Spin (`SPIN_ACTIVE_SECONDS =
+  0.30 s`), and Stinger (`STINGER_ACTIVE_SECONDS = 0.26 s`) spawn a server-authoritative
+  `ActiveHitbox` stepped on every `Heartbeat` rather than a 1-frame snapshot. Soft-lock still
+  picks a single active target for lunge/rotation, while the lingering hitbox follows the player's
+  live root and cleaves any and multiple enemies entering the active sector/radius/corridor (each
+  enemy hit at most once per swing via `hitSet`). Dash, Block, Stun, Grab, or starting a new swing
+  cancels any lingering hitbox immediately. The server broadcasts `CombatVfx("hitboxActive", ...)`
+  and `"hitboxEnd"` so the Debug `HitboxVisualizer` (`Ataque Activo` layer) renders the exact live
+  hitbox even when swinging into empty air (flashing green on `"hitConfirm"`).
+- **Hitstop & hit-confirm vs. whiff:** When `CombatService` confirms ≥ 1 enemy hit, it fires
+  `CombatVfx("hitConfirm", tier, hitPos, anyKilled, allArmored)` back to the attacker, triggering a
+  tactile `PlayerAnimator.hitstop` pose freeze (`35–75 ms`), impact sparks, subtle `IsoCamera.shake`,
+  immediate dead-target lock clear, and faster `cancelAt` than a whiff (`ATTACK_WHIFF_CANCEL_PENALTY = 0.04 s`).
+- **Recovery cancels & opposite-direction move-cancel:** Pressing **any attack or any of the 9
+  drafted abilities** once `elapsed >= cancelAt` (or within `COMBO_INPUT_BUFFER = 0.18 s`) fires
+  before `Recovery` can unlock locomotion, preventing any single-frame movement leak between attacks.
+  `Recovery` only restores `WalkSpeed` & `AutoRotate = true` early when the player steers in an
+  **opposite/break direction** (`CombatState.isSteeringAway`, outside `TARGET_LOCK_CONE`) past
+  `moveCancelAt` with no buffered move, or once `Recovery` finishes completely (`endsAt`) without a
+  buffered/canceling move. `Dash` and `Block` cancel immediately at any point.
+- **Heavy-only charge interruption & single velocity owner:** Normal/light enemy hits deal damage
+  without interrupting an active `HeavyCharge`; only `heavy = true` enemy attacks (Exploder blast,
+  Mace slam, Rifle/Plasma rail-beam, Paso Fantasma ambush, Boss Oh cone/leap, Coloso rush) and CC
+  (Stun, Knockback, Grab, Death) cancel it (`CombatState.shouldCancelHeavyCharge`). `Knockback`
+  notifies `CombatInput.beginKnockback` so at most one `LinearVelocity` owns `HumanoidRootPart` at
+  any time, and `StunnedUntil`/`Grabbed` tear down Dash, Lunge, Step, and Startup together.
 
 Shift lock is turned off per player (`DevEnableMouseLock = false`): it toggles on Left Shift,
 which is the dash.

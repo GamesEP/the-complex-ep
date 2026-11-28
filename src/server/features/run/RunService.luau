@@ -469,6 +469,148 @@ function RunService.returnToHub(player: Player)
 	end
 end
 
+--=============================================================================
+-- Admin debug hooks (called only through DebugService after contract + env check)
+--=============================================================================
+
+function RunService.debugJumpRoom(roomIndex: number): (boolean, string?)
+	if roomIndex < 1 or roomIndex > flow.roomCount then
+		return false, `invalid room {roomIndex}`
+	end
+	runGeneration += 1
+	local myGen = runGeneration
+	waveDirector.stop()
+	if enemyService then
+		enemyService.clear()
+	end
+	if dropService then
+		dropService.clear()
+	end
+	if combatService then
+		combatService.clear()
+	end
+	setBlastDoorOpen(false, true)
+	repositionPlayersToSpawn(false)
+
+	flow = RunFlow.jumpToRoom(flow, roomIndex, now())
+	syncWorldAttributes()
+	beginCurrentRoom(myGen)
+	return true, `Jumped to Room {roomIndex}`
+end
+
+function RunService.debugClearRoom(): (boolean, string?)
+	if flow.status == "preparing" then
+		return false, "run has not started"
+	end
+	if flow.status == "victory" or flow.status == "defeat" then
+		return false, `run already in {flow.status}`
+	end
+	runGeneration += 1
+	waveDirector.stop()
+	if enemyService then
+		enemyService.clear()
+	end
+	if world then
+		world:SetAttribute("RoomState", "cleared")
+		world:SetAttribute("EnemiesLeft", 0)
+	end
+
+	if flow.status == "fighting" then
+		flow = RunFlow.onRoomCleared(flow, now())
+		syncWorldAttributes()
+		if flow.status == "victory" then
+			if upgradeService then
+				upgradeService.autoResolveAll()
+			end
+			Remotes.CombatSfx:FireAllClients("bossOhVictory", Vector3.new(0, 4, 0))
+			return true, "Final room cleared (Victory)"
+		elseif flow.status == "transition" then
+			if upgradeService then
+				upgradeService.offerRoomClearAll()
+			end
+			setBlastDoorOpen(true, false)
+			Remotes.CombatSfx:FireAllClients("doorOpen", Vector3.new(0, 6, -65))
+			return true, `Room {flow.room} cleared (Door open)`
+		end
+	elseif flow.status == "transition" then
+		setBlastDoorOpen(true, false)
+		return true, "Door opened"
+	end
+	return true, "Room cleared"
+end
+
+function RunService.debugOpenDoor(): (boolean, string?)
+	if flow.status == "fighting" and flow.room < flow.roomCount then
+		return RunService.debugClearRoom()
+	end
+	setBlastDoorOpen(true, false)
+	Remotes.CombatSfx:FireAllClients("doorOpen", Vector3.new(0, 6, -65))
+	return true, "Blast door opened"
+end
+
+function RunService.debugSetDifficulty(diffId: string): (boolean, string?)
+	if not Difficulty.isValid(diffId) then
+		return false, `unknown difficulty "{diffId}"`
+	end
+	currentDifficulty = diffId
+	if world then
+		world:SetAttribute("Difficulty", currentDifficulty)
+	end
+	return true, `Difficulty -> {diffId}`
+end
+
+function RunService.debugForceState(status: "preparing" | "victory" | "defeat"): (boolean, string?)
+	runGeneration += 1
+	waveDirector.stop()
+	if enemyService then
+		enemyService.clear()
+	end
+	if dropService then
+		dropService.clear()
+	end
+	if combatService then
+		combatService.clear()
+	end
+	setBlastDoorOpen(false, true)
+	flow = RunFlow.forceStatus(flow, status, now())
+	if status == "victory" and upgradeService then
+		upgradeService.autoResolveAll()
+		Remotes.CombatSfx:FireAllClients("bossOhVictory", Vector3.new(0, 4, 0))
+	end
+	syncWorldAttributes()
+	return true, `RunState -> {status}`
+end
+
+function RunService.debugSetSandbox(enabled: boolean): (boolean, string?)
+	waveDirector.setSandbox(enabled)
+	-- Entering Sandbox from the start screen leaves preparing so combat inputs work immediately.
+	if enabled and flow.status == "preparing" then
+		flow = RunFlow.jumpToRoom(flow, 1, now())
+		setBlastDoorOpen(false, true)
+		syncWorldAttributes()
+	end
+	return true, if enabled then "Sandbox ON" else "Sandbox OFF"
+end
+
+function RunService.debugTeleportToSpawn(player: Player): (boolean, string?)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return false, "no live character"
+	end
+	local spawnCF = getArenaPivot() * Config.SPAWN_OFFSET
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.CFrame = spawnCF
+	return true, "Teleported to spawn"
+end
+
+function RunService.debugRespawnPlayer(player: Player): (boolean, string?)
+	task.spawn(function()
+		player:LoadCharacter()
+	end)
+	return true, "Respawning player"
+end
+
 local function watchCharacter(character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.Died:Connect(function()

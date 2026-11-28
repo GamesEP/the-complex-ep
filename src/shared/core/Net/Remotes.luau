@@ -89,4 +89,10 @@ return {
 	-- payload outlives the session, so it is validated twice — once by the contract and once
 	-- field by field in LogSink.
 	Diagnostic = remote("Diagnostic"),
+
+	-- In-game admin dev/debug toolset. `AdminCommand` is client -> server (locked in Contract with
+	-- `admin = true` plus DebugService's production kill switch); `DebugEvent` is server -> admin
+	-- client only for command feedback, preset UI hints, and the rolling combat math log.
+	AdminCommand = remote("AdminCommand"),
+	DebugEvent = remote("DebugEvent"),
 }

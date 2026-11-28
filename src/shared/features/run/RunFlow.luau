@@ -125,6 +125,38 @@ function RunFlow.onWipe(state: State, now: number): State
 	return nextState
 end
 
+-- Admin debug transition: jump directly to any room (`1..roomCount`) in `fighting` state.
+function RunFlow.jumpToRoom(state: State, roomIndex: number, now: number): State
+	local clamped = math.clamp(math.floor(roomIndex), 1, state.roomCount)
+	local nextState = table.clone(state)
+	nextState.status = "fighting"
+	nextState.room = clamped
+	nextState.roomsCleared = math.max(clamped - 1, 0)
+	if nextState.startedAt <= 0 then
+		nextState.startedAt = now
+	end
+	nextState.endedAt = nil
+	return nextState
+end
+
+-- Admin debug transition: force `preparing`, `victory`, or `defeat` regardless of current phase.
+function RunFlow.forceStatus(state: State, status: "preparing" | "victory" | "defeat", now: number): State
+	if status == "preparing" then
+		return RunFlow.initial(state.roomCount)
+	end
+	local nextState = table.clone(state)
+	if nextState.startedAt <= 0 then
+		nextState.startedAt = now
+	end
+	nextState.status = status
+	nextState.endedAt = now
+	if status == "victory" then
+		nextState.room = state.roomCount
+		nextState.roomsCleared = state.roomCount
+	end
+	return nextState
+end
+
 function RunFlow.summary(state: State, now: number): Summary
 	local endTime = state.endedAt or now
 	local elapsed = if state.startedAt > 0 then math.max(endTime - state.startedAt, 0) else 0
@@ -208,6 +240,16 @@ function RunFlow.selfTest()
 	assert(RunFlow.inDoorZone(Vector3.new(0, 3, -63)), "standing in North Blast Door triggers advance")
 	assert(not RunFlow.inDoorZone(Vector3.new(0, 3, -30)), "center arena does not trigger door")
 	assert(not RunFlow.inDoorZone(Vector3.new(30, 3, -63)), "far NE corner outside door width does not trigger")
+
+	-- Admin debug jump & force-status transitions.
+	local jumped = RunFlow.jumpToRoom(RunFlow.initial(5), 5, 25)
+	assert(is(jumped.status, "fighting") and jumped.room == 5 and jumped.roomsCleared == 4 and jumped.startedAt == 25, "jumpToRoom enters fighting at target room")
+	local forcedWin = RunFlow.forceStatus(jumped, "victory", 40)
+	assert(is(forcedWin.status, "victory") and forcedWin.roomsCleared == 5 and forcedWin.endedAt == 40, "forceStatus victory completes floor")
+	local forcedLoss = RunFlow.forceStatus(jumped, "defeat", 45)
+	assert(is(forcedLoss.status, "defeat") and forcedLoss.endedAt == 45, "forceStatus defeat ends run")
+	local forcedPrep = RunFlow.forceStatus(forcedLoss, "preparing", 50)
+	assert(is(forcedPrep.status, "preparing") and forcedPrep.room == 1 and forcedPrep.kills == 0, "forceStatus preparing resets cleanly")
 end
 
 return RunFlow

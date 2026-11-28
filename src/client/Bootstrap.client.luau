@@ -19,6 +19,7 @@ local ArenaTheme = require(Client.features.world.ArenaTheme)
 local ClassSelect = require(Client.features.classes.ui.ClassSelect)
 local CombatHud = require(Client.features.combat.ui.CombatHud)
 local CombatInput = require(Client.features.combat.CombatInput)
+local DevPanel = require(Client.features.debug.ui.DevPanel)
 local DropVisuals = require(Client.features.drops.DropVisuals)
 local EnemyAnimator = require(Client.features.enemies.EnemyAnimator)
 local HubIsolation = require(Client.features.hub.HubIsolation)
@@ -41,7 +42,7 @@ DropVisuals.start()
 EnemyAnimator.start()
 PlayerAnimator.start()
 SoundPlayer.start()
-CombatInput.start()
+CombatInput.start({ shake = IsoCamera.shake })
 Knockback.start()
 ArenaTheme.start()
 HubIsolation.start()
@@ -53,6 +54,10 @@ TonemapperController.start()
 -- visible is one bad boolean away from being visible to players.
 if not Environment.isProduction() then
 	BuildStamp.start()
+	DevPanel.start({
+		setArenaTheme = ArenaTheme.setDebugOverride,
+		setTonemapper = TonemapperController.apply,
+	})
 end
 
 -- Last: it waits for the server to have built the room, and nothing above should wait with it.

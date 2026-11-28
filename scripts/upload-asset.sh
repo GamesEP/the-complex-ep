@@ -29,7 +29,7 @@ fi
 
 # VultGames, the group that owns both the prod and the dev experience. The default lives
 # here rather than in the Makefile because CI calls this script directly.
-creator_id=${ROBLOX_CREATOR_ID:-858453754}
+creator_id=${ROBLOX_CREATOR_ID:-361026778}
 creator_type=${ROBLOX_CREATOR_TYPE:-Group}
 display_name=${display_name:-$(basename "${file%.*}")}
 

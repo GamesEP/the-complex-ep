@@ -24,6 +24,9 @@ type Accents = {
 
 local activeTweens: { Tween } = {}
 local currentKey: string? = nil
+local debugOverrideKey: string? = nil
+local activeWorld: Instance? = nil
+local activeAccents: Accents? = nil
 
 local function cancelTweens()
 	for _, tw in ipairs(activeTweens) do
@@ -68,6 +71,15 @@ local HUB_THEME: Config.WaveTheme = {
 }
 
 local function resolveTheme(world: Instance): (string, Config.WaveTheme)
+	if debugOverrideKey then
+		if debugOverrideKey == "cleared" then
+			return "debug_cleared", Config.CLEARED_THEME
+		end
+		local num = tonumber(debugOverrideKey)
+		if num and Config.WAVE_THEMES[num] then
+			return `debug_{num}`, Config.WAVE_THEMES[num]
+		end
+	end
 	if world:GetAttribute("ServerMode") == "hub" then
 		return "hub", HUB_THEME
 	end
@@ -205,6 +217,8 @@ local function watchWorld(world: Instance)
 				return
 			end
 			accents = collectAccents(arena)
+			activeWorld = world
+			activeAccents = accents
 			currentKey = nil
 			applyTheme(world, accents, instant)
 		end)
@@ -242,6 +256,19 @@ local function watchWorld(world: Instance)
 	world:GetAttributeChangedSignal("Room"):Connect(refresh)
 	world:GetAttributeChangedSignal("RoomState"):Connect(refresh)
 	world:GetAttributeChangedSignal("RunState"):Connect(refresh)
+end
+
+-- Admin debug preview hook: override active palette (`"1".."6"`, `"cleared"`, or `nil` for auto).
+function ArenaTheme.setDebugOverride(themeKey: string?)
+	if themeKey == "" or themeKey == "auto" then
+		debugOverrideKey = nil
+	else
+		debugOverrideKey = themeKey
+	end
+	if activeWorld and activeWorld.Parent and activeAccents then
+		currentKey = nil
+		applyTheme(activeWorld, activeAccents, false)
+	end
 end
 
 function ArenaTheme.start()

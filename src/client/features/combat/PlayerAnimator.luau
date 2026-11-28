@@ -34,6 +34,7 @@ type RigState = {
 	action: string?,
 	step: number?,
 	startedAt: number,
+	hitstopUntil: number,
 }
 
 -- Maps classic R6 joint names onto the canonical R15 names CombatAnim outputs.
@@ -128,6 +129,7 @@ local function attachCharacter(player: Player, character: Model)
 		action = nil,
 		step = nil,
 		startedAt = 0,
+		hitstopUntil = 0,
 	}
 
 	for _, desc in ipairs(character:GetDescendants()) do
@@ -202,13 +204,20 @@ local function applyPose(rig: RigState, pose: CombatAnim.Pose)
 	end
 end
 
-local function onStepped()
+local function onStepped(_time: number, step: number)
 	local now = os.clock()
+	local dt = math.clamp(step or 0, 0, 0.05)
 	for player, rig in pairs(rigs) do
 		if rig.humanoid.Health <= 0 then
 			rig.action = nil
 			rig.airborne = false
+			rig.hitstopUntil = 0
 			continue
+		end
+
+		-- Freeze the active action pose briefly during hitstop so impacts carry tactile weight.
+		if rig.action and now < rig.hitstopUntil then
+			rig.startedAt += dt
 		end
 
 		-- Keep airborne state accurate even if a state transition was missed on spawn.
@@ -270,7 +279,37 @@ function PlayerAnimator.playLocal(action: string, step: number?)
 	if not rig then
 		return
 	end
+	rig.hitstopUntil = 0
 	trigger(rig, action, step)
+end
+
+-- Holds the local player's active weapon pose frozen for `duration` seconds on confirmed hitstop.
+function PlayerAnimator.hitstop(duration: number)
+	if duration <= 0 then
+		return
+	end
+	local player = Players.LocalPlayer
+	local rig = player and rigs[player]
+	if not rig or not rig.action then
+		return
+	end
+	local target = os.clock() + duration
+	if target > rig.hitstopUntil then
+		rig.hitstopUntil = target
+	end
+end
+
+-- Cancels a lingering recovery follow-through pose immediately on move-cancel so locomotion
+-- blends back cleanly without sliding over the tail of the swing animation.
+function PlayerAnimator.cancelRecovery()
+	local player = Players.LocalPlayer
+	local rig = player and rigs[player]
+	if not rig then
+		return
+	end
+	rig.action = nil
+	rig.step = nil
+	rig.hitstopUntil = 0
 end
 
 function PlayerAnimator.start()

@@ -130,7 +130,7 @@ local FLASH_SECONDS = 0.08
 local HIT_COLOR = Color3.new(1, 1, 1)
 local PARRIED_SHOT_COLOR = Color3.fromRGB(255, 225, 90)
 
-local hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?) -> (boolean, string?) =
+local hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, heavy: boolean?, origin: Vector3? }?) -> (boolean, string?) =
 	nil :: any
 local onKill: ((Vector3) -> ())? = nil
 local canGrab: ((Player) -> boolean)? = nil
@@ -593,7 +593,7 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 
 	for _, target in ipairs(list) do
 		if Hitbox.inEllipsoid(origin, target.root.Position, blastRadius, blastHeight) then
-			hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = false })
+			hurt(target.player, enemy.spec.damage, { canBlock = true, canParry = false, heavy = true })
 		end
 	end
 
@@ -910,6 +910,7 @@ local function stepEnemy(
 				canDodge = false,
 				canBlock = false,
 				canParry = true,
+				heavy = true,
 			})
 			if outcome == "parry" then
 				EnemyService.stun(enemy, Config.PARRY_STUN_SECONDS)
@@ -938,7 +939,7 @@ local function stepEnemy(
 		Remotes.EnemyAnim:FireAllClients("slamImpact", enemy.model, position, slamRadius)
 		for _, candidate in ipairs(list) do
 			if Hitbox.inEllipsoid(position, candidate.root.Position, slamRadius, slamHeight) then
-				local landed, outcome = hurt(candidate.player, slamDamage, { canBlock = true, canParry = false })
+				local landed, outcome = hurt(candidate.player, slamDamage, { canBlock = true, canParry = false, heavy = true })
 				if landed and stunPlayer then
 					local stunDur = if outcome == "block" then slamStun * 0.45 else slamStun
 					stunPlayer(candidate.player, stunDur)
@@ -1029,7 +1030,7 @@ local function stepEnemy(
 		Remotes.CombatSfx:FireAllClients("playerHeavyAttack", position)
 		for _, candidate in ipairs(list) do
 			if Hitbox.inBeam(beamOrigin, dir, beamRange, candidate.root.Position, beamRadius, beamHeight) then
-				hurt(candidate.player, beamDamage, { canBlock = true, canParry = false, origin = beamOrigin })
+				hurt(candidate.player, beamDamage, { canBlock = true, canParry = false, heavy = true, origin = beamOrigin })
 			end
 		end
 	elseif intent.action == "evade" then
@@ -1113,7 +1114,7 @@ local function stepEnemy(
 		Remotes.EnemyAnim:FireAllClients("bossConeSmash", enemy.model, position, dir, coneRange)
 		for _, candidate in ipairs(list) do
 			if Melee.inArc(position, dir, candidate.root.Position, coneRange, coneArc) then
-				local landed, outcome = hurt(candidate.player, coneDamage, { canBlock = true, canParry = false, origin = position })
+				local landed, outcome = hurt(candidate.player, coneDamage, { canBlock = true, canParry = false, heavy = true, origin = position })
 				if landed and stunPlayer then
 					stunPlayer(candidate.player, if outcome == "block" then coneStun * 0.45 else coneStun)
 				end
@@ -1148,7 +1149,7 @@ local function stepEnemy(
 		Remotes.EnemyAnim:FireAllClients("slamImpact", enemy.model, landPos, leapRadius)
 		for _, candidate in ipairs(list) do
 			if Hitbox.inEllipsoid(landPos, candidate.root.Position, leapRadius, leapHeight) then
-				local landed, outcome = hurt(candidate.player, leapDamage, { canBlock = true, canParry = false, origin = landPos })
+				local landed, outcome = hurt(candidate.player, leapDamage, { canBlock = true, canParry = false, heavy = true, origin = landPos })
 				if landed and stunPlayer then
 					stunPlayer(candidate.player, if outcome == "block" then leapStun * 0.45 else leapStun)
 				end
@@ -1359,7 +1360,7 @@ local function stepEnemy(
 				and Hitbox.inEllipsoid(moved, candidate.root.Position, enemy.spec.rushHitRadius or 5.2, enemy.spec.rushHitHeight or 5)
 			then
 				hitAlready[candidate.player] = true
-				local landed, outcome = hurt(candidate.player, enemy.spec.rushDamage or 12, { canBlock = true, canParry = false })
+				local landed, outcome = hurt(candidate.player, enemy.spec.rushDamage or 12, { canBlock = true, canParry = false, heavy = true })
 				if landed then
 					-- Flung along the charge, bent away from the grabber's centre line so a
 					-- player clipped on the side flies off to that side.
@@ -1812,7 +1813,7 @@ local function step(dt: number)
 end
 
 function EnemyService.start(dependencies: {
-	hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?) -> (boolean, string?),
+	hurt: (Player, number, { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, heavy: boolean?, origin: Vector3? }?) -> (boolean, string?),
 	world: Instance,
 	onKill: ((Vector3) -> ())?,
 	canGrab: ((Player) -> boolean)?,

@@ -56,7 +56,7 @@ function Defense.resolveHit(rawDamage: number, ctx: HitContext): (number, HitOut
 end
 
 -- Computes WalkSpeed combining base speed, speed buff, blocking slowdown, heavy-attack charge
--- slowdown, grab lock, and seismic stun lock.
+-- slowdown, grab lock, seismic stun lock, and active attack/ability lock.
 function Defense.walkSpeed(
 	baseSpeed: number,
 	speedBuffUntil: any,
@@ -67,9 +67,10 @@ function Defense.walkSpeed(
 	blockMultiplier: number,
 	charging: boolean?,
 	chargeMultiplier: number?,
-	stunned: boolean?
+	stunned: boolean?,
+	attackLocked: boolean?
 ): number
-	if grabbed or stunned then
+	if grabbed or stunned or attackLocked then
 		return 0
 	end
 	local speed = baseSpeed
@@ -176,6 +177,10 @@ function Defense.selfTest()
 	assert(
 		math.abs(Defense.walkSpeed(26, 0, false, false, 10, 1.35, 0.55, true, 0.6) - 26 * 0.6) < 1e-6,
 		"charging heavy attack slows WalkSpeed"
+	)
+	assert(
+		Defense.walkSpeed(26, 20, false, false, 10, 1.35, 0.55, false, 1, false, true) == 0,
+		"attack-locked player has 0 WalkSpeed regardless of speed buff"
 	)
 end
 

@@ -48,10 +48,41 @@ Config.TARGET_LOCK_MAGNET_SPEED = 24
 Config.AIM_ASSIST_ANGLE_WEIGHT = 0.65
 -- Attack & skill lunge: closes up to MAX_DISTANCE at SPEED and brakes cleanly at STOP_DISTANCE
 -- studs outside the target's radius (right in the middle of melee reach) with zero overshoot.
+-- Steering beyond LUNGE_ABORT_ANGLE from the lunge heading aborts the lunge into the new direction.
 Config.ATTACK_LUNGE_MAX_DISTANCE = 12
-Config.ATTACK_LUNGE_STOP_DISTANCE = 2.5
+Config.ATTACK_LUNGE_STOP_DISTANCE = 1.1
 Config.ATTACK_LUNGE_SPEED = 78
 Config.SPIN_LUNGE_MAX_DISTANCE = 11
+Config.LUNGE_ABORT_ANGLE = 120
+
+-- Attack movement & phase rules (see shared/features/combat/CombatState.luau and docs/combat.md):
+-- During Startup, Active, Lunge, Hitstop, Ability, and Recovery (until recovery finishes or an
+-- opposite/break direction triggers move-cancel with no buffered move), WalkSpeed is 0 and
+-- AutoRotate is false so directional input never causes skating between combo hits.
+Config.ATTACK_STARTUP_SECONDS = 0.06
+Config.ATTACK_FINISHER_STARTUP_SECONDS = 0.09
+Config.HEAVY_ATTACK_STARTUP_SECONDS = 0.11
+-- Brief settle after a tracked approach lunge reaches the sweet-spot so the client's arrival
+-- CFrame replicates to the server before `Attack` evaluates `Melee.inArc` (prevents first-hit whiffs).
+Config.ATTACK_POST_LUNGE_SETTLE_SECONDS = 0.035
+Config.ATTACK_STARTUP_MICRO_PIVOT_DEG = 35
+Config.ATTACK_STEP_DISTANCE = 2.6
+Config.ATTACK_FINISHER_STEP_DISTANCE = 3.8
+Config.HEAVY_ATTACK_STEP_DISTANCE = 4.6
+Config.ATTACK_STEP_SPEED = 26
+-- Hitstop freeze (seconds) and subtle camera kick on confirmed enemy hits; whiffs skip hitstop
+-- and carry a slight extra recovery commitment before the next offensive cancel.
+Config.ATTACK_HITSTOP_LIGHT = 0.035
+Config.ATTACK_HITSTOP_MEDIUM = 0.055
+Config.ATTACK_HITSTOP_HEAVY = 0.075
+Config.HITSTOP_CAMERA_SHAKE_LIGHT = 0.35
+Config.HITSTOP_CAMERA_SHAKE_MEDIUM = 0.65
+Config.HITSTOP_CAMERA_SHAKE_HEAVY = 1.05
+Config.ATTACK_WHIFF_CANCEL_PENALTY = 0.04
+Config.ATTACK_MOVE_CANCEL_OFFSET = 0.04
+Config.PARRY_COUNTER_CANCEL_AT = 0.22
+-- Gentle fall-speed clamp while swinging mid-air so aerial attacks stay level with nearby targets.
+Config.AIR_ATTACK_MAX_FALL_SPEED = 8
 
 -- Charged heavy attack: holding Attack continuously for HEAVY_CHARGE_SECONDS (2 s) charges a
 -- devastating wide forward cleave that unleashes automatically at full charge. Normal taps still
@@ -87,7 +118,7 @@ Config.SPIN_COOLDOWN = 4
 Config.STINGER_DAMAGE = 35
 Config.STINGER_DISTANCE = 26
 Config.STINGER_DURATION = 0.34
-Config.STINGER_STOP_DISTANCE = 2.4
+Config.STINGER_STOP_DISTANCE = 1.2
 Config.STINGER_WIDTH = 6.5
 Config.STINGER_COOLDOWN = 5.5
 

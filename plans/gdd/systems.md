@@ -105,7 +105,7 @@ mejoras de estadísticas y pasivas de movimiento (`Doble Salto`, `Doble Dash`).
   el ataque básico que encadena un combo y el **ataque pesado cargado** (manteniendo pulsado el
   botón de ataque durante 2 segundos). Son los que definen la alta velocidad del juego, así que su
   rapidez y fluidez son lo primero que se ajusta.
-- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo.
+- **Ataque pesado cargado:** pulsar rápido Atacar ejecuta el combo normal sin demora (cuerpo a cuerpo en Tanque/Daño; proyectiles de energía a distancia en Apoyo); mantener pulsado Atacar durante **2 segundos** (`Config.HEAVY_CHARGE_SECONDS`) carga un ataque pesado adaptado al rol y arma (**Impacto Sísmico** con aturdimiento en Tanque, **Desgarro** en X de doble impacto en Daño, **Orbe de Plasma** explosivo a distancia con aturdimiento en Apoyo; o corte frontal de `160°` por defecto sin clase). Durante la carga el jugador se desplaza más despacio (`Config.HEAVY_CHARGE_MOVE_MULTIPLIER`), muestra barra de progreso en el HUD y puede cancelar soltando antes o usando Dash/Bloqueo. **Solo los ataques pesados enemigos y estados de control** (aturdimiento, empuje o agarre) interrumpen la carga; los golpes ligeros hacen daño sin cancelarla.
 - **Bloqueo y Parry:** mantener pulsado Bloquear (clic derecho / `F` / `L1` / botón táctil
   `"Bloquear"`) pone al personaje en guardia, con la espada cruzada delante del pecho y la mano
   izquierda apoyándola, para que se lea de un vistazo que está cubriéndose de frente. Reduce el
@@ -141,11 +141,7 @@ mejoras de estadísticas y pasivas de movimiento (`Doble Salto`, `Doble Dash`).
   no pulse dirección o apunte en la dirección general del objetivo (`Config.TARGET_LOCK_CONE`, 120°),
   el bloqueo se mantiene activo y acompaña el pequeño movimiento del enemigo para permanecer pegado;
   pulsar cualquier otra dirección rompe el bloqueo al instante para saltar a otro enemigo o alejarse.
-- **Cancelación en recuperación de combos:** cada ataque básico y cada habilidad tiene animaciones
-  más largas y marcadas (≈1,5×–2×) con una fase de recuperación visible al final (`cancelAt` en
-  `Config/Animations.luau`); cualquier otro ataque o habilidad puede cancelar esa recuperación para
-  encadenar combos fluidos (con búfer de entrada breve antes de entrar en recuperación), y Dash o
-  Bloqueo cancelan en cualquier momento.
+- **Compromiso de movimiento al atacar, hitstop y cancelación en recuperación:** durante el arranque (`Startup`), el corte activo (`Active`), el impulso de aproximación (frenado cerca del objetivo a `Config.ATTACK_LUNGE_STOP_DISTANCE = 1,1` studs) y toda la recuperación (`Recovery`), el jugador no obedece `WalkSpeed` ni `AutoRotate` para evitar deslizamientos o giros bruscos entre golpes: mientras el enemigo siga fijado y el jugador no pulse dirección o apunte en su dirección general, el personaje rota hacia el objetivo para encadenar golpes con precisión. Pulsar la dirección opuesta (`> 120°`, `Config.LUNGE_ABORT_ANGLE`) durante el impulso lo aborta al instante; en recuperación, solo una dirección opuesta/de ruptura (`>= moveCancelAt`, sin golpe en búfer) o terminar por completo la recuperación (`endsAt`) devuelve el movimiento libre. Conectar un golpe dispara `hitstop` táctil (`Config.ATTACK_HITSTOP_*`) y habilita encadenar más rápido que al fallar al aire; Dash o Bloqueo cancelan en cualquier momento.
 - En el corte de prueba, el personaje lleva equipada una espada (`Config.TEST_SWORD_MODEL`).
 - Al morir por daño del jugador, cada enemigo tiene un 30% de probabilidad (`Config.DROP_CHANCE`)
   de soltar un objeto recogible en el suelo:

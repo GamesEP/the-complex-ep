@@ -17,6 +17,8 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.core.Net.Remotes)
 
+local CombatInput = require(script.Parent.CombatInput)
+
 local Knockback = {}
 
 local player = Players.LocalPlayer
@@ -75,11 +77,15 @@ local function fling(direction: Vector3, speed: number, upSpeed: number, seconds
 	token += 1
 	local mine = token
 	clear(false)
+	-- Cancel any active attack lunge, step, dash, charge, or buffer before applying knockback so
+	-- only one LinearVelocity owns the root part at any instant (docs/combat.md).
+	CombatInput.beginKnockback(seconds)
 
 	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, upSpeed, root.AssemblyLinearVelocity.Z)
 
 	if hitsWallAhead(root, flat, 1.4) then
+		CombatInput.endKnockback()
 		return
 	end
 
@@ -100,6 +106,7 @@ local function fling(direction: Vector3, speed: number, upSpeed: number, seconds
 	task.delay(seconds, function()
 		if token == mine then
 			clear(false)
+			CombatInput.endKnockback()
 		end
 	end)
 end
@@ -116,12 +123,14 @@ function Knockback.start()
 		if not root.Parent or hitsWallAhead(root, active.direction, checkDist) then
 			token += 1
 			clear(true)
+			CombatInput.endKnockback()
 		end
 	end)
 	-- A respawn must not inherit a fling aimed at the previous body.
 	player.CharacterAdded:Connect(function()
 		token += 1
 		clear(false)
+		CombatInput.endKnockback()
 	end)
 end
 

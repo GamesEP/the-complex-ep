@@ -17,6 +17,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Remotes = require(Shared.core.Net.Remotes)
 local CombatAudio = require(Shared.features.combat.CombatAudio)
+local CombatState = require(Shared.features.combat.CombatState)
 local Defense = require(Shared.features.combat.Defense)
 local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
@@ -535,8 +536,11 @@ end
 -- Every hit a player lands goes through here: the class multiplier, and the Damage passive when
 -- the enemy is stunned/recovering or hit from behind. `tier` picks the enemy's hitstun and
 -- knockback (see docs/combat.md); a caller that bypasses this skips the class multiplier.
-local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3, tier: HitTier?)
+-- Returns `(killed, armored)` so the attacker gets hitstop / auto-retarget confirmation.
+local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vector3, tier: HitTier?): (boolean, boolean)
 	local t = now()
+	local wasAlive = not enemy.dead and enemy.health > 0
+	local armored = enemy.spec ~= nil and enemy.spec.isBoss == true
 	local stunnedAttr = if enemy.model then enemy.model:GetAttribute("StunnedUntil") else nil
 	local isStunned = type(stunnedAttr) == "number" and t < stunnedAttr
 	local vulnerable = isStunned
@@ -547,6 +551,14 @@ local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vect
 		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable) * upgradeDamageMult(player),
 		{ tier = tier or "light", sourcePos = from }
 	)
+	local killed = wasAlive and (enemy.dead == true or enemy.health <= 0)
+	return killed, armored
+end
+
+-- Tells the attacking client that its swing/skill connected so it can trigger tactile hitstop,
+-- impact sparks, faster hit-confirm cancelAt, and kill auto-retargeting.
+local function notifyHitConfirm(player: Player, tier: HitTier, hitPos: Vector3, anyKilled: boolean, allArmored: boolean)
+	Remotes.CombatVfx:FireClient(player, "hitConfirm", tier, hitPos, anyKilled, allArmored)
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -554,7 +566,7 @@ end
 function CombatService.hurt(
 	player: Player,
 	amount: number,
-	options: { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, origin: Vector3? }?
+	options: { canDodge: boolean?, canBlock: boolean?, canParry: boolean?, heavy: boolean?, origin: Vector3? }?
 ): (boolean, Defense.HitOutcome)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -586,6 +598,7 @@ function CombatService.hurt(
 	if outcome == "parry" then
 		if pos then
 			Remotes.CombatSfx:FireAllClients("playerParry", pos)
+			Remotes.CombatVfx:FireClient(player, "parryConfirm", pos)
 		end
 		Remotes.CombatAnim:FireAllClients(player, "parry")
 		return false, "parry"
@@ -594,6 +607,25 @@ function CombatService.hurt(
 	if outcome == "block" and pos then
 		Remotes.CombatSfx:FireAllClients("playerBlock", pos)
 	end
+
+	-- Only heavy enemy attacks (and CC/lethal hits) cancel HeavyCharge; light hits deal damage
+	-- while preserving the player's charge poise (shared/features/combat/CombatState.luau).
+	local lethal = finalDamage > 0 and humanoid.Health - finalDamage <= 0
+	if
+		CombatState.shouldCancelHeavyCharge({
+			heavy = options ~= nil and options.heavy == true,
+			lethal = lethal,
+			outcome = outcome,
+		})
+	then
+		cancelCharge(player)
+	end
+
+	-- Unparried Paso Fantasma ambush interrupts active lunges/startups on the client.
+	if options and options.canDodge == false and options.canBlock == false and options.canParry == true then
+		Remotes.CombatVfx:FireClient(player, "parryOnlyHit", pos or Vector3.zero)
+	end
+
 	if finalDamage > 0 then
 		humanoid:TakeDamage(finalDamage)
 	end
@@ -883,10 +915,14 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		local impactPos = root.Position + facing * Config.TANK_HEAVY_OFFSET
 		local damage = Config.TANK_HEAVY_DAMAGE * dmgMult
 		local hitAt: Vector3? = nil
+		local anyKilled = false
+		local allArmored = true
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(impactPos, enemy.body.Position, Config.TANK_HEAVY_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position, "heavy")
+				local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
+				anyKilled = anyKilled or killed
+				allArmored = allArmored and armored
 				local away = Melee.flat(enemy.body.Position - impactPos) or facing
 				enemies.shove(enemy, away, Config.TANK_HEAVY_PUSH_DISTANCE, 0.2, 1, t)
 				enemies.stun(enemy, Config.TANK_HEAVY_STUN_DURATION)
@@ -896,12 +932,15 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "tank")
 		if hitAt then
 			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 		end
 	elseif classId == "dps" then
 		-- Damage (Dual Daggers): blistering twin diagonal X-slash burst (two rapid strikes).
 		local hitDamage = Config.DPS_HEAVY_HIT_DAMAGE * dmgMult
 		local function doSlash(originPos: Vector3, slashFacing: Vector3)
 			local hitAt: Vector3? = nil
+			local anyKilled = false
+			local allArmored = true
 			for _, enemy in ipairs(enemies.list()) do
 				if
 					Melee.inArc(
@@ -913,11 +952,14 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 					)
 				then
 					hitAt = hitAt or enemy.body.Position
-					hitEnemy(player, enemy, hitDamage, originPos, "heavy")
+					local killed, armored = hitEnemy(player, enemy, hitDamage, originPos, "heavy")
+					anyKilled = anyKilled or killed
+					allArmored = allArmored and armored
 				end
 			end
 			if hitAt then
 				Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+				notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 			end
 		end
 		doSlash(root.Position, facing)
@@ -950,6 +992,8 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		-- Default (no class yet / test sword): classic wide horizontal crescent cleave.
 		local damage = Config.HEAVY_ATTACK_DAMAGE * dmgMult
 		local hitAt: Vector3? = nil
+		local anyKilled = false
+		local allArmored = true
 		for _, enemy in ipairs(enemies.list()) do
 			if
 				Melee.inArc(
@@ -961,12 +1005,15 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 				)
 			then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position, "heavy")
+				local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
+				anyKilled = anyKilled or killed
+				allArmored = allArmored and armored
 			end
 		end
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "default")
 		if hitAt then
 			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 		end
 	end
 end
@@ -1028,14 +1075,19 @@ function CombatService.attack(player: Player, aim: Vector3)
 	end
 
 	local hitAt: Vector3? = nil
+	local anyKilled = false
+	local allArmored = true
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, damage, root.Position, hitTier)
+			local killed, armored = hitEnemy(player, enemy, damage, root.Position, hitTier)
+			anyKilled = anyKilled or killed
+			allArmored = allArmored and armored
 		end
 	end
 	if hitAt then
 		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		notifyHitConfirm(player, hitTier, hitAt, anyKilled, allArmored)
 	end
 end
 
@@ -1105,14 +1157,19 @@ function CombatService.spin(player: Player)
 		* abilityDamageScale(level)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local hitAt: Vector3? = nil
+	local anyKilled = false
+	local allArmored = true
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, spinDamage, root.Position, "medium")
+			local killed, armored = hitEnemy(player, enemy, spinDamage, root.Position, "medium")
+			anyKilled = anyKilled or killed
+			allArmored = allArmored and armored
 		end
 	end
 	if hitAt then
 		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		notifyHitConfirm(player, "medium", hitAt, anyKilled, allArmored)
 	end
 end
 
@@ -1156,14 +1213,19 @@ function CombatService.stinger(player: Player, aim: Vector3)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local halfWidth = Config.STINGER_WIDTH / 2
 	local hitAt: Vector3? = nil
+	local anyKilled = false
+	local allArmored = true
 	for _, enemy in ipairs(enemies.list()) do
 		if Melee.inCorridor(root.Position, facing, enemy.body.Position, Config.STINGER_DISTANCE, halfWidth + enemy.radius) then
 			hitAt = hitAt or enemy.body.Position
-			hitEnemy(player, enemy, damage, root.Position, "heavy")
+			local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
+			anyKilled = anyKilled or killed
+			allArmored = allArmored and armored
 		end
 	end
 	if hitAt then
 		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+		notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 	end
 end
 
@@ -1242,6 +1304,8 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 			Remotes.CombatVfx:FireAllClients("overdriveWave", waveRoot.Position, waveFacing, wave)
 
 			local hitAt: Vector3? = nil
+			local anyKilled = false
+			local allArmored = true
 			for _, enemy in ipairs(enemies.list()) do
 				if
 					Melee.inCorridor(
@@ -1253,11 +1317,14 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 					)
 				then
 					hitAt = hitAt or enemy.body.Position
-					hitEnemy(player, enemy, waveDmg, waveRoot.Position, "heavy")
+					local killed, armored = hitEnemy(player, enemy, waveDmg, waveRoot.Position, "heavy")
+					anyKilled = anyKilled or killed
+					allArmored = allArmored and armored
 				end
 			end
 			if hitAt then
 				Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+				notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 			end
 			if wave < waveCount then
 				task.wait(Config.OVERDRIVE_WAVE_INTERVAL)
@@ -1301,12 +1368,16 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number, number) 
 		local tauntUntil = t + Config.TAUNT_DURATION
 		local shockDamage = buffed(player, Config.TAUNT_DAMAGE * abilityDamageScale(level), t)
 		local hitAt: Vector3? = nil
+		local anyKilled = false
+		local allArmored = true
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.TAUNT_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
 				enemies.stun(enemy, Config.TAUNT_STUN_DURATION)
 				enemies.taunt(enemy, player, tauntUntil)
-				hitEnemy(player, enemy, shockDamage, root.Position, "medium")
+				local killed, armored = hitEnemy(player, enemy, shockDamage, root.Position, "medium")
+				anyKilled = anyKilled or killed
+				allArmored = allArmored and armored
 			end
 		end
 		broadcastAnimOthers(player, "taunt")
@@ -1315,6 +1386,7 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number, number) 
 		Remotes.CombatVfx:FireAllClients("taunt", player, Config.TAUNT_RADIUS)
 		if hitAt then
 			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			notifyHitConfirm(player, "medium", hitAt, anyKilled, allArmored)
 		end
 	end,
 
@@ -1390,10 +1462,14 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number, number) 
 	shockwave = function(player, root, _facing, t, level)
 		local damage = buffed(player, Config.SHOCKWAVE_DAMAGE * abilityDamageScale(level), t)
 		local hitAt: Vector3? = nil
+		local anyKilled = false
+		local allArmored = true
 		for _, enemy in ipairs(enemies.list()) do
 			if Melee.inRadius(root.Position, enemy.body.Position, Config.SHOCKWAVE_RADIUS + enemy.radius) then
 				hitAt = hitAt or enemy.body.Position
-				hitEnemy(player, enemy, damage, root.Position, "heavy")
+				local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
+				anyKilled = anyKilled or killed
+				allArmored = allArmored and armored
 				local away = Melee.flat(enemy.body.Position - root.Position) or Melee.flat(root.CFrame.LookVector)
 				if away then
 					enemies.shove(
@@ -1413,6 +1489,7 @@ local ABILITY_HANDLERS: { [string]: (Player, BasePart, Vector3, number, number) 
 		Remotes.CombatVfx:FireAllClients("shockwave", root.Position, Config.SHOCKWAVE_RADIUS)
 		if hitAt then
 			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
+			notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
 		end
 	end,
 }

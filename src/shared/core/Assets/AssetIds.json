@@ -3,5 +3,100 @@
     "assetId": "102241260626227",
     "sha256": "a2aa3f6b21ac3e37aeeeed37daf687d05a9b45bc6d0b39dc3e2a260608cd64c6",
     "type": "Audio"
+  },
+  "drop-buff.ogg": {
+    "assetId": "97797625267918",
+    "sha256": "0553b66414bc715c73ee5a2077bdd412af7798d7ec4a0b49b0073958261e6c6e",
+    "type": "Audio"
+  },
+  "drop-heal.ogg": {
+    "assetId": "82926401900210",
+    "sha256": "e0f8f7431281ec6d1cb64b5b0ccb696f10194c05a2d885ef70e1aeaf0b572d5d",
+    "type": "Audio"
+  },
+  "enemy-exploder-blast.ogg": {
+    "assetId": "110643330313424",
+    "sha256": "7346926f8d0e492bb3d41b363eca1e89a087342df2c360a229a021ff25084975",
+    "type": "Audio"
+  },
+  "enemy-exploder-fuse.ogg": {
+    "assetId": "122924900413866",
+    "sha256": "ab33b4ea3a3ba62eb9c8fcbb2c2b64c2282827292eacd5703b35705eecc8dc7b",
+    "type": "Audio"
+  },
+  "enemy-grabber-escape.ogg": {
+    "assetId": "85048677458723",
+    "sha256": "337eb5ab1a5f596befef65195310b259aba85170a4be38047731ced8bc04a017",
+    "type": "Audio"
+  },
+  "enemy-grabber-grab.ogg": {
+    "assetId": "82092128634757",
+    "sha256": "2615de9926195953f7e2fc6903359650311409e23a18ffd1e3decf7ac11ef958",
+    "type": "Audio"
+  },
+  "enemy-grabber-windup.ogg": {
+    "assetId": "116933973299948",
+    "sha256": "06615ba9e52c8096e8312687a8fbe8152df583eaf77153a0f881173686f93182",
+    "type": "Audio"
+  },
+  "enemy-melee-strike.ogg": {
+    "assetId": "119498924693185",
+    "sha256": "e5ad42327a9d1743c5027dfaa5628138d343cc8175e39904278a1ea6acf96267",
+    "type": "Audio"
+  },
+  "enemy-melee-windup.ogg": {
+    "assetId": "118072949028516",
+    "sha256": "0e651fad3573e072e921b0d2f1a93e20d4d887ffd21a6548f93fcc50af7b1b0f",
+    "type": "Audio"
+  },
+  "enemy-ranged-fire.ogg": {
+    "assetId": "97830556526271",
+    "sha256": "7ee9c0607ebb8e0c4ea304d9dd7a1d83bf55592331ff45fa70dec5e2a66e252e",
+    "type": "Audio"
+  },
+  "player-attack-heavy.ogg": {
+    "assetId": "122509696422225",
+    "sha256": "cb4d017d1a5dc879149dcedfc76fb7e0d891e2278308b79ec07aa5b2430ecd1b",
+    "type": "Audio"
+  },
+  "player-attack.ogg": {
+    "assetId": "77308480005676",
+    "sha256": "115ba0c995b296f9de12daf19768afdc15e1b6f93991db59d60c5ef3488589bc",
+    "type": "Audio"
+  },
+  "player-block.ogg": {
+    "assetId": "133556303827161",
+    "sha256": "935739c7b4c230a1153f572ae118a28894d6800f8f3145024d1cb3e414cc9d23",
+    "type": "Audio"
+  },
+  "player-dash.ogg": {
+    "assetId": "84981627447483",
+    "sha256": "dc07de27ac269124c2382ceab5073c429e1fc0c52a2fc30254270df3f9601bec",
+    "type": "Audio"
+  },
+  "player-heavy-attack.ogg": {
+    "assetId": "139768032448015",
+    "sha256": "6afe68e67571360bb405a71a2e56357c4f73fc0f004a57f3dc08df08edb8fb12",
+    "type": "Audio"
+  },
+  "player-heavy-charge.ogg": {
+    "assetId": "90147160776723",
+    "sha256": "ba2a410b50e17fe13d696d21428e2e30b34d081f570799a8e5998e4bf18994f1",
+    "type": "Audio"
+  },
+  "player-hit.ogg": {
+    "assetId": "97592866523638",
+    "sha256": "0322c40703229a8ae7a3ef4fbaa220c4ee31ce9ff92354651da1ce73c6aa6d7d",
+    "type": "Audio"
+  },
+  "player-parry.ogg": {
+    "assetId": "109465764112074",
+    "sha256": "2c0856a62264406057220a9f9520a3acc0d41e246fa9aa57155e0e47920812c6",
+    "type": "Audio"
+  },
+  "player-spin.ogg": {
+    "assetId": "84562901835126",
+    "sha256": "7b14eeab695e854e35a1f8a934f5c387478a29a9e849e4f7bee5d6752bd57cac",
+    "type": "Audio"
   }
 }

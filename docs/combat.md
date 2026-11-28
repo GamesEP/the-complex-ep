@@ -278,6 +278,17 @@ scaled ~1.5x–2.4x) driven by the shared state machine in `shared/features/comb
 - **Opposite-direction lunge abort (`LUNGE_ABORT_ANGLE = 120°`):** Steering more than 120° away
   from an active melee `ApproachLunge` aborts the lunge immediately, drops the old lock, searches
   `MoveDir` for a new target, and fires the swing/step along the new direction.
+- **Lingering multi-frame active hitboxes (`CombatService` + `Melee.inHitbox`):** Basic combo
+  swings (`ATTACK_ACTIVE_SECONDS = 0.16 s` light / `ATTACK_FINISHER_ACTIVE_SECONDS = 0.22 s`
+  finisher), Heavy Attack (`HEAVY_ATTACK_ACTIVE_SECONDS = 0.24 s`), Spin (`SPIN_ACTIVE_SECONDS =
+  0.30 s`), and Stinger (`STINGER_ACTIVE_SECONDS = 0.26 s`) spawn a server-authoritative
+  `ActiveHitbox` stepped on every `Heartbeat` rather than a 1-frame snapshot. Soft-lock still
+  picks a single active target for lunge/rotation, while the lingering hitbox follows the player's
+  live root and cleaves any and multiple enemies entering the active sector/radius/corridor (each
+  enemy hit at most once per swing via `hitSet`). Dash, Block, Stun, Grab, or starting a new swing
+  cancels any lingering hitbox immediately. The server broadcasts `CombatVfx("hitboxActive", ...)`
+  and `"hitboxEnd"` so the Debug `HitboxVisualizer` (`Ataque Activo` layer) renders the exact live
+  hitbox even when swinging into empty air (flashing green on `"hitConfirm"`).
 - **Hitstop & hit-confirm vs. whiff:** When `CombatService` confirms ≥ 1 enemy hit, it fires
   `CombatVfx("hitConfirm", tier, hitPos, anyKilled, allArmored)` back to the attacker, triggering a
   tactile `PlayerAnimator.hitstop` pose freeze (`35–75 ms`), impact sparks, subtle `IsoCamera.shake`,

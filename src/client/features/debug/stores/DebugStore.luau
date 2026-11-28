@@ -28,12 +28,13 @@ export type OverlayName = "metrics" | "combatLog" | "enemyInspector" | "hitboxes
 
 export type HitboxLayers = {
 	playerAim: boolean,
+	attackHitbox: boolean,
 	enemyReach: boolean,
 	pillars: boolean,
 	doorZone: boolean,
 }
 
-export type HitboxLayerName = "playerAim" | "enemyReach" | "pillars" | "doorZone"
+export type HitboxLayerName = "playerAim" | "attackHitbox" | "enemyReach" | "pillars" | "doorZone"
 
 export type CommandStatus = {
 	action: string,
@@ -53,6 +54,7 @@ end
 local function defaultHitboxLayers(): HitboxLayers
 	return {
 		playerAim = true,
+		attackHitbox = true,
 		enemyReach = true,
 		pillars = true,
 		doorZone = true,
@@ -137,6 +139,7 @@ function DebugStore.setAllHitboxLayers(enabled: boolean)
 	local on = enabled == true
 	DebugStore.hitboxLayers({
 		playerAim = on,
+		attackHitbox = on,
 		enemyReach = on,
 		pillars = on,
 		doorZone = on,
@@ -219,7 +222,14 @@ function DebugStore.selfTest()
 
 	-- Per-layer hitbox toggles preserve immutability and reject unknown layer names.
 	local layersBefore = DebugStore.hitboxLayers()
-	assert(layersBefore.playerAim and layersBefore.enemyReach and layersBefore.pillars and layersBefore.doorZone, "all hitbox layers default on")
+	assert(
+		layersBefore.playerAim
+			and layersBefore.attackHitbox
+			and layersBefore.enemyReach
+			and layersBefore.pillars
+			and layersBefore.doorZone,
+		"all hitbox layers default on"
+	)
 	assert(DebugStore.toggleHitboxLayer("pillars"), "toggleHitboxLayer(pillars) must succeed")
 	assert(DebugStore.hitboxLayers().pillars == false, "pillars layer must toggle off")
 	assert(layersBefore.pillars == true, "previous hitboxLayers snapshot must remain untouched")

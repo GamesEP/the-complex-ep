@@ -163,11 +163,20 @@ local function OverlaysTab(props: OverlaysTabProps)
 					toggleLayer("playerAim")
 				end,
 			}),
+			AttackHitbox = React.createElement(DevPrimitives.ChipButton, {
+				text = "Ataque Activo",
+				active = overlays.hitboxes and hitboxLayers.attackHitbox,
+				accent = ui.HAZARD,
+				order = 2,
+				onActivated = function()
+					toggleLayer("attackHitbox")
+				end,
+			}),
 			EnemyReach = React.createElement(DevPrimitives.ChipButton, {
 				text = "Enemigos",
 				active = overlays.hitboxes and hitboxLayers.enemyReach,
 				accent = ui.HEAVY,
-				order = 2,
+				order = 3,
 				onActivated = function()
 					toggleLayer("enemyReach")
 				end,
@@ -176,7 +185,7 @@ local function OverlaysTab(props: OverlaysTabProps)
 				text = "Pilares",
 				active = overlays.hitboxes and hitboxLayers.pillars,
 				accent = ui.GUARD,
-				order = 3,
+				order = 4,
 				onActivated = function()
 					toggleLayer("pillars")
 				end,
@@ -185,14 +194,14 @@ local function OverlaysTab(props: OverlaysTabProps)
 				text = "Puerta Norte",
 				active = overlays.hitboxes and hitboxLayers.doorZone,
 				accent = ui.VITAL,
-				order = 4,
+				order = 5,
 				onActivated = function()
 					toggleLayer("doorZone")
 				end,
 			}),
 			AllLayers = React.createElement(DevPrimitives.ChipButton, {
 				text = "Todas",
-				order = 5,
+				order = 6,
 				onActivated = function()
 					DebugStore.setAllHitboxLayers(true)
 					DebugStore.setOverlay("hitboxes", true)
@@ -200,7 +209,7 @@ local function OverlaysTab(props: OverlaysTabProps)
 			}),
 			NoLayers = React.createElement(DevPrimitives.ChipButton, {
 				text = "Ninguna",
-				order = 6,
+				order = 7,
 				onActivated = function()
 					DebugStore.setAllHitboxLayers(false)
 				end,

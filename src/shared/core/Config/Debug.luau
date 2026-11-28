@@ -34,6 +34,8 @@ Config.DEBUG_OVERLAY_COLORS = {
 	enemyReach = Color3.fromRGB(255, 122, 56),
 	blastOval = Color3.fromRGB(255, 165, 45),
 	bossHazard = Color3.fromRGB(255, 46, 76),
+	attackHitbox = Color3.fromRGB(255, 178, 48),
+	attackHitConfirm = Color3.fromRGB(78, 255, 152),
 }
 
 return Config

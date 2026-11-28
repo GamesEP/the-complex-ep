@@ -83,9 +83,28 @@ type Boomerang = {
 	hitBack: { [Enemy]: boolean },
 }
 
+type ActiveHitbox = {
+	owner: Player,
+	shape: Melee.HitboxShape,
+	facing: Vector3,
+	fixedOrigin: Vector3?,
+	range: number,
+	arc: number,
+	halfWidth: number,
+	damage: number,
+	tier: HitTier,
+	startedAt: number,
+	endsAt: number,
+	hitSet: { [Enemy]: boolean },
+	notifiedHit: boolean,
+	stunDuration: number?,
+	pushDistance: number?,
+}
+
 local healZones: { HealZone } = {}
 local playerBolts: { PlayerBolt } = {}
 local boomerangs: { Boomerang } = {}
+local activeHitboxes: { ActiveHitbox } = {}
 local nextBoltId = 0
 
 local function now(): number
@@ -330,6 +349,21 @@ local function cancelCharge(player: Player)
 	end
 end
 
+-- Cancels any lingering melee hitboxes owned by `player` (e.g. when dash-canceling, blocking,
+-- stunned, grabbed, starting a new swing, respawning, or resetting).
+local function cancelActiveHitboxes(player: Player)
+	local removed = false
+	for i = #activeHitboxes, 1, -1 do
+		if activeHitboxes[i].owner == player then
+			table.remove(activeHitboxes, i)
+			removed = true
+		end
+	end
+	if removed then
+		Remotes.CombatVfx:FireAllClients("hitboxEnd", player)
+	end
+end
+
 local function onCharacter(player: Player, character: Model)
 	stripDefaultHealthRegen(character)
 	character.ChildAdded:Connect(function(child)
@@ -359,6 +393,7 @@ local function onCharacter(player: Player, character: Model)
 
 	local initialDashCharges = Drops.maxDashCharges(nil, now(), hasDoubleDash(player))
 	swings[player] = nil
+	cancelActiveHitboxes(player)
 	heavyCharges[player] = nil
 	overDriveTokens[player] = (overDriveTokens[player] or 0) + 1
 	dashStates[player] = { charges = initialDashCharges, rechargeAt = 0 }
@@ -430,13 +465,18 @@ function CombatService.start(dependencies: { enemies: any, isPaused: (() -> bool
 	end
 end
 
--- Clears in-flight player bolts, boomerang daggers, and persistent healing zones on room reset.
+-- Clears in-flight player bolts, boomerang daggers, lingering melee hitboxes, and persistent
+-- healing zones on room reset.
 function CombatService.clear()
 	for _, bolt in ipairs(playerBolts) do
 		Remotes.CombatVfx:FireAllClients("boltImpact", bolt.id, bolt.position, "cancel", 0)
 	end
+	for _, hb in ipairs(activeHitboxes) do
+		Remotes.CombatVfx:FireAllClients("hitboxEnd", hb.owner)
+	end
 	table.clear(playerBolts)
 	table.clear(boomerangs)
+	table.clear(activeHitboxes)
 	table.clear(healZones)
 end
 
@@ -476,6 +516,7 @@ end
 -- Resets a player's health, buffs, debuffs, and cooldowns at the start or retry of a run.
 function CombatService.resetPlayerForRun(player: Player)
 	swings[player] = nil
+	cancelActiveHitboxes(player)
 	cancelCharge(player)
 	cancelOverDrive(player)
 	local t = now()
@@ -553,6 +594,7 @@ end
 
 function CombatService.forget(player: Player)
 	swings[player] = nil
+	cancelActiveHitboxes(player)
 	heavyCharges[player] = nil
 	overDriveTokens[player] = nil
 	dashStates[player] = nil
@@ -600,6 +642,86 @@ end
 -- impact sparks, faster hit-confirm cancelAt, and kill auto-retargeting.
 local function notifyHitConfirm(player: Player, tier: HitTier, hitPos: Vector3, anyKilled: boolean, allArmored: boolean)
 	Remotes.CombatVfx:FireClient(player, "hitConfirm", tier, hitPos, anyKilled, allArmored)
+end
+
+-- Evaluates one Heartbeat tick of a lingering active melee hitbox. Every living enemy entering
+-- the hitbox across `[startedAt, endsAt]` is hit at most once per swing (`hitSet`). Returns false
+-- when the hitbox has expired or its owner was interrupted.
+local function evaluateActiveHitbox(hb: ActiveHitbox, t: number, enemyList: { Enemy }): boolean
+	local player = hb.owner
+	if
+		not player.Parent
+		or player:GetAttribute("Grabbed") == true
+		or player:GetAttribute("Blocking") == true
+		or isStunned(player, t)
+	then
+		Remotes.CombatVfx:FireAllClients("hitboxEnd", player)
+		return false
+	end
+	local root = rootOf(player)
+	if not root then
+		Remotes.CombatVfx:FireAllClients("hitboxEnd", player)
+		return false
+	end
+
+	local origin = hb.fixedOrigin or root.Position
+	local frameHitAt: Vector3? = nil
+	local frameAnyKilled = false
+	local frameAllArmored = true
+	for _, enemy in ipairs(enemyList) do
+		if
+			not enemy.dead
+			and not hb.hitSet[enemy]
+			and Melee.inHitbox(hb.shape, origin, hb.facing, enemy.body.Position, enemy.radius, hb.range, hb.arc, hb.halfWidth)
+		then
+			hb.hitSet[enemy] = true
+			frameHitAt = frameHitAt or enemy.body.Position
+			local killed, armored = hitEnemy(player, enemy, hb.damage, origin, hb.tier)
+			frameAnyKilled = frameAnyKilled or killed
+			frameAllArmored = frameAllArmored and armored
+			if hb.pushDistance and hb.pushDistance > 0 then
+				local away = Melee.flat(enemy.body.Position - origin) or hb.facing
+				enemies.shove(enemy, away, hb.pushDistance, 0.2, 1, t)
+			end
+			if hb.stunDuration and hb.stunDuration > 0 then
+				enemies.stun(enemy, hb.stunDuration)
+			end
+		end
+	end
+
+	if frameHitAt then
+		if not hb.notifiedHit then
+			hb.notifiedHit = true
+			Remotes.CombatSfx:FireAllClients("playerHit", frameHitAt)
+		end
+		notifyHitConfirm(player, hb.tier, frameHitAt, frameAnyKilled, frameAllArmored)
+	end
+
+	return t < hb.endsAt
+end
+
+-- Spawns a lingering server-authoritative active hitbox (arc / radius / corridor), broadcasts
+-- its exact shape & duration for the debug HitboxVisualizer (including air whiffs), evaluates
+-- frame 0 immediately, and queues it for subsequent Heartbeat ticks until `endsAt`.
+local function spawnActiveHitbox(hb: ActiveHitbox)
+	cancelActiveHitboxes(hb.owner)
+	local root = rootOf(hb.owner)
+	local visualOrigin = hb.fixedOrigin or (if root then root.Position else Vector3.zero)
+	local duration = math.max(hb.endsAt - hb.startedAt, 0.04)
+	Remotes.CombatVfx:FireAllClients(
+		"hitboxActive",
+		hb.owner,
+		hb.shape,
+		visualOrigin,
+		hb.facing,
+		hb.range,
+		if hb.shape == "corridor" then hb.halfWidth else hb.arc,
+		duration,
+		hb.fixedOrigin ~= nil
+	)
+	if evaluateActiveHitbox(hb, hb.startedAt, enemies.list()) then
+		table.insert(activeHitboxes, hb)
+	end
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -737,6 +859,7 @@ function CombatService.stun(player: Player, duration: number)
 	if type(current) ~= "number" or untilAt > current then
 		player:SetAttribute("StunnedUntil", untilAt)
 	end
+	cancelActiveHitboxes(player)
 	cancelCharge(player)
 	cancelOverDrive(player)
 	if player:GetAttribute("Blocking") == true then
@@ -764,6 +887,7 @@ function CombatService.setGrabbed(player: Player, grabbed: boolean, progress: nu
 	player:SetAttribute("GrabProgress", progress or 0)
 	player:SetAttribute("GrabGoal", goal or Config.GRAB_ESCAPE_PRESSES)
 	if grabbed then
+		cancelActiveHitboxes(player)
 		player:SetAttribute("GrabWarningUntil", 0)
 		player:SetAttribute("Blocking", false)
 		player:SetAttribute("ParryUntil", 0)
@@ -860,6 +984,7 @@ function CombatService.block(player: Player, active: boolean)
 	if t < readyAt - COOLDOWN_SLACK then
 		return
 	end
+	cancelActiveHitboxes(player)
 	cancelCharge(player)
 	player:SetAttribute("Blocking", true)
 	player:SetAttribute("ParryUntil", t + Config.PARRY_WINDOW)
@@ -965,55 +1090,46 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		-- Tank (Greatsword & Shield): seismic ground slam that damages, shoves outward, and stuns.
 		local impactPos = root.Position + facing * Config.TANK_HEAVY_OFFSET
 		local damage = Config.TANK_HEAVY_DAMAGE * dmgMult
-		local hitAt: Vector3? = nil
-		local anyKilled = false
-		local allArmored = true
-		for _, enemy in ipairs(enemies.list()) do
-			if Melee.inRadius(impactPos, enemy.body.Position, Config.TANK_HEAVY_RADIUS + enemy.radius) then
-				hitAt = hitAt or enemy.body.Position
-				local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
-				anyKilled = anyKilled or killed
-				allArmored = allArmored and armored
-				local away = Melee.flat(enemy.body.Position - impactPos) or facing
-				enemies.shove(enemy, away, Config.TANK_HEAVY_PUSH_DISTANCE, 0.2, 1, t)
-				enemies.stun(enemy, Config.TANK_HEAVY_STUN_DURATION)
-			end
-		end
 		Remotes.CombatSfx:FireAllClients("enemyExploderBlast", impactPos)
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "tank")
-		if hitAt then
-			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-			notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
-		end
+		spawnActiveHitbox({
+			owner = player,
+			shape = "radius",
+			facing = facing,
+			fixedOrigin = impactPos,
+			range = Config.TANK_HEAVY_RADIUS,
+			arc = 360,
+			halfWidth = 0,
+			damage = damage,
+			tier = "heavy",
+			startedAt = t,
+			endsAt = t + 0.20,
+			hitSet = {},
+			notifiedHit = false,
+			pushDistance = Config.TANK_HEAVY_PUSH_DISTANCE,
+			stunDuration = Config.TANK_HEAVY_STUN_DURATION,
+		})
 	elseif classId == "dps" then
-		-- Damage (Dual Daggers): blistering twin diagonal X-slash burst (two rapid strikes).
+		-- Damage (Dual Daggers): blistering twin diagonal X-slash burst (two lingering arcs).
 		local hitDamage = Config.DPS_HEAVY_HIT_DAMAGE * dmgMult
-		local function doSlash(originPos: Vector3, slashFacing: Vector3)
-			local hitAt: Vector3? = nil
-			local anyKilled = false
-			local allArmored = true
-			for _, enemy in ipairs(enemies.list()) do
-				if
-					Melee.inArc(
-						originPos,
-						slashFacing,
-						enemy.body.Position,
-						Config.DPS_HEAVY_RANGE + enemy.radius,
-						Config.DPS_HEAVY_ARC
-					)
-				then
-					hitAt = hitAt or enemy.body.Position
-					local killed, armored = hitEnemy(player, enemy, hitDamage, originPos, "heavy")
-					anyKilled = anyKilled or killed
-					allArmored = allArmored and armored
-				end
-			end
-			if hitAt then
-				Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-				notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
-			end
+		local function doSlash(slashFacing: Vector3, startAt: number)
+			spawnActiveHitbox({
+				owner = player,
+				shape = "arc",
+				facing = slashFacing,
+				fixedOrigin = nil,
+				range = Config.DPS_HEAVY_RANGE,
+				arc = Config.DPS_HEAVY_ARC,
+				halfWidth = 0,
+				damage = hitDamage,
+				tier = "heavy",
+				startedAt = startAt,
+				endsAt = startAt + 0.14,
+				hitSet = {},
+				notifiedHit = false,
+			})
 		end
-		doSlash(root.Position, facing)
+		doSlash(facing, t)
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "dps")
 		task.delay(Config.DPS_HEAVY_SECOND_DELAY, function()
 			local currentRoot = rootOf(player)
@@ -1021,7 +1137,7 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 				return
 			end
 			local secondFacing = Melee.flat(currentRoot.CFrame.LookVector) or facing
-			doSlash(currentRoot.Position, secondFacing)
+			doSlash(secondFacing, now())
 		end)
 	elseif classId == "support" then
 		-- Support (Energy Staff): launches a long-range explosive arcane orb that stuns in an AoE.
@@ -1040,32 +1156,24 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 			4
 		)
 	else
-		-- Default (no class yet / test sword): classic wide horizontal crescent cleave.
+		-- Default (no class yet / test sword): lingering wide horizontal crescent cleave.
 		local damage = Config.HEAVY_ATTACK_DAMAGE * dmgMult
-		local hitAt: Vector3? = nil
-		local anyKilled = false
-		local allArmored = true
-		for _, enemy in ipairs(enemies.list()) do
-			if
-				Melee.inArc(
-					root.Position,
-					facing,
-					enemy.body.Position,
-					Config.HEAVY_ATTACK_RANGE + enemy.radius,
-					Config.HEAVY_ATTACK_ARC
-				)
-			then
-				hitAt = hitAt or enemy.body.Position
-				local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
-				anyKilled = anyKilled or killed
-				allArmored = allArmored and armored
-			end
-		end
 		Remotes.CombatVfx:FireAllClients("heavyAttack", player, root.Position, facing, "default")
-		if hitAt then
-			Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-			notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
-		end
+		spawnActiveHitbox({
+			owner = player,
+			shape = "arc",
+			facing = facing,
+			fixedOrigin = nil,
+			range = Config.HEAVY_ATTACK_RANGE,
+			arc = Config.HEAVY_ATTACK_ARC,
+			halfWidth = 0,
+			damage = damage,
+			tier = "heavy",
+			startedAt = t,
+			endsAt = t + CombatState.activeHitboxDuration("heavyAttack"),
+			hitSet = {},
+			notifiedHit = false,
+		})
 	end
 end
 
@@ -1125,21 +1233,22 @@ function CombatService.attack(player: Player, aim: Vector3)
 		return
 	end
 
-	local hitAt: Vector3? = nil
-	local anyKilled = false
-	local allArmored = true
-	for _, enemy in ipairs(enemies.list()) do
-		if Melee.inArc(root.Position, facing, enemy.body.Position, Config.ATTACK_RANGE + enemy.radius, Config.ATTACK_ARC) then
-			hitAt = hitAt or enemy.body.Position
-			local killed, armored = hitEnemy(player, enemy, damage, root.Position, hitTier)
-			anyKilled = anyKilled or killed
-			allArmored = allArmored and armored
-		end
-	end
-	if hitAt then
-		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-		notifyHitConfirm(player, hitTier, hitAt, anyKilled, allArmored)
-	end
+	local t = now()
+	spawnActiveHitbox({
+		owner = player,
+		shape = "arc",
+		facing = facing,
+		fixedOrigin = nil,
+		range = Config.ATTACK_RANGE,
+		arc = Config.ATTACK_ARC,
+		halfWidth = 0,
+		damage = damage,
+		tier = hitTier,
+		startedAt = t,
+		endsAt = t + CombatState.activeHitboxDuration("attack", step),
+		hitSet = {},
+		notifiedHit = false,
+	})
 end
 
 -- Remote "Dash". The motion already happened on the client; this grants the invulnerability and
@@ -1170,6 +1279,7 @@ function CombatService.dash(player: Player)
 		player:SetAttribute("ParryUntil", 0)
 		refreshWalkSpeed(player)
 	end
+	cancelActiveHitboxes(player)
 	cancelCharge(player)
 	player:SetAttribute("DashCharges", nextCharges)
 	player:SetAttribute("DashReadyAt", nextRechargeAt)
@@ -1209,21 +1319,22 @@ function CombatService.spin(player: Player)
 	local spinDamage = Config.SPIN_DAMAGE
 		* abilityDamageScale(level)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
-	local hitAt: Vector3? = nil
-	local anyKilled = false
-	local allArmored = true
-	for _, enemy in ipairs(enemies.list()) do
-		if Melee.inRadius(root.Position, enemy.body.Position, Config.SPIN_RADIUS + enemy.radius) then
-			hitAt = hitAt or enemy.body.Position
-			local killed, armored = hitEnemy(player, enemy, spinDamage, root.Position, "medium")
-			anyKilled = anyKilled or killed
-			allArmored = allArmored and armored
-		end
-	end
-	if hitAt then
-		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-		notifyHitConfirm(player, "medium", hitAt, anyKilled, allArmored)
-	end
+	local facing = Melee.flat(root.CFrame.LookVector) or Vector3.new(0, 0, -1)
+	spawnActiveHitbox({
+		owner = player,
+		shape = "radius",
+		facing = facing,
+		fixedOrigin = nil,
+		range = Config.SPIN_RADIUS,
+		arc = 360,
+		halfWidth = 0,
+		damage = spinDamage,
+		tier = "medium",
+		startedAt = t,
+		endsAt = t + CombatState.activeHitboxDuration("spin"),
+		hitSet = {},
+		notifiedHit = false,
+	})
 end
 
 -- Remote "Stinger" (Slot 2): DMC-style piercing forward thrust hitting every enemy in the lunge corridor.
@@ -1265,21 +1376,21 @@ function CombatService.stinger(player: Player, aim: Vector3)
 		* abilityDamageScale(level)
 		* Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
 	local halfWidth = Config.STINGER_WIDTH / 2
-	local hitAt: Vector3? = nil
-	local anyKilled = false
-	local allArmored = true
-	for _, enemy in ipairs(enemies.list()) do
-		if Melee.inCorridor(root.Position, facing, enemy.body.Position, Config.STINGER_DISTANCE, halfWidth + enemy.radius) then
-			hitAt = hitAt or enemy.body.Position
-			local killed, armored = hitEnemy(player, enemy, damage, root.Position, "heavy")
-			anyKilled = anyKilled or killed
-			allArmored = allArmored and armored
-		end
-	end
-	if hitAt then
-		Remotes.CombatSfx:FireAllClients("playerHit", hitAt)
-		notifyHitConfirm(player, "heavy", hitAt, anyKilled, allArmored)
-	end
+	spawnActiveHitbox({
+		owner = player,
+		shape = "corridor",
+		facing = facing,
+		fixedOrigin = root.Position,
+		range = Config.STINGER_DISTANCE,
+		arc = 0,
+		halfWidth = halfWidth,
+		damage = damage,
+		tier = "heavy",
+		startedAt = t,
+		endsAt = t + CombatState.activeHitboxDuration("stinger"),
+		hitSet = {},
+		notifiedHit = false,
+	})
 end
 
 -- Remote "OverDrive" (Slot 3, Ultimate): channels energy into the blade for OVERDRIVE_CHARGE_SECONDS,
@@ -1603,6 +1714,13 @@ local function stepCombat(dt: number)
 	end
 	local t = now()
 	local enemyList = enemies.list()
+
+	-- 0. Lingering multi-frame active melee hitboxes (basic combos, heavy cleave, spin, stinger).
+	for i = #activeHitboxes, 1, -1 do
+		if not evaluateActiveHitbox(activeHitboxes[i], t, enemyList) then
+			table.remove(activeHitboxes, i)
+		end
+	end
 
 	-- 1. Support basic energy bolts & explosive arcane heavy orbs.
 	for i = #playerBolts, 1, -1 do

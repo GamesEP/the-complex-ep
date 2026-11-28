@@ -25,6 +25,8 @@ export type TargetPick = {
 	radius: number,
 }
 
+export type HitboxShape = "arc" | "radius" | "corridor"
+
 -- Which hit of the combo this press is. A press inside `window` of the last one continues the
 -- chain and wraps after the last hit; anything later, or a first press, starts it at 1.
 function Melee.nextStep(step: number, lastAt: number, now: number, hits: number, window: number): number
@@ -93,6 +95,27 @@ function Melee.inCorridor(
 	local along = math.clamp(offset:Dot(forward), 0, length)
 	local closest = forward * along
 	return (offset - closest).Magnitude <= halfWidth + 1e-6
+end
+
+-- Unified active-hitbox membership test used across multi-frame lingering melee windows
+-- (arc swings, 360-degree spins/slams, and piercing corridors).
+function Melee.inHitbox(
+	shape: HitboxShape,
+	origin: Vector3,
+	facing: Vector3,
+	target: Vector3,
+	targetRadius: number,
+	range: number,
+	arc: number?,
+	halfWidth: number?
+): boolean
+	local pad = math.max(targetRadius, 0)
+	if shape == "radius" then
+		return Melee.inRadius(origin, target, range + pad)
+	elseif shape == "corridor" then
+		return Melee.inCorridor(origin, facing, target, range, math.max(halfWidth or 0, 0) + pad)
+	end
+	return Melee.inArc(origin, facing, target, range + pad, arc or 120)
 end
 
 -- Minimum time before the next swing may start (entering recovery cancel). The heavy combo
@@ -422,6 +445,12 @@ function Melee.selfTest()
 	-- Finisher attack interval uses longer cadence only after the final combo hit.
 	assert(Melee.attackInterval(1, 3, 0.36, 0.50) == 0.36, "light step uses base interval")
 	assert(Melee.attackInterval(3, 3, 0.36, 0.50) == 0.50, "combo finisher uses finisher interval")
+
+	-- Unified lingering hitbox shapes (arc, radius, corridor) respect target radius padding.
+	assert(Melee.inHitbox("arc", origin, north, Vector3.new(0, 0, -9.5), 2, 8, 120), "arc hitbox includes target radius")
+	assert(not Melee.inHitbox("arc", origin, north, Vector3.new(0, 0, 4), 2, 8, 120), "arc hitbox excludes behind")
+	assert(Melee.inHitbox("radius", origin, north, Vector3.new(0, 0, 13.5), 2, 12), "radius hitbox hits 360 with radius")
+	assert(Melee.inHitbox("corridor", origin, north, Vector3.new(4.5, 0, -15), 2, 26, nil, 3.25), "corridor hitbox includes target radius")
 end
 
 return Melee

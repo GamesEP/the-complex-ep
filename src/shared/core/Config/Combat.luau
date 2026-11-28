@@ -65,6 +65,14 @@ Config.HEAVY_ATTACK_STARTUP_SECONDS = 0.11
 -- Brief settle after a tracked approach lunge reaches the sweet-spot so the client's arrival
 -- CFrame replicates to the server before `Attack` evaluates `Melee.inArc` (prevents first-hit whiffs).
 Config.ATTACK_POST_LUNGE_SETTLE_SECONDS = 0.035
+-- Lingering multi-frame active hitbox durations (seconds): each swing/skill stays live across
+-- Heartbeat frames so multiple enemies entering the blade arc/radius/corridor are cleaved (at
+-- most once per enemy per swing), while still keeping one soft-locked target.
+Config.ATTACK_ACTIVE_SECONDS = 0.16
+Config.ATTACK_FINISHER_ACTIVE_SECONDS = 0.22
+Config.HEAVY_ATTACK_ACTIVE_SECONDS = 0.24
+Config.SPIN_ACTIVE_SECONDS = 0.30
+Config.STINGER_ACTIVE_SECONDS = 0.26
 Config.ATTACK_STARTUP_MICRO_PIVOT_DEG = 35
 Config.ATTACK_STEP_DISTANCE = 2.6
 Config.ATTACK_FINISHER_STEP_DISTANCE = 3.8

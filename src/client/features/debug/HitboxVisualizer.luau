@@ -15,12 +15,14 @@ local Charm = require(Packages.charm)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
+local Remotes = require(Shared.core.Net.Remotes)
 
 local DebugStore = require(script.Parent.stores.DebugStore)
 
 local HitboxVisualizer = {}
 
 local MAX_ENEMY_RINGS = 32
+local ARC_SEGMENTS = 8
 local HIDDEN_CF = CFrame.new(0, -500, 0)
 local DOOR_VISIBLE_TRANSPARENCY = 0.72
 local PILLAR_VISIBLE_TRANSPARENCY = 0.78
@@ -30,10 +32,29 @@ local started = false
 local overlayFolder: Folder? = nil
 local stepConn: RBXScriptConnection? = nil
 
+type ActiveAttackVisual = {
+	owner: Player,
+	shape: string,
+	origin: Vector3,
+	facing: Vector3,
+	range: number,
+	param: number, -- arc degrees for "arc", halfWidth for "corridor"
+	fixedOrigin: boolean,
+	endsAt: number,
+	hitConnected: boolean,
+}
+
+local activeAttack: ActiveAttackVisual? = nil
+
 local aimLeftPart: Part? = nil
 local aimRightPart: Part? = nil
 local aimArcPart: Part? = nil
 local lockLinePart: Part? = nil
+local atkLeftPart: Part? = nil
+local atkRightPart: Part? = nil
+local atkFillPart: Part? = nil
+local atkCorridorPart: Part? = nil
+local atkArcSegments: { Part } = {}
 local doorZonePart: Part? = nil
 local pillarParts: { Part } = {}
 local enemyRings: { Part } = {}
@@ -73,9 +94,33 @@ local function teardown()
 	aimRightPart = nil
 	aimArcPart = nil
 	lockLinePart = nil
+	activeAttack = nil
+	atkLeftPart = nil
+	atkRightPart = nil
+	atkFillPart = nil
+	atkCorridorPart = nil
+	table.clear(atkArcSegments)
 	doorZonePart = nil
 	table.clear(pillarParts)
 	table.clear(enemyRings)
+end
+
+local function hideAttackParts()
+	if atkLeftPart then
+		atkLeftPart.CFrame = HIDDEN_CF
+	end
+	if atkRightPart then
+		atkRightPart.CFrame = HIDDEN_CF
+	end
+	if atkFillPart then
+		atkFillPart.CFrame = HIDDEN_CF
+	end
+	if atkCorridorPart then
+		atkCorridorPart.CFrame = HIDDEN_CF
+	end
+	for _, seg in ipairs(atkArcSegments) do
+		seg.CFrame = HIDDEN_CF
+	end
 end
 
 local function applyStaticLayerVisibility(layers: DebugStore.HitboxLayers)
@@ -189,8 +234,80 @@ local function stepDynamic()
 		end
 	end
 
-	-- Enemy reach / hazard rings (pooled up to MAX_ENEMY_RINGS).
+	-- Live lingering melee attack hitbox (shown even when swinging into empty air; flashes green
+	-- when the server confirms an enemy was hit).
 	local colors = Config.DEBUG_OVERLAY_COLORS
+	local atk = activeAttack
+	if atk and os.clock() >= atk.endsAt then
+		activeAttack = nil
+		atk = nil
+	end
+	if layers.attackHitbox and atk and atkLeftPart and atkRightPart and atkFillPart and atkCorridorPart then
+		local originPos = atk.origin
+		if not atk.fixedOrigin and atk.owner.Character then
+			local ownerRoot = atk.owner.Character:FindFirstChild("HumanoidRootPart")
+			if ownerRoot and ownerRoot:IsA("BasePart") then
+				originPos = ownerRoot.Position
+			end
+		end
+		local origin = Vector3.new(originPos.X, 0.85, originPos.Z)
+		local color = if atk.hitConnected then colors.attackHitConfirm else colors.attackHitbox
+		local flat = Vector3.new(atk.facing.X, 0, atk.facing.Z)
+		local forward = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+
+		if atk.shape == "radius" then
+			atkLeftPart.CFrame = HIDDEN_CF
+			atkRightPart.CFrame = HIDDEN_CF
+			atkCorridorPart.CFrame = HIDDEN_CF
+			for _, seg in ipairs(atkArcSegments) do
+				seg.CFrame = HIDDEN_CF
+			end
+			atkFillPart.Color = color
+			atkFillPart.Transparency = 0.62
+			positionFlatRing(atkFillPart, Vector3.new(origin.X, 0.45, origin.Z), atk.range, 0.25)
+		elseif atk.shape == "corridor" then
+			atkLeftPart.CFrame = HIDDEN_CF
+			atkRightPart.CFrame = HIDDEN_CF
+			atkFillPart.CFrame = HIDDEN_CF
+			for _, seg in ipairs(atkArcSegments) do
+				seg.CFrame = HIDDEN_CF
+			end
+			local width = math.max(atk.param * 2, 1)
+			local center = origin + forward * (atk.range * 0.5)
+			atkCorridorPart.Color = color
+			atkCorridorPart.Transparency = 0.58
+			atkCorridorPart.Size = Vector3.new(width, 0.4, atk.range)
+			atkCorridorPart.CFrame = CFrame.lookAt(center, center + forward)
+		else
+			-- Arc sector: left/right radial edges + curved chord segments along `range` + center disc.
+			atkCorridorPart.CFrame = HIDDEN_CF
+			local halfRad = math.rad(math.clamp(atk.param, 10, 360) * 0.5)
+			local leftDir = (CFrame.Angles(0, halfRad, 0):VectorToWorldSpace(forward)).Unit
+			local rightDir = (CFrame.Angles(0, -halfRad, 0):VectorToWorldSpace(forward)).Unit
+			atkLeftPart.Color = color
+			atkRightPart.Color = color
+			positionBeam(atkLeftPart, origin, origin + leftDir * atk.range, 0.28)
+			positionBeam(atkRightPart, origin, origin + rightDir * atk.range, 0.28)
+
+			local segCount = #atkArcSegments
+			for i = 1, segCount do
+				local a0 = halfRad - ((i - 1) / segCount) * (halfRad * 2)
+				local a1 = halfRad - (i / segCount) * (halfRad * 2)
+				local p0 = origin + (CFrame.Angles(0, a0, 0):VectorToWorldSpace(forward)).Unit * atk.range
+				local p1 = origin + (CFrame.Angles(0, a1, 0):VectorToWorldSpace(forward)).Unit * atk.range
+				local seg = atkArcSegments[i]
+				seg.Color = color
+				positionBeam(seg, p0, p1, 0.26)
+			end
+			atkFillPart.Color = color
+			atkFillPart.Transparency = 0.82
+			positionFlatRing(atkFillPart, Vector3.new(origin.X, 0.22, origin.Z), atk.range, 0.1)
+		end
+	else
+		hideAttackParts()
+	end
+
+	-- Enemy reach / hazard rings (pooled up to MAX_ENEMY_RINGS).
 	local world = workspace:FindFirstChild("World")
 	local enemiesFolder = world and world:FindFirstChild("Enemies")
 	local used = 0
@@ -256,6 +373,25 @@ local function enable()
 	lockLinePart = makeWirePart("SoftLockLine", colors.lockLine, 0.2)
 	lockLinePart.Parent = folder
 
+	atkLeftPart = makeWirePart("AttackHitboxLeft", colors.attackHitbox, 0.22)
+	atkLeftPart.CFrame = HIDDEN_CF
+	atkLeftPart.Parent = folder
+	atkRightPart = makeWirePart("AttackHitboxRight", colors.attackHitbox, 0.22)
+	atkRightPart.CFrame = HIDDEN_CF
+	atkRightPart.Parent = folder
+	atkFillPart = makeCylinderDisk("AttackHitboxFill", colors.attackHitbox, 0.78)
+	atkFillPart.CFrame = HIDDEN_CF
+	atkFillPart.Parent = folder
+	atkCorridorPart = makeWirePart("AttackHitboxCorridor", colors.attackHitbox, 0.58)
+	atkCorridorPart.CFrame = HIDDEN_CF
+	atkCorridorPart.Parent = folder
+	for i = 1, ARC_SEGMENTS do
+		local seg = makeWirePart(`AttackHitboxArc_{i}`, colors.attackHitbox, 0.22)
+		seg.CFrame = HIDDEN_CF
+		seg.Parent = folder
+		table.insert(atkArcSegments, seg)
+	end
+
 	for i = 1, MAX_ENEMY_RINGS do
 		local ring = makeCylinderDisk(`EnemyReach_{i}`, colors.enemyReach, 0.80)
 		ring.CFrame = CFrame.new(0, -500, 0)
@@ -292,6 +428,48 @@ function HitboxVisualizer.start()
 			applyStaticLayerVisibility(layers)
 		end
 	end)
+
+	-- Track server-authoritative lingering active hitboxes (arc / radius / corridor) so the debug
+	-- overlay visualizes every swing live, including air swings and multi-frame hit confirms.
+	Remotes.CombatVfx.OnClientEvent:Connect(
+		function(kind: string, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any)
+			if not enabled then
+				return
+			end
+			if kind == "hitboxActive" then
+				if
+					typeof(a1) == "Instance"
+					and a1 == Players.LocalPlayer
+					and type(a2) == "string"
+					and typeof(a3) == "Vector3"
+					and typeof(a4) == "Vector3"
+					and type(a5) == "number"
+					and type(a6) == "number"
+					and type(a7) == "number"
+				then
+					activeAttack = {
+						owner = a1 :: Player,
+						shape = a2,
+						origin = a3,
+						facing = a4,
+						range = a5,
+						param = a6,
+						fixedOrigin = a8 == true,
+						endsAt = os.clock() + math.max(a7, 0.04),
+						hitConnected = false,
+					}
+				end
+			elseif kind == "hitboxEnd" then
+				if activeAttack and typeof(a1) == "Instance" and a1 == activeAttack.owner then
+					activeAttack = nil
+				end
+			elseif kind == "hitConfirm" then
+				if activeAttack then
+					activeAttack.hitConnected = true
+				end
+			end
+		end
+	)
 end
 
 return HitboxVisualizer

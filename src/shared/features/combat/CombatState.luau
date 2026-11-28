@@ -158,6 +158,23 @@ function CombatState.canMoveCancel(
 	return phase == "recovery" and not hasBufferedAction and steeringAway and clock >= moveCancelAt
 end
 
+-- Lingering multi-frame active hitbox duration (seconds) for melee attacks and skills.
+function CombatState.activeHitboxDuration(actionName: string, step: number?): number
+	if actionName == "attack" then
+		if (step or 1) >= Config.COMBO_HITS then
+			return Config.ATTACK_FINISHER_ACTIVE_SECONDS
+		end
+		return Config.ATTACK_ACTIVE_SECONDS
+	elseif actionName == "heavyAttack" then
+		return Config.HEAVY_ATTACK_ACTIVE_SECONDS
+	elseif actionName == "spin" then
+		return Config.SPIN_ACTIVE_SECONDS
+	elseif actionName == "stinger" then
+		return Config.STINGER_ACTIVE_SECONDS
+	end
+	return 0
+end
+
 -- Local impact freeze duration (seconds) and camera shake amplitude for confirmed hits.
 function CombatState.hitstopSpec(tier: HitTier, armored: boolean?): (number, number)
 	local duration: number
@@ -309,6 +326,16 @@ function CombatState.selfTest()
 	assert(CombatState.shouldInterruptByHit("active", { parryOnly = true, outcome = "hit" }) == "flinch", "parry-only hit interrupts active swing")
 	assert(CombatState.shouldInterruptByHit("active", { lethal = true, stuns = true, outcome = "hit" }) == "dead", "lethal hit outranks all CC")
 	assert(CombatState.shouldInterruptByHit("dash", { stuns = true, outcome = "invulnerable" }) == "none", "dash i-frames negate stun")
+
+	-- Lingering active hitbox durations.
+	assert(CombatState.activeHitboxDuration("attack", 1) == Config.ATTACK_ACTIVE_SECONDS, "light swing active window")
+	assert(
+		CombatState.activeHitboxDuration("attack", Config.COMBO_HITS) == Config.ATTACK_FINISHER_ACTIVE_SECONDS,
+		"finisher active window"
+	)
+	assert(CombatState.activeHitboxDuration("heavyAttack") == Config.HEAVY_ATTACK_ACTIVE_SECONDS, "heavy active window")
+	assert(CombatState.activeHitboxDuration("spin") == Config.SPIN_ACTIVE_SECONDS, "spin active window")
+	assert(CombatState.activeHitboxDuration("stinger") == Config.STINGER_ACTIVE_SECONDS, "stinger active window")
 end
 
 return CombatState

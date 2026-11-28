@@ -1681,18 +1681,23 @@ function CombatInput.start(dependencies: { shake: ((number, number) -> ())? }?)
 			local anyKilled = arg3 == true
 			local allArmored = arg4 == true
 			local duration, shake = CombatState.hitstopSpec(tier, allArmored)
+			local firstImpact = not (activeAction and activeAction.hitConfirmed)
 			if hitPos then
 				Effects.hitSpark(hitPos, tier, allArmored)
 			end
-			PlayerAnimator.hitstop(duration)
-			if shakeCamera then
-				shakeCamera(shake, duration + 0.06)
+			if firstImpact then
+				PlayerAnimator.hitstop(duration)
+				if shakeCamera then
+					shakeCamera(shake, duration + 0.06)
+				end
 			end
 			if activeAction then
 				activeAction.hitConfirmed = true
 				activeAction.cancelAt = CombatState.effectiveCancelAt(activeAction.baseCancelAt, true)
 				activeAction.moveCancelAt = activeAction.cancelAt + Config.ATTACK_MOVE_CANCEL_OFFSET
-				activeAction.hitstopEndsAt = math.max(activeAction.hitstopEndsAt, os.clock() + duration)
+				if firstImpact then
+					activeAction.hitstopEndsAt = math.max(activeAction.hitstopEndsAt, os.clock() + duration)
+				end
 			end
 			if anyKilled and (not lockedTarget or not lockedTarget:IsDescendantOf(workspace)) then
 				lockedTarget = nil

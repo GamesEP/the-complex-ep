@@ -15,23 +15,35 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Difficulty = require(Shared.features.enemies.Difficulty)
+local FloorGenerator = require(Shared.features.run.FloorGenerator)
 local Remotes = require(Shared.core.Net.Remotes)
 local RunFlow = require(Shared.features.run.RunFlow)
 
 local RunService = {}
 
 local world: Instance = nil :: any
+local worldBuilder: any = nil
 local waveDirector: any = nil
 local combatService: any = nil
 local dropService: any = nil
 local enemyService: any = nil
 local upgradeService: any = nil
+local isHubMode: (() -> boolean)? = nil
+local onHubDifficulty: ((Player, string) -> ())? = nil
+local onHubStartRequest: ((Player) -> ())? = nil
+local onReturnHubRequest: ((Player) -> ())? = nil
+local getTeleportDifficulty: ((Player) -> string?)? = nil
+local isAnyoneStandingFn: (() -> boolean)? = nil
+local resetReviveAll: (() -> ())? = nil
+local reviveDownedAll: (() -> ())? = nil
 
-local flow: RunFlow.State = RunFlow.initial(Config.ROOMS_PER_FLOOR)
+local flow: RunFlow.State = RunFlow.initial(Config.ROOMS_PER_FLOOR, Config.FLOORS_PER_RUN)
+local runPlan: FloorGenerator.RunPlan = FloorGenerator.generateRun()
 local currentDifficulty: string = Config.DEFAULT_DIFFICULTY
 local runGeneration = 0
 
--- Cached closed CFrames for `ComplexArena.BlastDoor` leaves so open/close tweens stay exact.
+-- Cached closed CFrames for the active arena's `BlastDoor` leaves (cleared whenever arenas swap).
+local doorArenaRef: Instance? = nil
 local doorLeftClosed: CFrame? = nil
 local doorRightClosed: CFrame? = nil
 local doorStatusBaseColor: Color3? = nil
@@ -42,22 +54,45 @@ local function now(): number
 end
 
 local function anyoneAlive(): boolean
+	if isAnyoneStandingFn then
+		return isAnyoneStandingFn()
+	end
 	for _, player in ipairs(Players:GetPlayers()) do
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 then
+		if humanoid and humanoid.Health > 0 and player:GetAttribute("Downed") ~= true then
 			return true
 		end
 	end
 	return false
 end
 
+local function getActiveArena(): Model?
+	if not world then
+		return nil
+	end
+	local activeName = world:GetAttribute("ArenaModel")
+	if type(activeName) == "string" and activeName ~= "" then
+		local named = world:FindFirstChild(activeName)
+		if named and named:IsA("Model") then
+			return named
+		end
+	end
+	local fallback = world:FindFirstChild(Config.ARENA_MODEL)
+	return if fallback and fallback:IsA("Model") then fallback else nil
+end
+
 local function getArenaPivot(): CFrame
-	local arena = world and world:FindFirstChild(Config.ARENA_MODEL)
-	if arena and arena:IsA("Model") then
+	local arena = getActiveArena()
+	if arena then
 		return arena:GetPivot()
 	end
 	return CFrame.identity
+end
+
+local function currentRoomPlan(): FloorGenerator.RoomPlan?
+	local floorRooms = runPlan[flow.floor]
+	return if floorRooms then floorRooms[flow.room] else nil
 end
 
 local function setBlastDoorOpen(open: boolean, instant: boolean?)
@@ -65,7 +100,13 @@ local function setBlastDoorOpen(open: boolean, instant: boolean?)
 	if world then
 		world:SetAttribute("DoorOpen", open)
 	end
-	local arena = world and world:FindFirstChild(Config.ARENA_MODEL)
+	local arena = getActiveArena()
+	if arena ~= doorArenaRef then
+		doorArenaRef = arena
+		doorLeftClosed = nil
+		doorRightClosed = nil
+		doorStatusBaseColor = nil
+	end
 	local blastDoor = arena and arena:FindFirstChild("BlastDoor")
 	if not blastDoor then
 		return
@@ -118,12 +159,17 @@ local function syncWorldAttributes()
 	if not world then
 		return
 	end
-	local roomDef = Config.FLOOR_ROOMS[flow.room]
+	local roomDef = currentRoomPlan()
+	local floorDef = Config.FLOORS[flow.floor]
 	local summary = RunFlow.summary(flow, now())
 	world:SetAttribute("Floor", flow.floor)
+	world:SetAttribute("FloorCount", flow.floorCount)
+	world:SetAttribute("FloorName", if floorDef then floorDef.name else `PISO {flow.floor}`)
 	world:SetAttribute("Room", flow.room)
 	world:SetAttribute("RoomCount", flow.roomCount)
+	world:SetAttribute("TotalRoomCount", summary.totalRoomCount)
 	world:SetAttribute("RoomName", if roomDef then roomDef.name else `SALA {flow.room}`)
+	world:SetAttribute("IsBossRoom", if roomDef then roomDef.isBossRoom else false)
 	world:SetAttribute("RunState", flow.status)
 	world:SetAttribute("RunStartedAt", flow.startedAt)
 	world:SetAttribute("RunElapsed", math.floor(summary.elapsedSeconds))
@@ -163,11 +209,14 @@ local function beginCurrentRoom(myGen: number)
 	if runGeneration ~= myGen or flow.status ~= "fighting" then
 		return
 	end
-	local roomDef = Config.FLOOR_ROOMS[flow.room]
+	local roomDef = currentRoomPlan()
 	if not roomDef then
 		return
 	end
-	setBlastDoorOpen(false, false)
+	if worldBuilder and worldBuilder.swapArena then
+		worldBuilder.swapArena(world, roomDef.arena)
+	end
+	setBlastDoorOpen(false, true)
 	syncWorldAttributes()
 
 	if roomDef.isBossRoom then
@@ -210,16 +259,29 @@ local function stepDoorTrigger()
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+		if humanoid and humanoid.Health > 0 and player:GetAttribute("Downed") ~= true and root and root:IsA("BasePart") then
 			if RunFlow.inDoorZone(root.Position) then
-				-- Player stepped through the opened North Blast Door: advance cleanly to next room!
+				-- Player stepped through the opened North Blast Door: advance cleanly!
+				local crossingFloor = RunFlow.isFloorBoundary(flow)
+				if reviveDownedAll then
+					reviveDownedAll()
+				end
 				if dropService then
 					dropService.clear()
 				end
 				if combatService then
 					combatService.clear()
 				end
+				-- Floor exit (Floor N Room 5 -> Floor N+1 Room 1): randomly resolve any queued
+				-- unpicked upgrades per plans/gdd/systems.md so nobody carries queues across floors.
+				if crossingFloor and upgradeService then
+					upgradeService.autoResolveAll()
+				end
 				flow = RunFlow.advanceRoom(flow)
+				local nextDef = currentRoomPlan()
+				if nextDef and worldBuilder and worldBuilder.swapArena then
+					worldBuilder.swapArena(world, nextDef.arena)
+				end
 				repositionPlayersToSpawn(false)
 				beginCurrentRoom(runGeneration)
 				return
@@ -229,7 +291,14 @@ local function stepDoorTrigger()
 end
 
 function RunService.isPaused(): boolean
+	if isHubMode and isHubMode() then
+		return true
+	end
 	return flow.status == "preparing" or flow.status == "victory" or flow.status == "defeat"
+end
+
+function RunService.isInRun(): boolean
+	return flow.status == "fighting" or flow.status == "transition"
 end
 
 function RunService.getDifficulty(): string
@@ -245,9 +314,19 @@ function RunService.onEnemyKilled()
 	end
 end
 
--- Remote "ChooseDifficulty(diffId)". Allowed only on the start screen (`preparing`).
-function RunService.chooseDifficulty(_player: Player, diffId: string)
-	if not Difficulty.isValid(diffId) or flow.status ~= "preparing" then
+-- Remote "ChooseDifficulty(diffId)". In Hub mode delegates to PartyService; on the Run start
+-- screen (`preparing`) sets the run's difficulty directly.
+function RunService.chooseDifficulty(player: Player, diffId: string)
+	if not Difficulty.isValid(diffId) then
+		return
+	end
+	if isHubMode and isHubMode() then
+		if onHubDifficulty then
+			onHubDifficulty(player, diffId)
+		end
+		return
+	end
+	if flow.status ~= "preparing" then
 		return
 	end
 	currentDifficulty = diffId
@@ -256,7 +335,7 @@ function RunService.chooseDifficulty(_player: Player, diffId: string)
 	end
 end
 
--- Starts or restarts a full 5-room run from Room 1 with fresh starter 1-of-3 offers.
+-- Starts or restarts a full 5-floor randomized run from Floor 1 Room 1 with fresh starter offers.
 local function launchFreshRun()
 	runGeneration += 1
 	local myGen = runGeneration
@@ -273,56 +352,128 @@ local function launchFreshRun()
 	if upgradeService then
 		upgradeService.resetAll()
 	end
+	if resetReviveAll then
+		resetReviveAll()
+	end
+	runPlan = FloorGenerator.generateRun()
+	flow = RunFlow.start(RunFlow.initial(Config.ROOMS_PER_FLOOR, Config.FLOORS_PER_RUN), now())
+	local firstDef = currentRoomPlan()
+	if firstDef and worldBuilder and worldBuilder.swapArena then
+		worldBuilder.swapArena(world, firstDef.arena)
+	end
 	setBlastDoorOpen(false, true)
 	repositionPlayersToSpawn(true)
-
-	flow = RunFlow.start(RunFlow.initial(Config.ROOMS_PER_FLOOR), now())
 	syncWorldAttributes()
 
-	-- Zero-pause starter 1-of-3 ability offer right as Room 1 opens.
+	-- Zero-pause starter 1-of-3 ability offer right as Floor 1 Room 1 opens.
 	if upgradeService then
 		upgradeService.offerStarterAll()
 	end
 	beginCurrentRoom(myGen)
 end
 
--- Remote "StartRun()". Starts the run from the initial Difficulty screen.
-function RunService.startRun(_player: Player)
+-- Called by Hub/Teleport local fallback (or reserved Run server auto-launch) to begin a run.
+function RunService.launchFromHub(diffId: string?)
+	if Difficulty.isValid(diffId) then
+		currentDifficulty = diffId :: string
+	end
+	launchFreshRun()
+end
+
+-- Stops any active run cleanly and transitions back to `preparing` (used when returning to Hub
+-- locally in Studio or cleaning up).
+function RunService.resetToPreparing()
+	runGeneration += 1
+	waveDirector.stop()
+	if enemyService then
+		enemyService.clear()
+	end
+	if dropService then
+		dropService.clear()
+	end
+	if combatService then
+		combatService.clear()
+	end
+	if upgradeService then
+		upgradeService.resetAll()
+	end
+	if resetReviveAll then
+		resetReviveAll()
+	end
+	flow = RunFlow.initial(Config.ROOMS_PER_FLOOR, Config.FLOORS_PER_RUN)
+	setBlastDoorOpen(false, true)
+	syncWorldAttributes()
+end
+
+-- Triggers full-squad wipe (called by Humanoid.Died fallback or ReviveService when all teammates
+-- are downed / last standing teammate disconnects).
+function RunService.triggerWipe()
+	if flow.status ~= "fighting" and flow.status ~= "transition" then
+		return
+	end
+	runGeneration += 1
+	waveDirector.stop()
+	if enemyService then
+		enemyService.clear()
+	end
+	if dropService then
+		dropService.clear()
+	end
+	if combatService then
+		combatService.clear()
+	end
+	if upgradeService then
+		upgradeService.resetAll()
+	end
+	if resetReviveAll then
+		resetReviveAll()
+	end
+	setBlastDoorOpen(false, false)
+	flow = RunFlow.onWipe(flow, now())
+	syncWorldAttributes()
+end
+
+-- Remote "StartRun()". In Hub mode forwards to PartyService.requestLaunch; in Run mode starts
+-- from the preparing screen.
+function RunService.startRun(player: Player)
+	if isHubMode and isHubMode() then
+		if onHubStartRequest then
+			onHubStartRequest(player)
+		end
+		return
+	end
 	if flow.status ~= "preparing" then
 		return
 	end
 	launchFreshRun()
 end
 
--- Remote "RetryRun()". Restarts from Room 1 after Victory or Defeat.
+-- Remote "RetryRun()". Restarts from Floor 1 Room 1 after Victory or Defeat.
 function RunService.retryRun(_player: Player)
+	if isHubMode and isHubMode() then
+		return
+	end
 	if flow.status ~= "victory" and flow.status ~= "defeat" then
 		return
 	end
 	launchFreshRun()
 end
 
+-- Remote "ReturnToHub()". Returns from RunResult (or active run) back to the Hub place/bay.
+function RunService.returnToHub(player: Player)
+	if isHubMode and isHubMode() then
+		return
+	end
+	if onReturnHubRequest then
+		onReturnHubRequest(player)
+	end
+end
+
 local function watchCharacter(character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.Died:Connect(function()
 		if (flow.status == "fighting" or flow.status == "transition") and not anyoneAlive() then
-			runGeneration += 1
-			waveDirector.stop()
-			if enemyService then
-				enemyService.clear()
-			end
-			if dropService then
-				dropService.clear()
-			end
-			if combatService then
-				combatService.clear()
-			end
-			if upgradeService then
-				upgradeService.resetAll()
-			end
-			setBlastDoorOpen(false, false)
-			flow = RunFlow.onWipe(flow, now())
-			syncWorldAttributes()
+			RunService.triggerWipe()
 		end
 	end)
 end
@@ -332,24 +483,57 @@ local function watchPlayer(player: Player)
 	if player.Character then
 		task.spawn(watchCharacter, player.Character)
 	end
+	-- In a live reserved Run server (`ServerMode == "run"`), read the party's teleport difficulty
+	-- from the first arriving player and auto-start once they load in.
+	if (not isHubMode or not isHubMode()) and flow.status == "preparing" and getTeleportDifficulty then
+		local tpDiff = getTeleportDifficulty(player)
+		if Difficulty.isValid(tpDiff) then
+			currentDifficulty = tpDiff :: string
+			syncWorldAttributes()
+			task.delay(1.0, function()
+				if flow.status == "preparing" and (not isHubMode or not isHubMode()) then
+					launchFreshRun()
+				end
+			end)
+		end
+	end
 end
 
 function RunService.start(dependencies: {
 	world: Instance,
+	worldBuilder: any?,
 	waveDirector: any,
 	combatService: any,
 	dropService: any,
 	enemyService: any,
 	upgradeService: any,
+	isHubMode: (() -> boolean)?,
+	onHubDifficulty: ((Player, string) -> ())?,
+	onHubStartRequest: ((Player) -> ())?,
+	onReturnHubRequest: ((Player) -> ())?,
+	getTeleportDifficulty: ((Player) -> string?)?,
+	isAnyoneStanding: (() -> boolean)?,
+	resetReviveAll: (() -> ())?,
+	reviveDownedAll: (() -> ())?,
 })
 	world = dependencies.world
+	worldBuilder = dependencies.worldBuilder
 	waveDirector = dependencies.waveDirector
 	combatService = dependencies.combatService
 	dropService = dependencies.dropService
 	enemyService = dependencies.enemyService
 	upgradeService = dependencies.upgradeService
+	isHubMode = dependencies.isHubMode
+	onHubDifficulty = dependencies.onHubDifficulty
+	onHubStartRequest = dependencies.onHubStartRequest
+	onReturnHubRequest = dependencies.onReturnHubRequest
+	getTeleportDifficulty = dependencies.getTeleportDifficulty
+	isAnyoneStandingFn = dependencies.isAnyoneStanding
+	resetReviveAll = dependencies.resetReviveAll
+	reviveDownedAll = dependencies.reviveDownedAll
 
-	flow = RunFlow.initial(Config.ROOMS_PER_FLOOR)
+	runPlan = FloorGenerator.generateRun()
+	flow = RunFlow.initial(Config.ROOMS_PER_FLOOR, Config.FLOORS_PER_RUN)
 	currentDifficulty = Config.DEFAULT_DIFFICULTY
 	setBlastDoorOpen(false, true)
 	syncWorldAttributes()

@@ -55,6 +55,8 @@ local ROOM_ATTRIBUTES = {
 	"BossName",
 	"BossHealth",
 	"BossMaxHealth",
+	"BossPhase",
+	"ServerMode",
 }
 
 -- 0 just used, 1 ready, from a ready-at time in server seconds and the cooldown's length.
@@ -730,6 +732,88 @@ local function BuffChip(props)
 	})
 end
 
+local function useSquadVitals(localPlayer: Player)
+	local function snapshot()
+		local mates = {}
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= localPlayer then
+				local hp = p:GetAttribute("Health")
+				local maxHp = p:GetAttribute("MaxHealth")
+				local downed = p:GetAttribute("Downed") == true
+				local prog = p:GetAttribute("ReviveProgress")
+				local grabbed = p:GetAttribute("Grabbed") == true
+				table.insert(mates, {
+					userId = p.UserId,
+					name = p.DisplayName,
+					health = if type(hp) == "number" then hp else 0,
+					maxHealth = if type(maxHp) == "number" and maxHp > 0 then maxHp else Config.PLAYER_MAX_HEALTH,
+					downed = downed,
+					reviveProgress = if type(prog) == "number" then math.clamp(prog, 0, 1) else 0,
+					grabbed = grabbed,
+				})
+			end
+		end
+		table.sort(mates, function(a, b)
+			return a.userId < b.userId
+		end)
+		return mates
+	end
+
+	local mates, setMates = React.useState(snapshot)
+
+	React.useEffect(function()
+		local conns: { RBXScriptConnection } = {}
+		local pConns: { [Player]: { RBXScriptConnection } } = {}
+
+		local function refresh()
+			setMates(snapshot())
+		end
+
+		local function watch(p: Player)
+			if p == localPlayer then
+				return
+			end
+			local list: { RBXScriptConnection } = {}
+			pConns[p] = list
+			for _, attr in ipairs({ "Health", "MaxHealth", "Downed", "ReviveProgress", "Grabbed" }) do
+				table.insert(list, p:GetAttributeChangedSignal(attr):Connect(refresh))
+			end
+		end
+
+		for _, p in ipairs(Players:GetPlayers()) do
+			watch(p)
+		end
+		table.insert(conns, Players.PlayerAdded:Connect(function(p)
+			watch(p)
+			refresh()
+		end))
+		table.insert(conns, Players.PlayerRemoving:Connect(function(p)
+			local list = pConns[p]
+			if list then
+				for _, c in ipairs(list) do
+					c:Disconnect()
+				end
+				pConns[p] = nil
+			end
+			task.defer(refresh)
+		end))
+		refresh()
+
+		return function()
+			for _, c in ipairs(conns) do
+				c:Disconnect()
+			end
+			for _, list in pairs(pConns) do
+				for _, c in ipairs(list) do
+					c:Disconnect()
+				end
+			end
+		end
+	end, {})
+
+	return mates
+end
+
 local function CombatHud(props)
 	local player = Players.LocalPlayer
 	local metrics = Scaled.useLayout()
@@ -741,7 +825,10 @@ local function CombatHud(props)
 	local grabbed = hooks.useAttribute(player, "Grabbed") == true
 	local grabProgress = hooks.useAttribute(player, "GrabProgress") or 0
 	local grabGoal = hooks.useAttribute(player, "GrabGoal") or Config.GRAB_ESCAPE_PRESSES
+	local downed = hooks.useAttribute(player, "Downed") == true
+	local reviveProgress = hooks.useAttribute(player, "ReviveProgress") or 0
 	local room = hooks.useAttributes(props.world, ROOM_ATTRIBUTES)
+	local squadMates = useSquadVitals(player)
 	local activeSlot = hooks.useAtom(AbilityStore.slot)
 	local hasDoubleJump = hooks.useAttribute(player, "HasDoubleJump") == true
 	local hasDoubleDash = hooks.useAttribute(player, "HasDoubleDash") == true
@@ -853,8 +940,11 @@ local function CombatHud(props)
 		setProtectBuffRemain(remainingSeconds(protectBuffUntil, now))
 
 		if player:GetAttribute("ChargingHeavy") == true then
+			local heavyMult = player:GetAttribute("UpgradeHeavyChargeMult")
+			local chargeSeconds = Config.HEAVY_CHARGE_SECONDS
+				* (if type(heavyMult) == "number" and heavyMult > 0 then heavyMult else 1)
 			setHeavyCharge(
-				Melee.chargeProgress(player:GetAttribute("HeavyChargeStart"), now, Config.HEAVY_CHARGE_SECONDS)
+				Melee.chargeProgress(player:GetAttribute("HeavyChargeStart"), now, chargeSeconds)
 			)
 		else
 			setHeavyCharge(0)
@@ -956,10 +1046,94 @@ local function CombatHud(props)
 	local bossName = if type(room.BossName) == "string" and room.BossName ~= "" then room.BossName else nil
 	local bossHealth = if type(room.BossHealth) == "number" then room.BossHealth else 0
 	local bossMaxHealth = if type(room.BossMaxHealth) == "number" and room.BossMaxHealth > 0 then room.BossMaxHealth else 0
+	local bossPhase = if type(room.BossPhase) == "number" then math.floor(room.BossPhase) else 1
 	local showBossBar = bossName ~= nil and bossMaxHealth > 0 and bossHealth > 0
 	local bossRatio = if showBossBar then math.clamp(bossHealth / bossMaxHealth, 0, 1) else 0
+	local bossLabel = if bossName ~= nil
+		then (if bossPhase >= 2 then `UNIT // {bossName}  ·  FASE {bossPhase}` else `UNIT // {bossName}`)
+		else ""
 	local bossWidth = math.min(if metrics.compact then 280 else 440, metrics.room.X - 2 * ui.MARGIN)
 	local urgentOffset = if showBossBar then urgentBottom - 62 else urgentBottom
+
+	if room.ServerMode == "hub" then
+		return nil
+	end
+
+	-- Co-op Squad Vitals strips under top-left Vitals (`HS-30`).
+	local squadStripChildren: { [string]: any }? = nil
+	if #squadMates > 0 then
+		squadStripChildren = {
+			Stack = React.createElement("UIListLayout", {
+				Padding = UDim.new(0, 4),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		}
+		for idx, mate in ipairs(squadMates) do
+			local ratio = if mate.downed
+				then mate.reviveProgress
+				else math.clamp(mate.health / math.max(mate.maxHealth, 1), 0, 1)
+			local tone = if mate.downed
+				then (if mate.reviveProgress > 0.01 then ui.VITAL else ui.STRIKE)
+				elseif mate.grabbed then ui.GRAB
+				else healthColor(ratio)
+			local statusTag = if mate.downed
+				then (if mate.reviveProgress > 0.01
+					then `REAN. {math.floor(mate.reviveProgress * 100)}%`
+					else "CAÍDO")
+				elseif mate.grabbed then "ATRAPADO"
+				else `{math.ceil(mate.health)}/{math.ceil(mate.maxHealth)}`
+			squadStripChildren[`Mate_{mate.userId}`] = React.createElement(ui.Panel, {
+				name = `SquadMate_{mate.userId}`,
+				order = idx,
+				size = UDim2.new(1, 0, 0, 0),
+				padding = 6,
+				accentColor = tone,
+				accent = "left",
+				accentWidth = 3,
+				strokeColor = if mate.downed then ui.STRIKE else ui.BORDER,
+			}, {
+				Stack = React.createElement("UIListLayout", {
+					Padding = UDim.new(0, 3),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+				Row = React.createElement("Frame", {
+					LayoutOrder = 1,
+					Size = UDim2.new(1, 0, 0, 13),
+					BackgroundTransparency = 1,
+				}, {
+					Name = React.createElement("TextLabel", {
+						Size = UDim2.fromScale(0.58, 1),
+						BackgroundTransparency = 1,
+						Font = ui.MONO_FONT,
+						TextSize = 10,
+						TextColor3 = ui.TEXT,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextTruncate = Enum.TextTruncate.AtEnd,
+						Text = mate.name,
+					}),
+					Status = React.createElement("TextLabel", {
+						AnchorPoint = Vector2.new(1, 0),
+						Position = UDim2.fromScale(1, 0),
+						Size = UDim2.fromScale(0.45, 1),
+						BackgroundTransparency = 1,
+						Font = ui.MONO_FONT,
+						TextSize = 10,
+						TextColor3 = tone,
+						TextXAlignment = Enum.TextXAlignment.Right,
+						Text = statusTag,
+					}),
+				}),
+				Bar = React.createElement(ProgressTrack, {
+					name = "MateHealthBar",
+					order = 2,
+					height = 6,
+					color = tone,
+					fill = UDim2.fromScale(ratio, 1),
+					ticks = 0,
+				}),
+			})
+		end
+	end
 
 	return React.createElement(Scaled.Frame, nil, {
 		-- Top-left: sharp Sector Hazard vitals plate + timed drop buffs stacked underneath so
@@ -1024,10 +1198,19 @@ local function CombatHud(props)
 					ticks = 3,
 				}),
 			}),
+			SquadVitals = if squadStripChildren
+				then React.createElement("Frame", {
+					Name = "SquadVitals",
+					LayoutOrder = 2,
+					Size = UDim2.new(1, 0, 0, 0),
+					AutomaticSize = Enum.AutomaticSize.Y,
+					BackgroundTransparency = 1,
+				}, squadStripChildren)
+				else nil,
 			PassivesRow = if hasDoubleJump or hasDoubleDash
 				then React.createElement("Frame", {
 					Name = "PassivesRow",
-					LayoutOrder = 2,
+					LayoutOrder = 3,
 					Size = UDim2.new(1, 0, 0, 20),
 					BackgroundTransparency = 1,
 				}, {
@@ -1203,9 +1386,9 @@ local function CombatHud(props)
 						BackgroundTransparency = 1,
 						Font = ui.DISPLAY_FONT,
 						TextSize = if metrics.compact then 12 else 14,
-						TextColor3 = ui.STRIKE,
+						TextColor3 = if bossPhase >= 2 then ui.HAZARD else ui.STRIKE,
 						TextXAlignment = Enum.TextXAlignment.Left,
-						Text = `UNIT // {bossName}`,
+						Text = bossLabel,
 					}),
 					Hp = React.createElement("TextLabel", {
 						AnchorPoint = Vector2.new(1, 0),
@@ -1230,7 +1413,60 @@ local function CombatHud(props)
 			})
 			else nil,
 
-		HeavyCharge = if chargingHeavy and not grabbed
+		DownedBanner = if downed
+			then React.createElement(ui.Panel, {
+				name = "DownedBanner",
+				width = urgentWidth,
+				padding = 10,
+				accentColor = if reviveProgress > 0.01 then ui.VITAL else ui.STRIKE,
+				accent = "left",
+				strokeColor = if reviveProgress > 0.01 then ui.VITAL else ui.STRIKE,
+				strokeThickness = 2,
+				anchorPoint = Vector2.new(0.5, 1),
+				position = UDim2.new(0.5, 0, 1, urgentOffset),
+			}, {
+				List = React.createElement("UIListLayout", {
+					Padding = UDim.new(0, 5),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+				Header = React.createElement("Frame", {
+					Size = UDim2.new(1, 0, 0, 16),
+					BackgroundTransparency = 1,
+					LayoutOrder = 1,
+				}, {
+					Title = React.createElement("TextLabel", {
+						Size = UDim2.fromScale(0.72, 1),
+						BackgroundTransparency = 1,
+						Font = ui.DISPLAY_FONT,
+						TextSize = 13,
+						TextColor3 = if reviveProgress > 0.01 then ui.VITAL else ui.STRIKE,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						Text = if reviveProgress > 0.01 then "REANIMACIÓN EN CURSO" else "CAÍDO — ESPERANDO ALIADO",
+					}),
+					Pct = React.createElement("TextLabel", {
+						AnchorPoint = Vector2.new(1, 0),
+						Position = UDim2.fromScale(1, 0),
+						Size = UDim2.fromScale(0.3, 1),
+						BackgroundTransparency = 1,
+						Font = ui.MONO_FONT,
+						TextSize = 12,
+						TextColor3 = ui.TEXT,
+						TextXAlignment = Enum.TextXAlignment.Right,
+						Text = `{math.floor(math.clamp(reviveProgress, 0, 1) * 100)}%`,
+					}),
+				}),
+				Track = React.createElement(ProgressTrack, {
+					name = "ReviveTrack",
+					order = 2,
+					height = 10,
+					color = if reviveProgress > 0.01 then ui.VITAL else ui.STRIKE,
+					fill = UDim2.fromScale(math.clamp(reviveProgress, 0, 1), 1),
+					ticks = 4,
+				}),
+			})
+			else nil,
+
+		HeavyCharge = if chargingHeavy and not grabbed and not downed
 			then React.createElement(ui.Panel, {
 				name = "HeavyCharge",
 				width = urgentWidth,

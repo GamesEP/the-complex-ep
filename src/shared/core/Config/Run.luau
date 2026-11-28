@@ -4,8 +4,8 @@
 local Config = {}
 
 Config.ROOMS_PER_FLOOR = 5
--- Vertical Slice ships 1 complete floor (5 rooms + Boss Oh). Phase 2 expands this to 5 floors.
-Config.FLOORS_PER_RUN = 1
+-- Full 5-floor run (Floor 1 warm-up; Floors 2..5 ending with Oh, My, Gon, OhMyGon — HS-12/HS-13).
+Config.FLOORS_PER_RUN = 5
 
 -- North Blast Door doorway trigger zone (arena-local coordinates in ComplexArena.rbxmx).
 Config.BLAST_DOOR_TRIGGER_Z = -60

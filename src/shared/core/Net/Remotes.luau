@@ -37,11 +37,24 @@ return {
 	Block = remote("Block"),
 	GrabEscape = remote("GrabEscape"),
 
-	-- Run start, retry, difficulty, and active ability dispatch.
+	-- Run start, retry, difficulty, return-to-hub, and active ability dispatch.
 	ChooseDifficulty = remote("ChooseDifficulty"),
 	StartRun = remote("StartRun"),
 	RetryRun = remote("RetryRun"),
+	ReturnToHub = remote("ReturnToHub"),
 	UseAbility = remote("UseAbility"),
+
+	-- Hub & Co-op Party lifecycle (docs/hub-and-party.md, plans/roadmap.md HS-25).
+	CreateParty = remote("CreateParty"),
+	SetPartyPrivacy = remote("SetPartyPrivacy"),
+	JoinParty = remote("JoinParty"),
+	InvitePlayer = remote("InvitePlayer"),
+	RespondInvite = remote("RespondInvite"),
+	LeaveParty = remote("LeaveParty"),
+	KickMember = remote("KickMember"),
+	-- Server -> one client push for private party invites, expirations, and launch/party notices.
+	-- No Contract entry: server -> client only (docs/net-contract.md).
+	PartyEvent = remote("PartyEvent"),
 	-- Zero-pause 1-of-3 run upgrades: client picks card 1..3 (or replaces slot 1..3); server
 	-- pushes active offer + queue depth to the owning player via `UpgradeOffer`.
 	PickUpgrade = remote("PickUpgrade"),

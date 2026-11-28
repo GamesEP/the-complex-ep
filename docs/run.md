@@ -1,22 +1,25 @@
-# Run loop (single-floor Vertical Slice)
+# Run loop (5-floor Horizontal Slice)
 
-How a 5-room run moves from the start screen to Boss Oh, Victory/Defeat, and Retry — and which module owns each piece of state. Design rules live in [`plans/gdd/loop.md`](../plans/gdd/loop.md) and [`plans/gdd/overview.md`](../plans/gdd/overview.md).
+How a 5-floor × 5-room run moves from the start screen through randomized encounters, dynamic arena swaps, Bosses **Oh / My / Gon / OhMyGon**, Victory/Defeat, and Retry — and which module owns each piece of state. Design rules live in [`plans/gdd/loop.md`](../plans/gdd/loop.md) and [`plans/gdd/overview.md`](../plans/gdd/overview.md).
 
 ## Modules
 
 | Module | Realm | Responsibility |
 |---|---|---|
-| [`Config/Run.luau`](../src/shared/core/Config/Run.luau) | Shared | `ROOMS_PER_FLOOR = 5`, `FLOORS_PER_RUN = 1`, `BLAST_DOOR_TRIGGER_Z = -60`, `BLAST_DOOR_TRIGGER_HALF_X = 12`, and the 5 authored `FLOOR_ROOMS` ending with Boss Oh in Room 5. |
-| [`RunFlow.luau`](../src/shared/features/run/RunFlow.luau) | Shared (pure) | Immutable state machine (`preparing` -> `fighting` -> `transition` -> `victory` / `defeat`), kill counter, summary metrics, and `inDoorZone(pos)`. Tested offline by `make test`. |
-| [`RunService.luau`](../src/server/features/run/RunService.luau) | Server | Owns active `RunFlow` state, Difficulty, `StartRun` / `RetryRun`, generation tokens (stopping stale wave loops), wipe detection, North Blast Door tweens (`ComplexArena.BlastDoor`), and `workspace.World` attributes. |
-| [`WaveDirector.luau`](../src/server/features/enemies/WaveDirector.luau) | Server | Executes the waves for the current room (`runRoom(waves, onRoomCleared)`) and aborts cleanly via generation tokens (`stop()`). |
+| [`Config/Run.luau`](../src/shared/core/Config/Run.luau) | Shared | `ROOMS_PER_FLOOR = 5`, `FLOORS_PER_RUN = 5`, `BLAST_DOOR_TRIGGER_Z = -60`, `BLAST_DOOR_TRIGGER_HALF_X = 12`. |
+| [`Config/Floors.luau`](../src/shared/core/Config/Floors.luau) | Shared | `MAX_ACTIVE_ENEMIES = 25` and the 5-floor encounter pools (`Config.FLOORS[1..5]`): Floor 1 warm-up (no boss), Floors 2–5 randomized rooms + Room 5 Boss (**Oh**, **My**, **Gon**, **OhMyGon**). |
+| [`FloorGenerator.luau`](../src/shared/features/run/FloorGenerator.luau) | Shared (pure) | Generates randomized 5×5 `RunPlan` with zero back-to-back duplicate rooms/arenas and enforces `MAX_ACTIVE_ENEMIES` cap (`capWave`). Tested offline by `make test`. |
+| [`RunFlow.luau`](../src/shared/features/run/RunFlow.luau) | Shared (pure) | Multi-floor immutable state machine (`preparing` -> `fighting` -> `transition` -> `victory` / `defeat`), `isFloorBoundary`, kill counter, summary metrics, and `inDoorZone(pos)`. Tested offline by `make test`. |
+| [`WorldBuilder.luau`](../src/server/features/world/WorldBuilder.luau) | Server | Mounts and swaps the 5 tracked `.rbxmx` arena layouts (`ComplexArena`, `ComplexArenaCross`, `ComplexArenaReactor`, `ComplexArenaCorridor`, `ComplexArenaVault`) safely via `swapArena` without dropping players. |
+| [`RunService.luau`](../src/server/features/run/RunService.luau) | Server | Owns active `RunFlow` + `RunPlan`, Difficulty, `StartRun` / `RetryRun`, arena swapping, floor-exit upgrade auto-resolve, generation tokens, wipe detection, North Blast Door tweens, and `workspace.World` attributes. |
+| [`WaveDirector.luau`](../src/server/features/enemies/WaveDirector.luau) | Server | Executes the waves for the current room (`runRoom(waves, onRoomCleared)`), enforces `MAX_ACTIVE_ENEMIES`, uses active arena obstacles, and aborts cleanly via generation tokens (`stop()`). |
 | [`ClassSelect.luau`](../src/client/features/classes/ui/ClassSelect.luau) | Client UI | Pre-run Difficulty + Start Run screen (visible only when `World.RunState == "preparing"`). |
-| [`RunResult.luau`](../src/client/features/run/ui/RunResult.luau) | Client UI | End-of-run Victory / Defeat summary plate with `REINTENTAR RUN` firing `RetryRun` (visible when `RunState == "victory" | "defeat"`). |
-| [`ArenaTheme.luau`](../src/client/features/world/ArenaTheme.luau) | Client | Shifts lighting, floor glow, and reactor mood by `Room`, `RunState`, and `Wave` (molten crimson for Boss Oh Room 5, emerald green while the North Blast Door is open or on Victory). |
+| [`RunResult.luau`](../src/client/features/run/ui/RunResult.luau) | Client UI | End-of-run Victory / Defeat summary plate displaying floor progress (`PISO 01..05`), total rooms (`0..25`), time, kills, and `REINTENTAR RUN`. |
+| [`ArenaTheme.luau`](../src/client/features/world/ArenaTheme.luau) | Client | Rebinds automatically on arena swaps and tweens lighting/neons across `Config.FLOOR_THEMES[1..5]` (with boss-room intensification and emerald cleared state). |
 
 ## Replicated `workspace.World` attributes
 
-- `Floor` (`number`), `Room` (`1..5`), `RoomCount` (`5`), `RoomName` (`string`)
+- `Floor` (`1..5`), `FloorCount` (`5`), `FloorName` (`string`), `Room` (`1..5`), `RoomCount` (`5`), `TotalRoomCount` (`25`), `RoomName` (`string`), `IsBossRoom` (`boolean`), `ArenaModel` (`string`)
 - `RunState` (`"preparing" | "fighting" | "transition" | "victory" | "defeat"`)
 - `DoorOpen` (`boolean`): `true` when the North Blast Door has slid open after a room clear
 - `Difficulty` (`"easy" | "normal" | "hard" | "deadzone"`)

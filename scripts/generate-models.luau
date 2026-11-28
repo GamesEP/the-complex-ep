@@ -3145,6 +3145,695 @@ local function buildEnemyContact(): any
 	return model
 end
 
+-- Boss "My" (Floor 3 Room 5, `HS-15`): agile violet/indigo & electric-cyan photonic blade titan
+-- (`size = 5.0 x 9.0 x 4.8`, feet planted at local Y = -4.5) with twin dorsal thruster wings
+-- and twin oversized forearm photonic scythe-blades.
+local function buildBossMy(): any
+	local model = Instance.new("Model")
+	model.Name = "BossMy"
+
+	local armorViolet = Color3.fromRGB(76, 42, 138)
+	local armorDark = Color3.fromRGB(28, 24, 46)
+	local steel = Color3.fromRGB(96, 106, 130)
+	local cyanGlow = Color3.fromRGB(70, 242, 255)
+	local magentaGlow = Color3.fromRGB(224, 78, 255)
+
+	local PIVOT_TORSO = CFrame.new(0, -0.7, 0)
+	local PIVOT_HEAD = CFrame.new(0, 2.0, -0.15)
+	local PIVOT_LEFT_LEG = CFrame.new(-0.9, -1.25, 0)
+	local PIVOT_RIGHT_LEG = CFrame.new(0.9, -1.25, 0)
+	local PIVOT_LEFT_ARM = CFrame.new(-2.05, 1.15, -0.1)
+	local PIVOT_RIGHT_ARM = CFrame.new(2.05, 1.15, -0.1)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(3.2, 2.8, 2.2),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorViolet,
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	body.Parent = model
+
+	local function addLimb(group: string, pivot: any, props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		shape: any?,
+		castShadow: boolean?,
+	})
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			shape = props.shape,
+			anchored = false,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+		rigJoint(body, p, pivot, group)
+	end
+
+	-- Sleek agile armored torso + photonic core chevron.
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TorsoCore",
+		size = Vector3.new(3.0, 2.7, 2.0),
+		cframe = CFrame.new(0, 0.25, 0),
+		color = armorViolet,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestPlate",
+		size = Vector3.new(2.6, 1.8, 0.6),
+		cframe = CFrame.new(0, 0.4, -1.0) * CFrame.Angles(math.rad(-10), 0, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "ChestCore",
+		size = Vector3.new(1.0, 1.0, 0.35),
+		cframe = CFrame.new(0, 0.5, -1.28) * CFrame.Angles(0, 0, math.rad(45)),
+		color = cyanGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "Pelvis",
+		size = Vector3.new(2.3, 0.85, 1.7),
+		cframe = CFrame.new(0, -1.15, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- Twin swept dorsal photonic thruster wings (signature silhouette from isometric camera).
+	for side = -1, 1, 2 do
+		local tag = if side < 0 then "Left" else "Right"
+		local wingCF = CFrame.new(side * 2.3, 1.35, 1.35) * CFrame.Angles(math.rad(-18), math.rad(side * -24), math.rad(side * -22))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}WingFrame`,
+			size = Vector3.new(3.6, 0.55, 1.25),
+			cframe = wingCF,
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}WingBlade`,
+			size = Vector3.new(4.2, 0.22, 0.72),
+			cframe = wingCF * CFrame.new(side * 0.4, 0.12, 0.65),
+			color = magentaGlow,
+			material = Enum.Material.Neon,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}WingJet`,
+			size = Vector3.new(1.2, 0.42, 0.42),
+			cframe = wingCF * CFrame.new(side * -0.9, -0.32, 0.35),
+			color = cyanGlow,
+			material = Enum.Material.Neon,
+		})
+	end
+
+	-- Long sleek runner legs (feet planted flush at local Y = -4.5).
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftLeg" else "rightLeg"
+		local pvt = if side < 0 then PIVOT_LEFT_LEG else PIVOT_RIGHT_LEG
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Thigh`,
+			size = Vector3.new(0.96, 1.75, 1.05),
+			cframe = CFrame.new(side * 0.9, -2.1, -0.1),
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Shin`,
+			size = Vector3.new(0.84, 1.65, 0.96),
+			cframe = CFrame.new(side * 0.9, -3.45, 0.08),
+			color = armorViolet,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Boot`,
+			size = Vector3.new(1.02, 0.55, 1.85),
+			cframe = CFrame.new(side * 0.9, -4.22, -0.25),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+	end
+
+	-- Narrow aerodynamic blade-helm with bright cyan visor crest.
+	addLimb("head", PIVOT_HEAD, {
+		name = "Head",
+		size = Vector3.new(1.75, 1.65, 1.95),
+		cframe = CFrame.new(0, 2.55, -0.15),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "HeadCrest",
+		size = Vector3.new(0.32, 1.05, 2.65),
+		cframe = CFrame.new(0, 3.55, 0.25) * CFrame.Angles(math.rad(-22), 0, 0),
+		color = magentaGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "Visor",
+		size = Vector3.new(1.55, 0.42, 0.32),
+		cframe = CFrame.new(0, 2.58, -1.08),
+		color = cyanGlow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Arms carrying twin oversized forearm photonic energy blades.
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftArm" else "rightArm"
+		local pvt = if side < 0 then PIVOT_LEFT_ARM else PIVOT_RIGHT_ARM
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Shoulder`,
+			size = Vector3.new(1.55, 1.25, 1.95),
+			cframe = CFrame.new(side * 2.1, 1.3, -0.05) * CFrame.Angles(0, 0, math.rad(side * -18)),
+			color = armorViolet,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Arm`,
+			size = Vector3.new(0.95, 1.9, 1.02),
+			cframe = CFrame.new(side * 2.35, 0.15, -0.65) * CFrame.Angles(math.rad(64), math.rad(side * -10), 0),
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}BladeSpine`,
+			size = Vector3.new(0.24, 0.45, 5.2),
+			cframe = CFrame.new(side * 2.52, -0.25, -3.55),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}BladeEdge`,
+			size = Vector3.new(0.16, 0.32, 5.55),
+			cframe = CFrame.new(side * 2.52, -0.58, -3.72),
+			color = if side < 0 then cyanGlow else magentaGlow,
+			material = Enum.Material.Neon,
+		})
+	end
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
+-- Boss "Gon" (Floor 4 Room 5, `HS-17`): heavy emerald-slate & bio-gold containment colossus
+-- (`size = 6.6 x 10.2 x 6.2`, feet planted at local Y = -5.1) with chest gravity core,
+-- twin dorsal containment mortar pylons, and heavy forearm emitter cannons.
+local function buildBossGon(): any
+	local model = Instance.new("Model")
+	model.Name = "BossGon"
+
+	local armorEmerald = Color3.fromRGB(36, 98, 72)
+	local armorDark = Color3.fromRGB(26, 38, 36)
+	local steel = Color3.fromRGB(84, 96, 98)
+	local hazard = Color3.fromRGB(235, 188, 42)
+	local emeraldGlow = Color3.fromRGB(72, 255, 138)
+	local limeGlow = Color3.fromRGB(185, 255, 65)
+
+	local PIVOT_TORSO = CFrame.new(0, -0.7, 0)
+	local PIVOT_HEAD = CFrame.new(0, 2.35, -0.15)
+	local PIVOT_LEFT_LEG = CFrame.new(-1.35, -1.45, 0)
+	local PIVOT_RIGHT_LEG = CFrame.new(1.35, -1.45, 0)
+	local PIVOT_LEFT_ARM = CFrame.new(-2.95, 1.3, 0)
+	local PIVOT_RIGHT_ARM = CFrame.new(2.95, 1.3, 0)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(4.4, 3.3, 3.2),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorEmerald,
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	body.Parent = model
+
+	local function addLimb(group: string, pivot: any, props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		shape: any?,
+		castShadow: boolean?,
+	})
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			shape = props.shape,
+			anchored = false,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+		rigJoint(body, p, pivot, group)
+	end
+
+	-- Massive armored containment torso + exposed glowing gravity core orb.
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TorsoCore",
+		size = Vector3.new(4.3, 3.2, 3.0),
+		cframe = CFrame.new(0, 0.35, 0),
+		color = armorEmerald,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "GravityOrb",
+		size = Vector3.new(1.85, 1.85, 1.85),
+		cframe = CFrame.new(0, 0.45, -1.25),
+		color = emeraldGlow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Ball,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "GravityRing",
+		size = Vector3.new(0.35, 2.6, 2.6),
+		cframe = CFrame.new(0, 0.45, -1.45) * CFrame.Angles(0, math.rad(90), 0),
+		color = hazard,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "Pelvis",
+		size = Vector3.new(3.5, 1.05, 2.4),
+		cframe = CFrame.new(0, -1.35, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- Twin dorsal containment mortar/gravity generator pylons.
+	for side = -1, 1, 2 do
+		local tag = if side < 0 then "Left" else "Right"
+		local pylonCF = CFrame.new(side * 1.65, 2.65, 1.45) * CFrame.Angles(math.rad(-20), 0, math.rad(side * -12))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}ContainmentTube`,
+			size = Vector3.new(3.6, 1.15, 1.15),
+			cframe = pylonCF * CFrame.Angles(0, 0, math.rad(90)),
+			color = steel,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}ContainmentGlow`,
+			size = Vector3.new(0.55, 1.42, 1.42),
+			cframe = pylonCF * CFrame.new(0, 1.15, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			color = limeGlow,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
+		})
+	end
+
+	-- Wide seismic legs (feet planted flush at local Y = -5.1).
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftLeg" else "rightLeg"
+		local pvt = if side < 0 then PIVOT_LEFT_LEG else PIVOT_RIGHT_LEG
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Leg`,
+			size = Vector3.new(1.55, 2.75, 1.75),
+			cframe = CFrame.new(side * 1.4, -2.95, 0),
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}KneeHazard`,
+			size = Vector3.new(1.65, 0.55, 0.55),
+			cframe = CFrame.new(side * 1.4, -2.65, -0.9),
+			color = hazard,
+			material = Enum.Material.SmoothPlastic,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Foot`,
+			size = Vector3.new(1.9, 0.82, 2.75),
+			cframe = CFrame.new(side * 1.4, -4.69, -0.35),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+	end
+
+	-- Armored containment dome helm with glowing triple-optic bar.
+	addLimb("head", PIVOT_HEAD, {
+		name = "Head",
+		size = Vector3.new(2.25, 1.85, 2.25),
+		cframe = CFrame.new(0, 2.75, -0.15),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "Visor",
+		size = Vector3.new(1.85, 0.52, 0.36),
+		cframe = CFrame.new(0, 2.78, -1.25),
+		color = emeraldGlow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Heavy emitter arms firing containment zones & gravity pulses.
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftArm" else "rightArm"
+		local pvt = if side < 0 then PIVOT_LEFT_ARM else PIVOT_RIGHT_ARM
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Shoulder`,
+			size = Vector3.new(2.1, 1.85, 2.45),
+			cframe = CFrame.new(side * 3.05, 1.45, 0),
+			color = armorEmerald,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Cannon`,
+			size = Vector3.new(3.4, 1.35, 1.35),
+			cframe = CFrame.new(side * 3.35, -0.35, -1.65) * CFrame.Angles(0, math.rad(90), 0),
+			color = armorDark,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}EmitterRing`,
+			size = Vector3.new(0.42, 1.58, 1.58),
+			cframe = CFrame.new(side * 3.35, -0.35, -3.15) * CFrame.Angles(0, math.rad(90), 0),
+			color = limeGlow,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
+		})
+	end
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
+-- Final Fused Boss "OhMyGon" (Floor 5 Room 5, `HS-19`): colossal 12.2-stud fusion visibly
+-- combining Oh's crimson titan armor + right-hand Seismic Maul, My's violet-cyan dorsal wings
+-- + left-hand Photonic Blade, and Gon's emerald-gold gravity halo & shoulder pylons.
+-- Feet planted flush at local Y = -6.1.
+local function buildBossOhMyGon(): any
+	local model = Instance.new("Model")
+	model.Name = "BossOhMyGon"
+
+	local armorCrimson = Color3.fromRGB(168, 34, 46)
+	local armorDark = Color3.fromRGB(28, 28, 38)
+	local steel = Color3.fromRGB(98, 106, 120)
+	local goldGlow = Color3.fromRGB(255, 212, 72)
+	local cyanGlow = Color3.fromRGB(70, 242, 255)
+	local emeraldGlow = Color3.fromRGB(85, 255, 138)
+	local coreRed = Color3.fromRGB(255, 62, 54)
+
+	local PIVOT_TORSO = CFrame.new(0, -0.8, 0)
+	local PIVOT_HEAD = CFrame.new(0, 2.95, -0.15)
+	local PIVOT_LEFT_LEG = CFrame.new(-1.55, -1.75, 0)
+	local PIVOT_RIGHT_LEG = CFrame.new(1.55, -1.75, 0)
+	local PIVOT_LEFT_ARM = CFrame.new(-3.45, 1.75, 0)
+	local PIVOT_RIGHT_ARM = CFrame.new(3.45, 1.75, 0)
+
+	local body = makePart({
+		name = "Body",
+		size = Vector3.new(4.9, 3.8, 3.4),
+		cframe = CFrame.new(0, 0, 0),
+		color = armorCrimson,
+		transparency = 1,
+		anchored = true,
+		castShadow = false,
+	})
+	body.Parent = model
+
+	local function addLimb(group: string, pivot: any, props: {
+		name: string,
+		size: any,
+		cframe: any,
+		color: any,
+		material: any?,
+		shape: any?,
+		castShadow: boolean?,
+	})
+		local p = makePart({
+			name = props.name,
+			size = props.size,
+			cframe = props.cframe,
+			color = props.color,
+			material = props.material,
+			shape = props.shape,
+			anchored = false,
+			castShadow = props.castShadow,
+		})
+		p.Parent = model
+		rigJoint(body, p, pivot, group)
+	end
+
+	-- Fused Titan Torso: Oh's crimson reactor + Gon's emerald containment ring + gold crown trim.
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TorsoCore",
+		size = Vector3.new(4.8, 3.7, 3.2),
+		cframe = CFrame.new(0, 0.55, 0),
+		color = armorCrimson,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TriCoreCenter",
+		size = Vector3.new(1.9, 1.9, 1.9),
+		cframe = CFrame.new(0, 0.7, -1.35),
+		color = goldGlow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Ball,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "TriCoreHalo",
+		size = Vector3.new(0.4, 3.4, 3.4),
+		cframe = CFrame.new(0, 0.7, 1.95) * CFrame.Angles(0, math.rad(90), 0),
+		color = emeraldGlow,
+		material = Enum.Material.Neon,
+		shape = Enum.PartType.Cylinder,
+	})
+	addLimb("torso", PIVOT_TORSO, {
+		name = "Pelvis",
+		size = Vector3.new(3.8, 1.2, 2.6),
+		cframe = CFrame.new(0, -1.55, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+
+	-- My's twin photonic wings + Gon's twin dorsal gravity pylons fused on the back.
+	for side = -1, 1, 2 do
+		local tag = if side < 0 then "Left" else "Right"
+		local wingCF = CFrame.new(side * 3.2, 2.35, 1.65) * CFrame.Angles(math.rad(-16), math.rad(side * -22), math.rad(side * -18))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}FusionWing`,
+			size = Vector3.new(4.8, 0.65, 1.4),
+			cframe = wingCF,
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}FusionWingGlow`,
+			size = Vector3.new(5.4, 0.28, 0.8),
+			cframe = wingCF * CFrame.new(side * 0.45, 0.14, 0.72),
+			color = cyanGlow,
+			material = Enum.Material.Neon,
+		})
+		local pylonCF = CFrame.new(side * 1.95, 3.5, 1.35) * CFrame.Angles(math.rad(-18), 0, math.rad(side * -14))
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}FusionPylon`,
+			size = Vector3.new(3.2, 0.95, 0.95),
+			cframe = pylonCF * CFrame.Angles(0, 0, math.rad(90)),
+			color = steel,
+			material = Enum.Material.Metal,
+			shape = Enum.PartType.Cylinder,
+			castShadow = true,
+		})
+		addLimb("torso", PIVOT_TORSO, {
+			name = `{tag}FusionPylonGlow`,
+			size = Vector3.new(0.45, 1.25, 1.25),
+			cframe = pylonCF * CFrame.new(0, 1.0, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			color = emeraldGlow,
+			material = Enum.Material.Neon,
+			shape = Enum.PartType.Cylinder,
+		})
+	end
+
+	-- Titan Legs (feet planted flush at local Y = -6.1).
+	for side = -1, 1, 2 do
+		local grp = if side < 0 then "leftLeg" else "rightLeg"
+		local pvt = if side < 0 then PIVOT_LEFT_LEG else PIVOT_RIGHT_LEG
+		local tag = if side < 0 then "Left" else "Right"
+		addLimb(grp, pvt, {
+			name = `{tag}Leg`,
+			size = Vector3.new(1.75, 3.45, 1.9),
+			cframe = CFrame.new(side * 1.55, -3.55, 0),
+			color = armorDark,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}KneeGlow`,
+			size = Vector3.new(1.85, 0.45, 0.45),
+			cframe = CFrame.new(side * 1.55, -3.15, -0.95),
+			color = goldGlow,
+			material = Enum.Material.Neon,
+		})
+		addLimb(grp, pvt, {
+			name = `{tag}Foot`,
+			size = Vector3.new(2.15, 0.92, 3.1),
+			cframe = CFrame.new(side * 1.55, -5.64, -0.4),
+			color = steel,
+			material = Enum.Material.Metal,
+			castShadow = true,
+		})
+	end
+
+	-- Fused Triad Crown Head (crimson/cyan/emerald triad visor).
+	addLimb("head", PIVOT_HEAD, {
+		name = "Head",
+		size = Vector3.new(2.35, 2.05, 2.35),
+		cframe = CFrame.new(0, 3.45, -0.15),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "CrownCrest",
+		size = Vector3.new(0.45, 1.4, 2.7),
+		cframe = CFrame.new(0, 4.75, 0.15) * CFrame.Angles(math.rad(-18), 0, 0),
+		color = goldGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("head", PIVOT_HEAD, {
+		name = "VisorCenter",
+		size = Vector3.new(1.95, 0.54, 0.36),
+		cframe = CFrame.new(0, 3.48, -1.3),
+		color = coreRed,
+		material = Enum.Material.Neon,
+	})
+
+	-- Left Arm: My's Oversized Photonic Energy Blade.
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftShoulder",
+		size = Vector3.new(2.25, 2.0, 2.55),
+		cframe = CFrame.new(-3.55, 1.95, 0),
+		color = Color3.fromRGB(76, 42, 138),
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftArm",
+		size = Vector3.new(1.45, 2.4, 1.5),
+		cframe = CFrame.new(-3.8, 0.35, -0.8) * CFrame.Angles(math.rad(58), 0, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftFusionBladeSpine",
+		size = Vector3.new(0.32, 0.62, 6.2),
+		cframe = CFrame.new(-3.95, -0.3, -4.35),
+		color = steel,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("leftArm", PIVOT_LEFT_ARM, {
+		name = "LeftFusionBladeEdge",
+		size = Vector3.new(0.22, 0.44, 6.6),
+		cframe = CFrame.new(-3.95, -0.75, -4.55),
+		color = cyanGlow,
+		material = Enum.Material.Neon,
+	})
+
+	-- Right Arm: Oh's Titanic Seismic Maul + Emerald Reactor Core.
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightShoulder",
+		size = Vector3.new(2.35, 2.1, 2.6),
+		cframe = CFrame.new(3.55, 1.95, 0),
+		color = armorCrimson,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "RightArm",
+		size = Vector3.new(1.55, 2.45, 1.6),
+		cframe = CFrame.new(3.85, 0.35, -0.8) * CFrame.Angles(math.rad(55), 0, 0),
+		color = armorDark,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	local mBase = CFrame.new(3.95, -0.45, -4.85) * CFrame.Angles(math.rad(-8), 0, 0)
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "FusionMaulShaft",
+		size = Vector3.new(7.4, 0.6, 0.6),
+		cframe = mBase * CFrame.Angles(0, math.rad(90), 0),
+		color = steel,
+		material = Enum.Material.Metal,
+		shape = Enum.PartType.Cylinder,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "FusionMaulHeadA",
+		size = Vector3.new(2.55, 2.55, 3.25),
+		cframe = mBase * CFrame.new(0, 0, -2.9),
+		color = armorCrimson,
+		material = Enum.Material.Metal,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "FusionMaulHeadB",
+		size = Vector3.new(2.55, 2.55, 3.25),
+		cframe = mBase * CFrame.new(0, 0, -2.9) * CFrame.Angles(0, 0, math.rad(45)),
+		color = armorDark,
+		material = Enum.Material.DiamondPlate,
+		castShadow = true,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "FusionMaulCore",
+		size = Vector3.new(2.9, 2.9, 0.8),
+		cframe = mBase * CFrame.new(0, 0, -2.9) * CFrame.Angles(0, 0, math.rad(22.5)),
+		color = goldGlow,
+		material = Enum.Material.Neon,
+	})
+	addLimb("rightArm", PIVOT_RIGHT_ARM, {
+		name = "FusionMaulTip",
+		size = Vector3.new(0.95, 0.95, 1.55),
+		cframe = mBase * CFrame.new(0, 0, -5.25) * CFrame.Angles(0, 0, math.rad(45)),
+		color = coreRed,
+		material = Enum.Material.Neon,
+	})
+
+	model.PrimaryPart = body
+	model.WorldPivot = CFrame.new(0, 0, 0)
+	return model
+end
+
 writeModel("TestSword.rbxmx", buildTestSword())
 writeModel("WeaponGreatsword.rbxmx", buildGreatsword())
 writeModel("WeaponSpikedMace.rbxmx", buildSpikedMace())
@@ -3169,3 +3858,6 @@ writeModel("EnemyGrabber.rbxmx", buildEnemyGrabber())
 writeModel("EnemyArea.rbxmx", buildEnemyArea())
 writeModel("EnemyContact.rbxmx", buildEnemyContact())
 writeModel("BossOh.rbxmx", buildBossOh())
+writeModel("BossMy.rbxmx", buildBossMy())
+writeModel("BossGon.rbxmx", buildBossGon())
+writeModel("BossOhMyGon.rbxmx", buildBossOhMyGon())

@@ -22,7 +22,7 @@ local Scaled = require(Client.ui.DesignScale)
 local hooks = require(Client.ui.hooks)
 local ui = require(Client.ui.theme.Widgets)
 
-local RESULT_ATTRIBUTES = { "RunState", "RoomsCleared", "RoomCount", "RunElapsed", "RunKills", "Difficulty" }
+local RESULT_ATTRIBUTES = { "RunState", "Floor", "FloorCount", "RoomsCleared", "RoomCount", "TotalRoomCount", "RunElapsed", "RunKills", "Difficulty" }
 
 local function formatDuration(seconds: number): string
 	local total = math.max(math.floor(seconds + 0.5), 0)
@@ -79,11 +79,16 @@ local function RunResult(props)
 	local isVictory = runState == "victory"
 	local accent = if isVictory then ui.VITAL else ui.STRIKE
 	local diff = Difficulty.get(state.Difficulty)
+	local floor = if type(state.Floor) == "number" then math.floor(state.Floor) else 1
+	local floorCount = if type(state.FloorCount) == "number" then math.floor(state.FloorCount) else Config.FLOORS_PER_RUN
 	local roomsCleared = if type(state.RoomsCleared) == "number" then math.floor(state.RoomsCleared) else 0
-	local roomCount = if type(state.RoomCount) == "number" then math.floor(state.RoomCount) else Config.ROOMS_PER_FLOOR
+	local totalRoomCount = if type(state.TotalRoomCount) == "number"
+		then math.floor(state.TotalRoomCount)
+		else Config.ROOMS_PER_FLOOR * floorCount
 	local elapsed = if type(state.RunElapsed) == "number" then state.RunElapsed else 0
 	local kills = if type(state.RunKills) == "number" then math.floor(state.RunKills) else 0
 	local panelWidth = math.min(if metrics.compact then 320 else 420, metrics.room.X - 2 * ui.MARGIN)
+	local floorTag = string.format("PISO %02d/%02d", floor, floorCount)
 
 	local function onRetry()
 		if pending then
@@ -91,6 +96,14 @@ local function RunResult(props)
 		end
 		setPending(true)
 		Remotes.RetryRun:FireServer()
+	end
+
+	local function onReturnHub()
+		if pending then
+			return
+		end
+		setPending(true)
+		Remotes.ReturnToHub:FireServer()
 	end
 
 	return React.createElement(Scaled.Frame, nil, {
@@ -127,7 +140,7 @@ local function RunResult(props)
 				Font = ui.MONO_FONT,
 				TextSize = 12,
 				TextColor3 = accent,
-				Text = if isVictory then "PISO 01  //  AMENAZA NEUTRALIZADA" else "PISO 01  //  ESCUADRÓN DERROTADO",
+				Text = if isVictory then `{floorTag}  //  AMENAZA NEUTRALIZADA` else `{floorTag}  //  ESCUADRÓN DERROTADO`,
 			}),
 			Heading = React.createElement("TextLabel", {
 				LayoutOrder = 2,
@@ -136,7 +149,7 @@ local function RunResult(props)
 				Font = ui.TITLE_FONT,
 				TextSize = if metrics.compact then 26 else 32,
 				TextColor3 = ui.TEXT,
-				Text = if isVictory then "SECTOR DESPEJADO" else "CAÍDA EN COMBATE",
+				Text = if isVictory then "COMPLEJO DESPEJADO" else "CAÍDA EN COMBATE",
 			}),
 			Subtitle = React.createElement("TextLabel", {
 				LayoutOrder = 3,
@@ -146,7 +159,9 @@ local function RunResult(props)
 				TextSize = 13,
 				TextColor3 = ui.MUTED,
 				Text = if isVictory
-					then "Has vencido al Jefe Oh y completado el sector."
+					then (if floorCount > 1
+						then "Has vencido a OhMyGon y completado las 5 plantas."
+						else "Has vencido al Jefe Oh y completado el sector.")
 					else "Vuelve a intentarlo con una nueva combinación de mejoras.",
 			}),
 			Divider = React.createElement("Frame", {
@@ -168,7 +183,7 @@ local function RunResult(props)
 				Rooms = React.createElement(StatRow, {
 					order = 1,
 					label = "SALAS SUPERADAS",
-					value = `{roomsCleared} / {roomCount}`,
+					value = `{roomsCleared} / {totalRoomCount}`,
 					color = accent,
 				}),
 				Time = React.createElement(StatRow, {
@@ -197,10 +212,25 @@ local function RunResult(props)
 				Font = ui.DISPLAY_FONT,
 				TextSize = 16,
 				TextColor3 = ui.INK,
-				Text = if pending then "REINICIANDO..." else "REINTENTAR RUN",
+				Text = if pending then "CARGANDO..." else "REINTENTAR RUN",
 				[React.Event.Activated] = onRetry,
 			}, {
 				Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+			}),
+			ReturnHub = React.createElement("TextButton", {
+				Name = "ReturnHubButton",
+				LayoutOrder = 7,
+				Size = UDim2.new(1, 0, 0, 38),
+				BackgroundColor3 = ui.STEEL,
+				BorderSizePixel = 0,
+				Font = ui.DISPLAY_FONT,
+				TextSize = 14,
+				TextColor3 = ui.TEXT,
+				Text = "VOLVER AL HUB",
+				[React.Event.Activated] = onReturnHub,
+			}, {
+				Corner = React.createElement(ui.Round, { radius = ui.CORNER }),
+				Stroke = React.createElement(ui.Outline, { color = ui.BORDER, thickness = 1.5 }),
 			}),
 		}),
 	})

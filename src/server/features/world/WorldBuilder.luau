@@ -65,18 +65,9 @@ local function buildFallback(world: Folder): CFrame
 	return CFrame.new(0, 0, 0)
 end
 
-function WorldBuilder.build(): Folder
-	local existing = workspace:FindFirstChild("World")
-	if existing then
-		existing:Destroy()
-	end
-
-	local world = Instance.new("Folder")
-	world.Name = "World"
-
-	local pivot = CFrame.new(0, 0, 0)
+local function mountArena(world: Folder, arenaName: string): (Model?, CFrame)
 	local models = ReplicatedStorage:FindFirstChild("Models")
-	local template = models and models:FindFirstChild(Config.ARENA_MODEL)
+	local template = models and (models:FindFirstChild(arenaName) or models:FindFirstChild(Config.ARENA_MODEL))
 	if template and template:IsA("Model") then
 		local arena = template:Clone()
 		-- Re-stamp PrimaryPart and top-face PivotOffset because Rojo 7 live-sync can drop
@@ -87,13 +78,121 @@ function WorldBuilder.build(): Folder
 			floor.PivotOffset = CFrame.new(0, floor.Size.Y / 2, 0)
 			arena.PrimaryPart = floor
 		end
+		arena:SetAttribute("IsArenaModel", true)
 		arena:PivotTo(CFrame.new(0, 0, 0))
 		arena.Parent = world
-		pivot = arena:GetPivot()
-	else
-		warn(`missing arena model "{Config.ARENA_MODEL}" under ReplicatedStorage.Models — using fallback room`)
-		pivot = buildFallback(world)
+		world:SetAttribute("ArenaModel", arena.Name)
+		return arena, arena:GetPivot()
 	end
+	warn(`missing arena model "{arenaName}" under ReplicatedStorage.Models — using fallback room`)
+	world:SetAttribute("ArenaModel", Config.ARENA_MODEL)
+	return nil, buildFallback(world)
+end
+
+-- Swaps the active `.rbxmx` arena model inside `world` cleanly on room/floor transitions (`HS-13`).
+-- Mounts the new Floor slab BEFORE destroying the old arena or Hub so no player ever falls into the void.
+function WorldBuilder.swapArena(world: Instance, arenaName: string): CFrame
+	if not world:IsA("Folder") then
+		return CFrame.new(0, 0, 0)
+	end
+	local oldModels: { Instance } = {}
+	for _, child in ipairs(world:GetChildren()) do
+		if
+			child:IsA("Model")
+			and (
+				child:GetAttribute("IsArenaModel") == true
+				or child:GetAttribute("IsHubModel") == true
+				or child.Name:sub(1, 12) == "ComplexArena"
+				or child.Name == Config.HUB_MODEL
+			)
+		then
+			if child.Name == arenaName and child:GetAttribute("IsArenaModel") == true then
+				-- Already mounted: keep it in place cleanly.
+				world:SetAttribute("ArenaModel", arenaName)
+				return child:GetPivot()
+			end
+			table.insert(oldModels, child)
+		end
+	end
+
+	local _, pivot = mountArena(world, arenaName)
+	for _, old in ipairs(oldModels) do
+		old:Destroy()
+	end
+	local spawn = world:FindFirstChild("Spawn")
+	if spawn and spawn:IsA("SpawnLocation") then
+		spawn.CFrame = pivot * Config.SPAWN_OFFSET
+	end
+	return pivot
+end
+
+-- Mounts the isolated Hub model (`assets/models/ComplexHub.rbxmx`) and swaps out any active arena
+-- model without leaving a floorless frame (`HS-22` / `HS-23`).
+function WorldBuilder.swapHub(world: Instance, hubName: string?): CFrame
+	if not world:IsA("Folder") then
+		return CFrame.new(0, 0, 0)
+	end
+	local targetName = hubName or Config.HUB_MODEL
+	local oldModels: { Instance } = {}
+	for _, child in ipairs(world:GetChildren()) do
+		if
+			child:IsA("Model")
+			and (
+				child:GetAttribute("IsArenaModel") == true
+				or child:GetAttribute("IsHubModel") == true
+				or child.Name:sub(1, 12) == "ComplexArena"
+				or child.Name == targetName
+			)
+		then
+			if child.Name == targetName and child:GetAttribute("IsHubModel") == true then
+				world:SetAttribute("ArenaModel", targetName)
+				return child:GetPivot()
+			end
+			table.insert(oldModels, child)
+		end
+	end
+
+	local models = ReplicatedStorage:FindFirstChild("Models")
+	local template = models and models:FindFirstChild(targetName)
+	local pivot = CFrame.new(0, 0, 0)
+	if template and template:IsA("Model") then
+		local hub = template:Clone()
+		local floor = hub.PrimaryPart or hub:FindFirstChild("Floor")
+		if floor and floor:IsA("BasePart") then
+			floor.PivotOffset = CFrame.new(0, floor.Size.Y / 2, 0)
+			hub.PrimaryPart = floor
+		end
+		hub:SetAttribute("IsHubModel", true)
+		hub:PivotTo(CFrame.new(0, 0, 0))
+		hub.Parent = world
+		world:SetAttribute("ArenaModel", hub.Name)
+		pivot = hub:GetPivot()
+	else
+		warn(`missing hub model "{targetName}" under ReplicatedStorage.Models — falling back to arena`)
+		local _, fallbackPivot = mountArena(world, Config.ARENA_MODEL)
+		pivot = fallbackPivot
+	end
+
+	for _, old in ipairs(oldModels) do
+		old:Destroy()
+	end
+	local spawn = world:FindFirstChild("Spawn")
+	if spawn and spawn:IsA("SpawnLocation") then
+		spawn.CFrame = pivot * Config.HUB_SPAWN_OFFSET
+	end
+	return pivot
+end
+
+function WorldBuilder.build(): Folder
+	local existing = workspace:FindFirstChild("World")
+	if existing then
+		existing:Destroy()
+	end
+
+	local world = Instance.new("Folder")
+	world.Name = "World"
+
+	local _, pivot = mountArena(world, Config.ARENA_MODEL)
 
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "Spawn"

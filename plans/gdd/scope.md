@@ -72,6 +72,6 @@ Lo que se publica:
 |---|---|
 | Corte jugable | Un jugador limpia una sala contra 2-3 tipos de enemigo en PC, móvil y mando. *(Completado)* |
 | Una planta | 5 salas seguidas en orden fijo con elección de 1 de 3 sin pausa y el jefe Oh en la sala 5 (`RunFlow`, `RunService`, `UpgradePool`, `UpgradeService`, `UpgradeChoice`, `RunResult`). *(Implementado y verificado en `make check` + Studio; pendiente playtest manual en móvil/mando y subida de SFX a Open Cloud)* |
-| Run en solitario | 5 plantas, las tres partes del jefe y OhMyGon. Se gana y se pierde. |
-| Grupos | Hub, lista, grupos y la run en servidor privado para 1 a 4 jugadores, con revivir. |
+| Run en solitario | 5 plantas × 5 salas aleatorias, 5 arenas `.rbxmx`, los 6 arquetipos de enemigo y los 4 jefes (Oh, My, Gon y OhMyGon de 2 fases). *(Implementado y verificado en `make check`; pendiente balance de ritmo 15–20 min en Studio `HS-21`)* |
+| Grupos | Hub aislado (`ComplexHub`), lista en vivo, grupos abiertos/privados (1–4), servidor privado con `ReserveServer` + fallback local en Studio, Abatido y revivir aliado de 5 s con escalado cooperativo. *(Implementado y verificado en `make check`; pendiente QA multi-cliente en Studio)* |
 | v1 | Progresión permanente, guardado y productos de Robux. |

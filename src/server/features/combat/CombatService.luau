@@ -42,7 +42,9 @@ type Enemies = {
 }
 
 local enemies: Enemies = nil :: any
+local worldRef: Instance? = nil
 local isPaused: (() -> boolean)? = nil
+local onLethalDamage: ((Player) -> boolean)? = nil
 
 local function paused(): boolean
 	return isPaused ~= nil and isPaused()
@@ -152,6 +154,29 @@ end
 
 local function hasDoubleDash(player: Player): boolean
 	return player:GetAttribute("HasDoubleDash") == true
+end
+
+local function upgradeCritChance(player: Player): number
+	local v = player:GetAttribute("UpgradeCritChance")
+	return if type(v) == "number" and v > 0 then v else 0
+end
+
+local function upgradeHeavyChargeMult(player: Player): number
+	local v = player:GetAttribute("UpgradeHeavyChargeMult")
+	if type(v) ~= "number" or v <= 0 then
+		return 1
+	end
+	return math.max(v, Config.MIN_HEAVY_CHARGE_MULT or 0.45)
+end
+
+local function upgradeParryBonus(player: Player): number
+	local v = player:GetAttribute("UpgradeParryBonus")
+	return if type(v) == "number" and v > 0 then v else 0
+end
+
+local function dashCooldownFor(player: Player): number
+	local swift = if player:GetAttribute("HasSwiftDash") == true then (Config.SWIFT_DASH_COOLDOWN_MULT or 0.75) else 1
+	return math.max(Config.DASH_COOLDOWN * upgradeCooldownMult(player) * swift, 0.28)
 end
 
 -- Returns the player's current level (1..ABILITY_MAX_LEVEL) for `abilityId` from their drafted
@@ -272,6 +297,11 @@ local function refreshWalkSpeed(player: Player, humanoid: Humanoid?)
 	if not targetHumanoid or targetHumanoid.Health <= 0 then
 		return
 	end
+	if player:GetAttribute("Downed") == true then
+		targetHumanoid.WalkSpeed = 0
+		targetHumanoid.JumpPower = 0
+		return
+	end
 	local t = now()
 	local stunned = isStunned(player, t)
 	local chargingOverDrive = player:GetAttribute("OverDriveCharging") == true
@@ -362,6 +392,9 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("SpeedBuffUntil", 0)
 	player:SetAttribute("DefenseBuffUntil", 0)
 	player:SetAttribute("Grabbed", false)
+	player:SetAttribute("Downed", false)
+	player:SetAttribute("ReviveProgress", 0)
+	player:SetAttribute("ReviveHelpers", 0)
 	player:SetAttribute("GrabProgress", 0)
 	player:SetAttribute("GrabGoal", Config.GRAB_ESCAPE_PRESSES)
 	player:SetAttribute("GrabWarningUntil", 0)
@@ -394,13 +427,44 @@ end
 
 -- `any` in: EnemyService carries more than this module uses, and a sealed table type would
 -- refuse it for that. What is read from it is the `Enemies` shape above.
-function CombatService.start(dependencies: { enemies: any, isPaused: (() -> boolean)? })
+function CombatService.start(dependencies: {
+	enemies: any,
+	world: Instance?,
+	isPaused: (() -> boolean)?,
+	onLethalDamage: ((Player) -> boolean)?,
+})
 	enemies = dependencies.enemies :: Enemies
+	worldRef = dependencies.world
 	isPaused = dependencies.isPaused
+	onLethalDamage = dependencies.onLethalDamage
 	Players.RespawnTime = Config.RESPAWN_SECONDS
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in ipairs(Players:GetPlayers()) do
 		onPlayer(player)
+	end
+end
+
+-- Called by ReviveService when a player drops into Co-op Downed state (`HS-29`).
+function CombatService.onPlayerDowned(player: Player)
+	cancelCharge(player)
+	cancelOverDrive(player)
+	player:SetAttribute("Blocking", false)
+	player:SetAttribute("ParryUntil", 0)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 then
+		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+	end
+end
+
+-- Called by ReviveService when a teammate finishes the 5 s revive channel (`HS-29`).
+function CombatService.onPlayerRevived(player: Player)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 then
+		humanoid.JumpPower = Config.JUMP_POWER
+		refreshWalkSpeed(player, humanoid)
 	end
 end
 
@@ -468,6 +532,9 @@ function CombatService.resetPlayerForRun(player: Player)
 	player:SetAttribute("SpeedBuffUntil", 0)
 	player:SetAttribute("DefenseBuffUntil", 0)
 	player:SetAttribute("Grabbed", false)
+	player:SetAttribute("Downed", false)
+	player:SetAttribute("ReviveProgress", 0)
+	player:SetAttribute("ReviveHelpers", 0)
 	player:SetAttribute("GrabProgress", 0)
 	player:SetAttribute("GrabWarningUntil", 0)
 	player:SetAttribute("ParryWarningUntil", 0)
@@ -545,11 +612,29 @@ local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vect
 	local vulnerable = isStunned
 		or (enemy.state and enemy.state.phase == "recover")
 		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
+	local critMult = UpgradePool.critMultiplier(upgradeCritChance(player), math.random())
 	enemies.damage(
 		enemy,
-		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable) * upgradeDamageMult(player),
+		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable) * upgradeDamageMult(player) * critMult,
 		{ tier = tier or "light", sourcePos = from }
 	)
+end
+
+-- Applies Sifón Vital (`UpgradeLifeOnKill`) healing whenever an enemy falls in the room.
+function CombatService.onEnemyKilled()
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player:GetAttribute("Downed") == true then
+			continue
+		end
+		local lifeOnKill = player:GetAttribute("UpgradeLifeOnKill")
+		if type(lifeOnKill) == "number" and lifeOnKill > 0 then
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				humanoid.Health = math.min(humanoid.Health + lifeOnKill, humanoid.MaxHealth)
+			end
+		end
+	end
 end
 
 -- The one way anything hurts a player. Returns `(hitLanded, outcome)` so projectiles pass
@@ -561,7 +646,7 @@ function CombatService.hurt(
 ): (boolean, Defense.HitOutcome)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not character or not humanoid or humanoid.Health <= 0 then
+	if not character or not humanoid or humanoid.Health <= 0 or player:GetAttribute("Downed") == true then
 		return false, "invulnerable"
 	end
 
@@ -589,6 +674,19 @@ function CombatService.hurt(
 	if outcome == "parry" then
 		if pos then
 			Remotes.CombatSfx:FireAllClients("playerParry", pos)
+			-- Contragolpe (`UpgradeParryBonus`): unleashes a radial counter-shockwave on Parry!
+			local parryBonus = upgradeParryBonus(player)
+			if parryBonus > 0 then
+				local counterDmg = (Config.PARRY_COUNTER_BASE_DAMAGE or 24) * (1 + parryBonus)
+				local counterRadius = Config.PARRY_COUNTER_RADIUS or 12
+				for _, enemy in ipairs(enemies.list()) do
+					if not enemy.dead and Melee.inRadius(pos, enemy.body.Position, counterRadius + enemy.radius) then
+						hitEnemy(player, enemy, counterDmg, pos, "medium")
+						enemies.stun(enemy, Config.PARRY_STUN_SECONDS * (1 + parryBonus * 0.5))
+					end
+				end
+				Remotes.CombatVfx:FireAllClients("shockwave", pos, counterRadius)
+			end
 		end
 		Remotes.CombatAnim:FireAllClients(player, "parry")
 		return false, "parry"
@@ -598,6 +696,12 @@ function CombatService.hurt(
 		Remotes.CombatSfx:FireAllClients("playerBlock", pos)
 	end
 	if finalDamage > 0 then
+		if humanoid.Health - finalDamage <= 0 and onLethalDamage then
+			if onLethalDamage(player) then
+				humanoid.Health = 1
+				return true, outcome
+			end
+		end
 		humanoid:TakeDamage(finalDamage)
 	end
 	return true, outcome
@@ -611,7 +715,7 @@ function CombatService.canGrab(player: Player): boolean
 	if not character or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
-	if player:GetAttribute("Grabbed") == true then
+	if player:GetAttribute("Grabbed") == true or player:GetAttribute("Downed") == true then
 		return false
 	end
 	local t = now()
@@ -716,6 +820,9 @@ end
 -- Applies a combat drop collected from DropService. Returns whether the drop was consumed so a
 -- full-health player leaves heal pickups on the floor for later or for teammates.
 function CombatService.applyDrop(player: Player, kind: Drops.DropKind): boolean
+	if player:GetAttribute("Downed") == true then
+		return false
+	end
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not character or not humanoid or humanoid.Health <= 0 then
@@ -771,7 +878,7 @@ function CombatService.block(player: Player, active: boolean)
 		return
 	end
 
-	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player, t) then
+	if paused() or player:GetAttribute("Downed") == true or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player, t) then
 		return
 	end
 	if not rootOf(player) then
@@ -793,7 +900,7 @@ function CombatService.heavyCharge(player: Player, active: boolean)
 		cancelCharge(player)
 		return
 	end
-	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Downed") == true or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	if player:GetAttribute("ChargingHeavy") == true then
@@ -857,7 +964,8 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 		return
 	end
 	local startedAt = heavyCharges[player]
-	local requiredServerCharge = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0)
+	local targetChargeSeconds = Config.HEAVY_CHARGE_SECONDS * upgradeHeavyChargeMult(player)
+	local requiredServerCharge = math.max(targetChargeSeconds - Config.HEAVY_CHARGE_DELAY, 0)
 	if not Melee.isChargeReady(startedAt, os.clock(), requiredServerCharge, Config.HEAVY_CHARGE_SLACK) then
 		cancelCharge(player)
 		return
@@ -978,7 +1086,7 @@ end
 -- client sends its aim rather than the server reading the character's facing, because the facing
 -- the server has is a physics update behind the remote that announced the swing.
 function CombatService.attack(player: Player, aim: Vector3)
-	if paused() or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Downed") == true or player:GetAttribute("Grabbed") == true or player:GetAttribute("Blocking") == true or isStunned(player) then
 		return
 	end
 	local root = rootOf(player)
@@ -1045,7 +1153,7 @@ end
 -- Remote "Dash". The motion already happened on the client; this grants the invulnerability and
 -- meters the cooldown (1 charge normally, 2 charges back-to-back while Speed Buff is active).
 function CombatService.dash(player: Player)
-	if paused() or player:GetAttribute("Grabbed") == true or isStunned(player) then
+	if paused() or player:GetAttribute("Downed") == true or player:GetAttribute("Grabbed") == true or isStunned(player) then
 		return
 	end
 	local character = player.Character
@@ -1056,7 +1164,7 @@ function CombatService.dash(player: Player)
 	local t = now()
 	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash(player))
 	local state = dashStates[player] or { charges = maxCharges, rechargeAt = 0 }
-	local dashCooldown = math.max(Config.DASH_COOLDOWN * upgradeCooldownMult(player), 0.35)
+	local dashCooldown = dashCooldownFor(player)
 	local allowed, nextCharges, nextRechargeAt =
 		Drops.consumeDash(state.charges, state.rechargeAt, maxCharges, t, dashCooldown, COOLDOWN_SLACK)
 	if not allowed then
@@ -1084,6 +1192,7 @@ function CombatService.spin(player: Player)
 	end
 	if
 		paused()
+		or player:GetAttribute("Downed") == true
 		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
@@ -1127,6 +1236,7 @@ function CombatService.stinger(player: Player, aim: Vector3)
 	end
 	if
 		paused()
+		or player:GetAttribute("Downed") == true
 		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
@@ -1179,6 +1289,7 @@ function CombatService.overDrive(player: Player, aim: Vector3)
 	end
 	if
 		paused()
+		or player:GetAttribute("Downed") == true
 		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
@@ -1277,6 +1388,9 @@ end
 local function playersNear(position: Vector3, radius: number): { { player: Player, humanoid: Humanoid } }
 	local found = {}
 	for _, other in ipairs(Players:GetPlayers()) do
+		if other:GetAttribute("Downed") == true then
+			continue
+		end
 		local root = rootOf(other)
 		local humanoid = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and Melee.inRadius(position, root.Position, radius) then
@@ -1432,6 +1546,7 @@ function CombatService.useAbility(player: Player, abilityId: string, aim: Vector
 	end
 	if
 		paused()
+		or player:GetAttribute("Downed") == true
 		or player:GetAttribute("Grabbed") == true
 		or player:GetAttribute("Blocking") == true
 		or player:GetAttribute("OverDriveCharging") == true
@@ -1485,7 +1600,8 @@ local function stepCombat(dt: number)
 		local expired = t >= bolt.expiresAt
 		if not expired then
 			local inside = Waves.clamp(nextPos, Config.ROOM_SIZE, 0)
-			expired = inside.X ~= nextPos.X or inside.Z ~= nextPos.Z or Waves.hitsObstacle(nextPos, bolt.radius * 0.6, Config.ARENA_PILLARS)
+			local obstacles = Config.getArenaObstacles(worldRef and worldRef:GetAttribute("ArenaModel"))
+			expired = inside.X ~= nextPos.X or inside.Z ~= nextPos.Z or Waves.hitsObstacle(nextPos, bolt.radius * 0.6, obstacles)
 		end
 
 		local hitEnemyTarget: Enemy? = nil

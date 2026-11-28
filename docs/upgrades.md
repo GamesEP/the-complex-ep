@@ -6,7 +6,7 @@ How Pillar 1 builds work during a run: everyone starts identical with `TestSword
 
 | Module | Realm | Responsibility |
 |---|---|---|
-| [`Config/Upgrades.luau`](../src/shared/core/Config/Upgrades.luau) | Shared | Catalog of all 9 active abilities (`UPGRADE_ABILITY_ORDER`), level scaling (`+25%` dmg / `-10%` cd per level up to Lv. 3), 4 repeatable `STAT_UPGRADES`, and 2 unique `PASSIVE_UPGRADES` (**Doble Salto**, **Doble Dash**). |
+| [`Config/Upgrades.luau`](../src/shared/core/Config/Upgrades.luau) | Shared | Catalog of all 9 active abilities (`UPGRADE_ABILITY_ORDER`), evolution ranks up to **Lv. 4** (`+25%` dmg / `-10%` cd per rank), 8 repeatable `STAT_UPGRADES` (Max HP, Damage, Speed, Cooldown Haste, Crit, Life-on-Kill, Heavy Charge Haste, Parry Counter), and 4 unique `PASSIVE_UPGRADES` (**Doble Salto**, **Doble Dash**, **Impulso Turbo**, **Reflejos Ágiles**). |
 | [`UpgradePool.luau`](../src/shared/features/upgrades/UpgradePool.luau) | Shared (pure) | 1-of-3 starter & room-clear rolling, 3/3 slot-full conversion (level-up, replacement offer, or stat card), unbounded per-player offer queue, pick/replace validation, and floor-exit random auto-resolve. Tested offline by `make test`. |
 | [`UpgradeService.luau`](../src/server/features/upgrades/UpgradeService.luau) | Server | Owns per-player `PlayerBuild`, replicates build attributes, pushes `{ offer, pending }` via `Remotes.UpgradeOffer`, and validates `PickUpgrade` / `ReplaceAbility`. |
 | [`UpgradeStore.luau`](../src/client/features/upgrades/stores/UpgradeStore.luau) | Client store | Pure Charm atoms (`offer`, `pending`, `replacingCardIndex`) tested offline by `make test ONLY=ui`. |
@@ -17,13 +17,19 @@ How Pillar 1 builds work during a run: everyone starts identical with `TestSword
 Written by `UpgradeService` and read directly by `CombatService`, `CombatInput`, and `CombatHud`:
 
 - `AbilitySlot1..3` (`string`): ability id in each active slot (empty string when empty)
-- `AbilityLevel1..3` (`number`): `1..3` (0 when empty)
+- `AbilityLevel1..3` (`number`): `1..4` (0 when empty)
 - `UpgradeMaxHealthBonus` (`number`): additive Max HP bonus
 - `UpgradeDamageMult` (`number`): outgoing damage multiplier applied inside `CombatService` `hitEnemy`
 - `UpgradeSpeedMult` (`number`): walk speed multiplier applied inside `CombatService` `refreshWalkSpeed`
 - `UpgradeCooldownMult` (`number`): multiplicative cooldown haste floored at `Config.MIN_COOLDOWN_MULTIPLIER` (`0.45`)
+- `UpgradeCritChance` (`number`): critical strike chance (`×1.6`, capped at `0.75`)
+- `UpgradeLifeOnKill` (`number`): HP restored on enemy kills (`CombatService.onEnemyKilled`)
+- `UpgradeHeavyChargeMult` (`number`): heavy-attack hold duration multiplier (floored at `0.45`)
+- `UpgradeParryBonus` (`number`): unlocks & scales radial counter-shockwave + extended stun on Parry
 - `HasDoubleJump` (`boolean`): unlocks 1 mid-air jump (`UserInputService.JumpRequest`, `Config.DOUBLE_JUMP_POWER`) with air-ring VFX and `doubleJump` SFX
 - `HasDoubleDash` (`boolean`): grants +1 permanent base dash charge (`Drops.maxDashCharges`), stacking cleanly with Speed Buff drops
+- `HasDashBoost` (`boolean`): boosts Dash distance by `+25%` (`Config.DASH_BOOST_DISTANCE_MULT`)
+- `HasSwiftDash` (`boolean`): reduces Dash cooldown by `-25%` (`Config.SWIFT_DASH_COOLDOWN_MULT`)
 
 ## Input ergonomics (`Q` / `E` / `F` & Gamepad D-Pad)
 

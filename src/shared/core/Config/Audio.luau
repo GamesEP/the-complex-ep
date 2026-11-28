@@ -276,6 +276,24 @@ Config.SFX = {
 		maxDistance = 75,
 		maxDuration = 0.28,
 	},
+	-- Co-op Downed & 5 s Ally Revive cues (`HS-29`/`HS-30`).
+	playerDowned = {
+		file = "enemy-exploder-blast.ogg",
+		fallbackId = 138533090376585,
+		volume = 0.72,
+		pitch = 0.65,
+		pitchSpread = 0.03,
+		maxDistance = 120,
+		maxDuration = 0.6,
+	},
+	playerRevived = {
+		file = "drop-buff.ogg",
+		fallbackId = 100288208393628,
+		volume = 0.85,
+		pitch = 1.18,
+		pitchSpread = 0.03,
+		maxDistance = 120,
+	},
 } :: { [string]: SfxSpec }
 
 -- Fallback lifetime for a temporary 3D sound anchor when `Sound.Ended` never fires (e.g. a muted

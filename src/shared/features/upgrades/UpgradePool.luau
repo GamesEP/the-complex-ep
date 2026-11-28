@@ -41,8 +41,14 @@ export type PlayerBuild = {
 	damageBonus: number,
 	speedBonus: number,
 	cooldownMult: number,
+	critChance: number,
+	lifeOnKill: number,
+	heavyChargeMult: number,
+	parryBonus: number,
 	hasDoubleJump: boolean,
 	hasDoubleDash: boolean,
+	hasDashBoost: boolean,
+	hasSwiftDash: boolean,
 	queue: { Offer },
 	nextOfferId: number,
 }
@@ -58,11 +64,37 @@ function UpgradePool.initial(): PlayerBuild
 		damageBonus = 0,
 		speedBonus = 0,
 		cooldownMult = 1.0,
+		critChance = 0,
+		lifeOnKill = 0,
+		heavyChargeMult = 1.0,
+		parryBonus = 0,
 		hasDoubleJump = false,
 		hasDoubleDash = false,
+		hasDashBoost = false,
+		hasSwiftDash = false,
 		queue = {},
 		nextOfferId = 1,
 	}
+end
+
+function UpgradePool.hasPassive(build: PlayerBuild, attribute: string): boolean
+	if attribute == "HasDoubleJump" then
+		return build.hasDoubleJump
+	elseif attribute == "HasDoubleDash" then
+		return build.hasDoubleDash
+	elseif attribute == "HasDashBoost" then
+		return build.hasDashBoost
+	elseif attribute == "HasSwiftDash" then
+		return build.hasSwiftDash
+	end
+	return false
+end
+
+function UpgradePool.critMultiplier(critChance: number, roll: number): number
+	if critChance > 0 and roll < math.min(critChance, Config.MAX_CRIT_CHANCE or 0.75) then
+		return Config.CRIT_DAMAGE_MULTIPLIER or 1.6
+	end
+	return 1
 end
 
 function UpgradePool.slotOf(build: PlayerBuild, abilityId: string): number?
@@ -217,8 +249,7 @@ function UpgradePool.rollRoomOffer(build: PlayerBuild, rng: (() -> number)?): Of
 	end
 	local unownedPassives: { Config.PassiveUpgradeDef } = {}
 	for _, def in ipairs(Config.PASSIVE_UPGRADES) do
-		local owned = if def.attribute == "HasDoubleJump" then build.hasDoubleJump else build.hasDoubleDash
-		if not owned then
+		if not UpgradePool.hasPassive(build, def.attribute) then
 			table.insert(unownedPassives, def)
 		end
 	end
@@ -324,8 +355,7 @@ local function sanitizeHeadOffer(build: PlayerBuild, rng: (() -> number)?)
 		if card.kind == "passive" then
 			local def = findPassiveDef(card.passiveId)
 			if def then
-				local owned = if def.attribute == "HasDoubleJump" then build.hasDoubleJump else build.hasDoubleDash
-				stale = owned
+				stale = UpgradePool.hasPassive(build, def.attribute)
 			end
 		elseif card.kind == "upgradeAbility" and card.abilityId then
 			local ownedSlot = UpgradePool.slotOf(build, card.abilityId)
@@ -432,6 +462,14 @@ function UpgradePool.applyPick(
 			build.speedBonus += def.amount
 		elseif def.stat == "cooldown" then
 			build.cooldownMult = math.max(build.cooldownMult * (1 - def.amount), Config.MIN_COOLDOWN_MULTIPLIER)
+		elseif def.stat == "crit" then
+			build.critChance = math.min(build.critChance + def.amount, Config.MAX_CRIT_CHANCE or 0.75)
+		elseif def.stat == "lifeOnKill" then
+			build.lifeOnKill += def.amount
+		elseif def.stat == "heavyHaste" then
+			build.heavyChargeMult = math.max(build.heavyChargeMult * (1 - def.amount), Config.MIN_HEAVY_CHARGE_MULT or 0.45)
+		elseif def.stat == "parryBonus" then
+			build.parryBonus += def.amount
 		end
 	elseif card.kind == "passive" then
 		local def = findPassiveDef(card.passiveId)
@@ -442,6 +480,10 @@ function UpgradePool.applyPick(
 			build.hasDoubleJump = true
 		elseif def.attribute == "HasDoubleDash" then
 			build.hasDoubleDash = true
+		elseif def.attribute == "HasDashBoost" then
+			build.hasDashBoost = true
+		elseif def.attribute == "HasSwiftDash" then
+			build.hasSwiftDash = true
 		end
 	else
 		return false, 0, nil
@@ -563,6 +605,32 @@ function UpgradePool.selfTest()
 	assert(nextHead ~= nil and nextHead.offerId == 102, "Offer 2 becomes head")
 	assert(nextHead.cards[1].kind == "stat", "redundant Double Jump in Offer 2 converted to stat card")
 	assert(nextHead.cards[2].kind == "stat", "already-maxed spin upgrade in Offer 2 converted to stat card")
+
+	-- HS-14 expanded synergies & Lv.4 scaling: crit, life-on-kill, heavy haste, parry bonus, dash passives.
+	local d4, c4 = UpgradePool.levelMultipliers(4)
+	assert(d4 > d3 and c4 < c3, "Lv.4 evolution rank scales beyond Lv.3")
+	assert(UpgradePool.critMultiplier(0.3, 0.1) > 1 and UpgradePool.critMultiplier(0.3, 0.9) == 1, "critMultiplier rolls cleanly")
+	local synBuild = UpgradePool.initial()
+	UpgradePool.enqueue(synBuild, {
+		offerId = 201,
+		isStarter = false,
+		cards = {
+			makeStatCard(findStatDef("stat_crit") :: Config.StatUpgradeDef),
+			makeStatCard(findStatDef("stat_lifesteal") :: Config.StatUpgradeDef),
+			makePassiveCard(findPassiveDef("passive_dash_boost") :: Config.PassiveUpgradeDef),
+		},
+	})
+	assert(UpgradePool.applyPick(synBuild, 201, 1) and synBuild.critChance == 0.15, "crit card boosts critChance")
+	UpgradePool.enqueue(synBuild, {
+		offerId = 202,
+		isStarter = false,
+		cards = {
+			makeStatCard(findStatDef("stat_heavy_haste") :: Config.StatUpgradeDef),
+			makeStatCard(findStatDef("stat_parry") :: Config.StatUpgradeDef),
+			makePassiveCard(findPassiveDef("passive_swift_dash") :: Config.PassiveUpgradeDef),
+		},
+	})
+	assert(UpgradePool.applyPick(synBuild, 202, 3) and synBuild.hasSwiftDash, "swift dash passive activates cleanly")
 end
 
 return UpgradePool

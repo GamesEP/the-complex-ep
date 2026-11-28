@@ -268,10 +268,16 @@ local function effectiveCooldown(baseCooldown: number, level: number): number
 	return math.max(baseCooldown * lvCd * cooldownMult(), 0.35)
 end
 
--- Matches RunService.isPaused(): blocks combat inputs while on the pre-run screen or end-of-run
--- result screen, while allowing full combat & traversal during `"fighting"` and `"transition"`.
+-- Matches RunService.isPaused(): blocks combat inputs while in the Hub, while downed in co-op,
+-- or on the pre-run / end-of-run screens, while allowing full combat during `"fighting"` and `"transition"`.
 local function isChoosingClass(): boolean
+	if player:GetAttribute("Downed") == true then
+		return true
+	end
 	local world = workspace:FindFirstChild("World")
+	if world and world:GetAttribute("ServerMode") == "hub" then
+		return true
+	end
 	local runState = world and world:GetAttribute("RunState")
 	if type(runState) == "string" then
 		return runState ~= "fighting" and runState ~= "transition"
@@ -678,7 +684,11 @@ local function beginAttackHold()
 		Effects.startCharge(currentRoot, classId())
 		Remotes.HeavyCharge:FireServer(true)
 
-		local remaining = math.max(Config.HEAVY_CHARGE_SECONDS - Config.HEAVY_CHARGE_DELAY, 0)
+		local chargeMultAttr = player:GetAttribute("UpgradeHeavyChargeMult")
+		local chargeMult = if type(chargeMultAttr) == "number" and chargeMultAttr > 0
+			then math.max(chargeMultAttr, Config.MIN_HEAVY_CHARGE_MULT or 0.45)
+			else 1
+		local remaining = math.max(Config.HEAVY_CHARGE_SECONDS * chargeMult - Config.HEAVY_CHARGE_DELAY, 0)
 		task.delay(remaining, function()
 			if chargeToken ~= myToken or not chargingHeavy then
 				return
@@ -713,7 +723,8 @@ local function dash()
 	end
 	local t = now()
 	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash())
-	local dashCooldown = math.max(Config.DASH_COOLDOWN * cooldownMult(), 0.35)
+	local swiftMult = if player:GetAttribute("HasSwiftDash") == true then (Config.SWIFT_DASH_COOLDOWN_MULT or 0.75) else 1
+	local dashCooldown = math.max(Config.DASH_COOLDOWN * cooldownMult() * swiftMult, 0.28)
 	local allowed, nextCharges, nextRechargeAt =
 		Drops.consumeDash(dashCharges, dashRechargeAt, maxCharges, t, dashCooldown, 0)
 	if not allowed then
@@ -740,7 +751,8 @@ local function dash()
 	-- contact so slamming into an obstacle never flings the player upward or out of the room.
 	dashToken += 1
 	local myDashToken = dashToken
-	activeDash = startSafeVelocity(root, direction, Config.DASH_DISTANCE / Config.DASH_DURATION)
+	local dashDist = Config.DASH_DISTANCE * (if player:GetAttribute("HasDashBoost") == true then (Config.DASH_BOOST_DISTANCE_MULT or 1.25) else 1)
+	activeDash = startSafeVelocity(root, direction, dashDist / Config.DASH_DURATION)
 	task.delay(Config.DASH_DURATION, function()
 		if dashToken == myDashToken then
 			clearDash(false)
@@ -1343,14 +1355,19 @@ function CombatInput.start()
 			end
 		end
 
-		-- Arena bounds safety net: if a physics glitch ever pushes the character past the room
-		-- perimeter or above/below the arena shell, pull them cleanly back inside.
-		local halfX = Config.ROOM_SIZE.X / 2 - 1.5
-		local halfZ = Config.ROOM_SIZE.Y / 2 - 1.5
+		-- Arena/Hub bounds safety net: if a physics glitch ever pushes the character past the room
+		-- perimeter or above/below the floor shell, pull them cleanly back inside.
+		local world = workspace:FindFirstChild("World")
+		local inHub = world ~= nil and world:GetAttribute("ServerMode") == "hub"
+		local activeSize = if inHub then Config.HUB_ROOM_SIZE else Config.ROOM_SIZE
+		local halfX = activeSize.X / 2 - 1.5
+		local halfZ = activeSize.Y / 2 - 1.5
 		local pos = root.Position
 		if math.abs(pos.X) > halfX or math.abs(pos.Z) > halfZ or pos.Y > 33 or pos.Y < -4 then
-			local clamped = Waves.clamp(pos, Config.ROOM_SIZE, 3.5)
-			local safe = Waves.avoidObstacles(clamped, 2.8, Config.ARENA_PILLARS)
+			local clamped = Waves.clamp(pos, activeSize, 3.5)
+			local safe = if inHub
+				then clamped
+				else Waves.avoidObstacles(clamped, 2.8, Config.getArenaObstacles(world and world:GetAttribute("ArenaModel")))
 			local safeY = math.clamp(pos.Y, 3.5, 22)
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.CFrame = CFrame.new(safe.X, safeY, safe.Z) * root.CFrame.Rotation

@@ -118,6 +118,7 @@ end
 
 local function StartRunScreen(props)
 	local metrics = Scaled.useLayout()
+	local serverMode = hooks.useAttribute(props.world, "ServerMode")
 	local runState = hooks.useAttribute(props.world, "RunState")
 	local diffAttr = hooks.useAttribute(props.world, "Difficulty")
 	local currentDifficulty = if Difficulty.isValid(diffAttr) then diffAttr else Config.DEFAULT_DIFFICULTY
@@ -130,7 +131,7 @@ local function StartRunScreen(props)
 		end
 	end, { runState })
 
-	if runState ~= nil and runState ~= "preparing" then
+	if serverMode == "hub" or (runState ~= nil and runState ~= "preparing") then
 		return nil
 	end
 
@@ -269,6 +270,9 @@ function screen.start()
 	local world = workspace:WaitForChild("World")
 
 	ContextActionService:BindActionAtPriority("StartRunConfirm", function(_, inputState: Enum.UserInputState)
+		if world:GetAttribute("ServerMode") == "hub" then
+			return Enum.ContextActionResult.Pass
+		end
 		local rs = world:GetAttribute("RunState")
 		if rs ~= nil and rs ~= "preparing" then
 			return Enum.ContextActionResult.Pass

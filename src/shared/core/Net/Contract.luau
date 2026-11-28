@@ -36,10 +36,19 @@ return {
 	-- Rapid attack presses while trapped by a grabber; metered separately so 10 quick presses
 	-- feel responsive without opening an unbounded channel.
 	GrabEscape = { rate = Config.GRAB_ESCAPE_RATE },
-	-- Start screen difficulty and run start/retry.
+	-- Start screen / Hub difficulty, run start/retry, and return-to-hub.
 	ChooseDifficulty = { rate = 4, args = { Validate.string } },
 	StartRun = { rate = 2 },
 	RetryRun = { rate = 2 },
+	ReturnToHub = { rate = 2 },
+	-- Hub & Co-op Party actions (docs/hub-and-party.md).
+	CreateParty = { rate = 4, args = { Validate.string } },
+	SetPartyPrivacy = { rate = 4, args = { Validate.string } },
+	JoinParty = { rate = 4, args = { Validate.string } },
+	InvitePlayer = { rate = 4, args = { Validate.number } },
+	RespondInvite = { rate = 4, args = { Validate.string, Validate.boolean } },
+	LeaveParty = { rate = 4 },
+	KickMember = { rate = 4, args = { Validate.number } },
 	-- Zero-pause 1-of-3 upgrade picks (offerId, cardIndex [, slotIndex]).
 	PickUpgrade = { rate = 6, args = { Validate.number, Validate.number } },
 	ReplaceAbility = { rate = 6, args = { Validate.number, Validate.number, Validate.number } },

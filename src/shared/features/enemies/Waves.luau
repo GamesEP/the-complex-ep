@@ -169,6 +169,17 @@ function Waves.selfTest()
 	assert(not Waves.hitsObstacle(cornerPushed, 1.9, boxes), "corner push clears box corner cleanly")
 	assert(Waves.hitsObstacle(Vector3.new(-33.5, 2, -33.5), 1.0, boxes), "hitsObstacle detects shots clipping box corner")
 	assert(not Waves.hitsObstacle(Vector3.new(-20, 2, -38), 1.0, boxes), "hitsObstacle ignores clear lane outside box")
+
+	-- Verify every tracked arena layout keeps the center spawn pad clear and produces valid safe spawns.
+	local Config = require(script.Parent.Parent.Parent.core.Config)
+	for layoutName, obstacles in pairs(Config.ARENA_LAYOUTS) do
+		assert(not Waves.hitsObstacle(Vector3.new(0, 2, 0), 3.0, obstacles), `{layoutName} center spawn must stay clear`)
+		for i = 1, 8 do
+			local pt = Waves.spawnPoint(i, 8, room, 13, 0)
+			local safe = Waves.avoidObstacles(pt, 3.5, obstacles)
+			assert(not Waves.hitsObstacle(safe, 3.0, obstacles), `{layoutName} spawn {i} clears obstacles`)
+		end
+	end
 end
 
 return Waves

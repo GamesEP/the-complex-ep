@@ -823,26 +823,45 @@ end
 -- Interior Cover Structures (4 Quadrant Reactor Pillars) & Industrial Decor
 --=============================================================================
 
-local function buildInteriorStructures(root: any)
+type PillarDef = {
+	name: string,
+	x: number,
+	z: number,
+	h: number,
+	glow: any,
+	width: number?,
+}
+
+type BunkerDef = {
+	name: string,
+	x: number,
+	z: number,
+	yaw: number,
+	h: number,
+	glow: any,
+}
+
+type ArenaLayoutSpec = {
+	name: string,
+	pillars: { PillarDef },
+	bunkers: { BunkerDef },
+	includeOverheadBridges: boolean,
+}
+
+local function buildInteriorStructures(root: any, layout: ArenaLayoutSpec)
 	local structures = folder("ArenaStructures", root)
 
-	-- 4 solid tactical reactor pillars at `(±38, ±38)` matching `Config.ARENA_PILLARS` (radius 5.6).
-	-- The SE (+38, +38) reactor is kept shorter (8.5 studs) so the isometric camera at (+X, +Z)
-	-- always has a clean sightline into the center arena.
-	local pillars = {
-		{ name = "NW", x = -38, z = -38, h = 13.5, glow = C_AMBER },
-		{ name = "NE", x = 38, z = -38, h = 13.5, glow = C_CYAN },
-		{ name = "SW", x = -38, z = 38, h = 12.5, glow = C_CYAN },
-		{ name = "SE", x = 38, z = 38, h = 8.5, glow = C_AMBER },
-	}
-
-	for _, p in ipairs(pillars) do
+	for _, p in ipairs(layout.pillars) do
 		local g = folder(`ReactorPillar_{p.name}`, structures)
+		local plinthW = p.width or 9.2
+		local coreW = plinthW - 1.8
+		local capW = plinthW - 0.4
+		local ribOff = coreW / 2 - 0.2
 		-- Solid core collision body + full-height anti-climb hull covering plinth & ribs so
 		-- players cannot walk through the plinth or jump/double-jump onto the pillar.
 		part({
 			name = "CoreColumn",
-			size = Vector3.new(7.4, p.h, 7.4),
+			size = Vector3.new(coreW, p.h, coreW),
 			cframe = CFrame.new(p.x, p.h / 2, p.z),
 			color = C_STEEL_DARK,
 			material = Enum.Material.Metal,
@@ -850,11 +869,11 @@ local function buildInteriorStructures(root: any)
 			castShadow = true,
 			parent = g,
 		})
-		addNoClimbHull(`PillarHull_{p.name}`, 9.2, 9.2, CFrame.new(p.x, 0, p.z), g)
+		addNoClimbHull(`PillarHull_{p.name}`, plinthW, plinthW, CFrame.new(p.x, 0, p.z), g)
 		-- Heavy beveled concrete plinth base + yellow hazard bumper band.
 		part({
 			name = "PlinthBase",
-			size = Vector3.new(9.2, 1.6, 9.2),
+			size = Vector3.new(plinthW, 1.6, plinthW),
 			cframe = CFrame.new(p.x, 0.8, p.z),
 			color = C_CONCRETE_DARK,
 			material = Enum.Material.Concrete,
@@ -864,7 +883,7 @@ local function buildInteriorStructures(root: any)
 		})
 		part({
 			name = "HazardCollar",
-			size = Vector3.new(9.4, 0.45, 9.4),
+			size = Vector3.new(plinthW + 0.2, 0.45, plinthW + 0.2),
 			cframe = CFrame.new(p.x, 1.72, p.z),
 			color = C_HAZARD,
 			material = Enum.Material.SmoothPlastic,
@@ -874,9 +893,10 @@ local function buildInteriorStructures(root: any)
 		-- Glowing reactor core chamber + 4 corner armored ribs.
 		local coreH = math.max(p.h - 4.6, 2.8)
 		local coreY = 2.4 + coreH / 2
+		local chamberW = math.max(coreW - 1.8, 3.6)
 		local reactorCore = part({
 			name = "EnergyChamber",
-			size = Vector3.new(5.6, coreH, 5.6),
+			size = Vector3.new(chamberW, coreH, chamberW),
 			cframe = CFrame.new(p.x, coreY, p.z) * CFrame.Angles(0, math.rad(45), 0),
 			color = p.glow,
 			material = Enum.Material.Neon,
@@ -890,7 +910,7 @@ local function buildInteriorStructures(root: any)
 				part({
 					name = `Rib_{sx}_{sz}`,
 					size = Vector3.new(1.5, p.h - 1.2, 1.5),
-					cframe = CFrame.new(p.x + sx * 3.5, (p.h + 1.0) / 2, p.z + sz * 3.5),
+					cframe = CFrame.new(p.x + sx * ribOff, (p.h + 1.0) / 2, p.z + sz * ribOff),
 					color = C_STEEL,
 					material = Enum.Material.Metal,
 					canCollide = false,
@@ -903,7 +923,7 @@ local function buildInteriorStructures(root: any)
 		-- Upper armored exhaust cap + beacon light.
 		part({
 			name = "CapPlate",
-			size = Vector3.new(8.8, 1.5, 8.8),
+			size = Vector3.new(capW, 1.5, capW),
 			cframe = CFrame.new(p.x, p.h + 0.45, p.z),
 			color = C_STEEL,
 			material = Enum.Material.DiamondPlate,
@@ -1068,17 +1088,11 @@ local function buildInteriorStructures(root: any)
 		addNoClimbHull(`BollardE_{offset}_Hull`, 1.5, 1.5, CFrame.new(HALF - 1.6, 0, offset), decor)
 	end
 
-	-- 5 Solid Chest-High Tactical Cover Bunkers matching the 5 flank entries in `Config.ARENA_PILLARS`.
+	-- Solid Chest-High Tactical Cover Bunkers matching this layout's entries in `Config.ARENA_LAYOUTS`.
 	-- These are the ONLY climbable structures in the arena: solid collider matches their actual
 	-- top height (`spec.h + 0.35`) so players can take cover behind them OR jump on top of them.
 	local bunkers = folder("CoverBunkers", structures)
-	for _, spec in ipairs({
-		{ name = "NW", x = -22, z = -48, yaw = 0, h = 3.6, glow = C_CYAN },
-		{ name = "NE", x = 22, z = -48, yaw = 0, h = 3.6, glow = C_CYAN },
-		{ name = "W", x = -46, z = 0, yaw = 90, h = 3.6, glow = C_AMBER },
-		{ name = "E", x = 46, z = 0, yaw = 90, h = 3.2, glow = C_AMBER },
-		{ name = "S", x = 0, z = 44, yaw = 0, h = 3.2, glow = C_CYAN },
-	}) do
+	for _, spec in ipairs(layout.bunkers) do
 		local b = folder(`CoverBunker_{spec.name}`, bunkers)
 		local cf = CFrame.new(spec.x, 0, spec.z) * CFrame.Angles(0, math.rad(spec.yaw), 0)
 		local solidH = spec.h + 0.35
@@ -1148,25 +1162,29 @@ local function buildInteriorStructures(root: any)
 	end
 
 	-- Overhead Power Conduit Bridges & Hero Wall Gantry Beams (non-colliding high backdrop).
-	-- Wires the NW, NE, and SW reactor pillars directly into the facility's North & West walls.
 	local rigging = folder("OverheadRigging", structures)
-	for _, spec in ipairs({
-		-- North wall bridges from NW & NE pillars into North wall (-Z = -70)
-		{ "BridgeNW_N", Vector3.new(1.6, 1.4, 30), CFrame.new(-38, 13.6, -54), C_STEEL },
-		{ "PipeNW_N", Vector3.new(0.45, 0.45, 30), CFrame.new(-38, 14.5, -54), C_AMBER },
-		{ "BridgeNE_N", Vector3.new(1.6, 1.4, 30), CFrame.new(38, 13.6, -54), C_STEEL },
-		{ "PipeNE_N", Vector3.new(0.45, 0.45, 30), CFrame.new(38, 14.5, -54), C_CYAN },
-		-- West wall bridges from NW & SW pillars into West wall (-X = -70)
-		{ "BridgeNW_W", Vector3.new(30, 1.4, 1.6), CFrame.new(-54, 13.6, -38), C_STEEL },
-		{ "PipeNW_W", Vector3.new(30, 0.45, 0.45), CFrame.new(-54, 14.5, -38), C_AMBER },
-		{ "BridgeSW_W", Vector3.new(30, 1.4, 1.6), CFrame.new(-54, 12.6, 38), C_STEEL },
-		{ "PipeSW_W", Vector3.new(30, 0.45, 0.45), CFrame.new(-54, 13.5, 38), C_CYAN },
+	local riggingParts: { { any } } = {
 		-- Overhead industrial gantry crane tracks hugging North & West hero walls
 		{ "GantryBeamN", Vector3.new(ROOM - 10, 1.8, 2.4), CFrame.new(0, 17.0, -HALF + 4.2), C_STEEL_DARK },
 		{ "GantryTrimN", Vector3.new(ROOM - 12, 0.35, 2.6), CFrame.new(0, 16.0, -HALF + 4.2), C_HAZARD },
 		{ "GantryBeamW", Vector3.new(2.4, 1.8, ROOM - 10), CFrame.new(-HALF + 4.2, 17.0, 0), C_STEEL_DARK },
 		{ "GantryTrimW", Vector3.new(2.6, 0.35, ROOM - 12), CFrame.new(-HALF + 4.2, 16.0, 0), C_HAZARD },
-	}) do
+	}
+	if layout.includeOverheadBridges then
+		for _, bridge in ipairs({
+			{ "BridgeNW_N", Vector3.new(1.6, 1.4, 30), CFrame.new(-38, 13.6, -54), C_STEEL },
+			{ "PipeNW_N", Vector3.new(0.45, 0.45, 30), CFrame.new(-38, 14.5, -54), C_AMBER },
+			{ "BridgeNE_N", Vector3.new(1.6, 1.4, 30), CFrame.new(38, 13.6, -54), C_STEEL },
+			{ "PipeNE_N", Vector3.new(0.45, 0.45, 30), CFrame.new(38, 14.5, -54), C_CYAN },
+			{ "BridgeNW_W", Vector3.new(30, 1.4, 1.6), CFrame.new(-54, 13.6, -38), C_STEEL },
+			{ "PipeNW_W", Vector3.new(30, 0.45, 0.45), CFrame.new(-54, 14.5, -38), C_AMBER },
+			{ "BridgeSW_W", Vector3.new(30, 1.4, 1.6), CFrame.new(-54, 12.6, 38), C_STEEL },
+			{ "PipeSW_W", Vector3.new(30, 0.45, 0.45), CFrame.new(-54, 13.5, 38), C_CYAN },
+		}) do
+			table.insert(riggingParts, bridge)
+		end
+	end
+	for _, spec in ipairs(riggingParts) do
 		local isGlow = spec[4] == C_CYAN or spec[4] == C_AMBER
 		part({
 			name = spec[1],
@@ -1361,9 +1379,9 @@ local function buildInteriorStructures(root: any)
 	end
 end
 
-local function buildComplexArena(): any
+local function buildArenaVariant(layout: ArenaLayoutSpec): any
 	local model = Instance.new("Model")
-	model.Name = "ComplexArena"
+	model.Name = layout.name
 
 	-- PrimaryPart: base concrete floor slab with top face at y = 0.
 	-- PivotOffset lifts the PrimaryPart pivot onto the top face so `model:GetPivot()` sits at
@@ -1382,18 +1400,108 @@ local function buildComplexArena(): any
 	buildHeroWalls(model)
 	buildLandmarks(model)
 	buildCutawayAndCorners(model)
-	buildInteriorStructures(model)
+	buildInteriorStructures(model, layout)
 
 	model.PrimaryPart = floor
 	model.WorldPivot = CFrame.new(0, 0, 0)
 	return model
 end
 
+-- Five 140x140 tactical layouts for Phase 2's 5-floor randomized room pool (plans/roadmap.md HS-10).
+-- SE / East pillars near the isometric camera (+X/+Z) stay <= 8.5 studs tall for unobstructed sightlines.
+local ARENA_SPECS: { ArenaLayoutSpec } = {
+	{
+		name = "ComplexArena",
+		includeOverheadBridges = true,
+		pillars = {
+			{ name = "NW", x = -38, z = -38, h = 13.5, glow = C_AMBER },
+			{ name = "NE", x = 38, z = -38, h = 13.5, glow = C_CYAN },
+			{ name = "SW", x = -38, z = 38, h = 12.5, glow = C_CYAN },
+			{ name = "SE", x = 38, z = 38, h = 8.5, glow = C_AMBER },
+		},
+		bunkers = {
+			{ name = "NW", x = -22, z = -48, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "NE", x = 22, z = -48, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "W", x = -46, z = 0, yaw = 90, h = 3.6, glow = C_AMBER },
+			{ name = "E", x = 46, z = 0, yaw = 90, h = 3.2, glow = C_AMBER },
+			{ name = "S", x = 0, z = 44, yaw = 0, h = 3.2, glow = C_CYAN },
+		},
+	},
+	{
+		name = "ComplexArenaCross",
+		includeOverheadBridges = false,
+		pillars = {
+			{ name = "NW", x = -26, z = -26, h = 12.5, glow = C_CYAN, width = 8.4 },
+			{ name = "NE", x = 26, z = -26, h = 12.5, glow = C_AMBER, width = 8.4 },
+			{ name = "SW", x = -26, z = 26, h = 11.5, glow = C_AMBER, width = 8.4 },
+			{ name = "SE", x = 26, z = 26, h = 8.0, glow = C_CYAN, width = 8.4 },
+		},
+		bunkers = {
+			{ name = "N", x = 0, z = -46, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "S", x = 0, z = 46, yaw = 0, h = 3.2, glow = C_AMBER },
+			{ name = "W", x = -46, z = 0, yaw = 90, h = 3.6, glow = C_AMBER },
+			{ name = "E", x = 46, z = 0, yaw = 90, h = 3.2, glow = C_CYAN },
+		},
+	},
+	{
+		name = "ComplexArenaReactor",
+		includeOverheadBridges = false,
+		pillars = {
+			{ name = "WestCore", x = -32, z = 0, h = 14.0, glow = C_AMBER, width = 11.0 },
+			{ name = "EastCore", x = 32, z = 0, h = 8.5, glow = C_CYAN, width = 11.0 },
+		},
+		bunkers = {
+			{ name = "NW", x = -28, z = -38, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "NE", x = 28, z = -38, yaw = 0, h = 3.6, glow = C_AMBER },
+			{ name = "SW", x = -28, z = 38, yaw = 0, h = 3.2, glow = C_AMBER },
+			{ name = "SE", x = 28, z = 38, yaw = 0, h = 3.2, glow = C_CYAN },
+			{ name = "N", x = 0, z = -26, yaw = 0, h = 3.5, glow = C_CYAN },
+			{ name = "S", x = 0, z = 26, yaw = 0, h = 3.2, glow = C_AMBER },
+		},
+	},
+	{
+		name = "ComplexArenaCorridor",
+		includeOverheadBridges = false,
+		pillars = {
+			{ name = "W1", x = -34, z = -36, h = 13.0, glow = C_CYAN, width = 8.0 },
+			{ name = "W2", x = -34, z = 0, h = 13.0, glow = C_AMBER, width = 8.0 },
+			{ name = "W3", x = -34, z = 36, h = 11.5, glow = C_CYAN, width = 8.0 },
+			{ name = "E1", x = 34, z = -36, h = 12.0, glow = C_AMBER, width = 8.0 },
+			{ name = "E2", x = 34, z = 0, h = 8.5, glow = C_CYAN, width = 8.0 },
+			{ name = "E3", x = 34, z = 36, h = 8.0, glow = C_AMBER, width = 8.0 },
+		},
+		bunkers = {
+			{ name = "CenterN", x = 0, z = -34, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "CenterS", x = 0, z = 34, yaw = 0, h = 3.2, glow = C_AMBER },
+			{ name = "MidW", x = -16, z = -16, yaw = 90, h = 3.4, glow = C_AMBER },
+			{ name = "MidE", x = 16, z = 16, yaw = 90, h = 3.2, glow = C_CYAN },
+		},
+	},
+	{
+		name = "ComplexArenaVault",
+		includeOverheadBridges = false,
+		pillars = {
+			{ name = "NW", x = -46, z = -46, h = 14.0, glow = C_AMBER, width = 9.2 },
+			{ name = "NE", x = 46, z = -46, h = 14.0, glow = C_CYAN, width = 9.2 },
+			{ name = "SW", x = -46, z = 46, h = 12.5, glow = C_CYAN, width = 9.2 },
+			{ name = "SE", x = 46, z = 46, h = 8.5, glow = C_AMBER, width = 9.2 },
+		},
+		bunkers = {
+			{ name = "NW", x = -20, z = -50, yaw = 0, h = 3.6, glow = C_CYAN },
+			{ name = "NE", x = 20, z = -50, yaw = 0, h = 3.6, glow = C_AMBER },
+			{ name = "W", x = -50, z = 0, yaw = 90, h = 3.6, glow = C_AMBER },
+			{ name = "E", x = 50, z = 0, yaw = 90, h = 3.2, glow = C_CYAN },
+		},
+	},
+}
+
 if not fs.isDir(OUT_DIR) then
 	fs.writeDir(OUT_DIR)
 end
-local arena = buildComplexArena()
-local xml = roblox.serializeModel({ arena }, true)
-local outPath = `{OUT_DIR}/ComplexArena.rbxmx`
-fs.writeFile(outPath, xml)
-print(`wrote {outPath} ({#xml} bytes)`)
+for _, layout in ipairs(ARENA_SPECS) do
+	local arena = buildArenaVariant(layout)
+	local xml = roblox.serializeModel({ arena }, true)
+	local outPath = `{OUT_DIR}/{layout.name}.rbxmx`
+	fs.writeFile(outPath, xml)
+	print(`wrote {outPath} ({#xml} bytes)`)
+end

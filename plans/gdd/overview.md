@@ -43,9 +43,9 @@ planta y volviendo más fuertes después de cada run.
 | systems | agreed | Combate, Mejoras de run, Hub, Grupos (`HS-03`) y Abatido/Revivir (`HS-04`) cerrados; solo queda pendiente el detalle de pago de 10 Robux para monetización |
 | progression | drafted | fuentes de moneda, árbol, habilidades, ventajas y Robux decididos; faltan cantidades y detalle de nodos (hito v1) |
 | content | agreed | 6 arquetipos de enemigo (`HS-01`), 4 jefes Oh/My/Gon/OhMyGon (`HS-02`), estructura de salas y dificultad cerrados |
-| ui | agreed | CombatHud, UpgradeChoice (banner superior 1-de-3 sin pausa) y RunResult cerrados para Corte jugable y Hito 2; pantallas de Hub/Árbol pendientes de sus hitos |
+| ui | agreed | CombatHud (+ Squad Vitals & BossPhase), UpgradeChoice, RunResult (+ Volver al hub) y HubPartyUi implementados; pantalla de Árbol pendiente de Fase 3 |
 | technical | agreed | 25 enemigos simultáneos, 30 FPS móvil / 60 FPS PC, Streaming OFF, `Config.HUB_MAX_PLAYERS = 24` (`HS-03`), entrada unificada y descartes técnicos cerrados |
-| scope | agreed | Corte jugable (programado y ampliado: 4 tipos de enemigo, 3 habilidades, bloqueo/parry, drops), Hito 2 (Una planta con Oh alineado con content.md), v1 e hitos cerrados |
+| scope | agreed | Corte jugable, Una planta, Run en solitario (5 plantas + Oh/My/Gon/OhMyGon) y Grupos (Hub aislado, Parties, Teleport y Revivir) implementados en `develop` con `make check` en verde |
 
 ## Preguntas abiertas
 

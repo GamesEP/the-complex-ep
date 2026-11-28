@@ -61,4 +61,21 @@ Config.DIFFICULTIES = {
 	},
 } :: { [string]: DifficultyDef }
 
+-- Co-op scaling by active player count (1..4) per `plans/roadmap.md HS-31`.
+-- Wave counts still clamp strictly to `Config.MAX_ACTIVE_ENEMIES` (25), and if a teammate leaves
+-- mid-run (`HS-03`), subsequent waves & bosses automatically rescale to the remaining count.
+Config.COOP_WAVE_COUNT_SCALE = {
+	[1] = 1.0,
+	[2] = 1.35,
+	[3] = 1.7,
+	[4] = 2.0,
+}
+
+Config.COOP_BOSS_HEALTH_SCALE = {
+	[1] = 1.0,
+	[2] = 1.65,
+	[3] = 2.25,
+	[4] = 2.85,
+}
+
 return Config

@@ -606,6 +606,73 @@ function EnemyAnim.contactActivePose(phase: number, clock: number): LimbPose
 	}
 end
 
+-- Boss My lightning-dash windup: low predator crouch with twin photonic blades swept behind.
+function EnemyAnim.bossMyDashWindupPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local buzz = math.sin(clock * 38) * 0.04 * p
+	return {
+		torso = CFrame.new(0, -0.65 * p, 0.25 * p) * CFrame.Angles(-0.42 * p, buzz, 0),
+		head = CFrame.Angles(0.36 * p, -buzz, 0),
+		leftLeg = CFrame.Angles(0.65 * p, 0, -0.14 * p),
+		rightLeg = CFrame.Angles(-0.55 * p, 0, 0.14 * p),
+		leftArm = CFrame.Angles(-0.62 * p, 0.42 * p, -0.68 * p),
+		rightArm = CFrame.Angles(-0.62 * p, -0.42 * p, 0.68 * p),
+	}
+end
+
+-- Boss My high-speed dash slash: deep horizontal jet-stream streak with both blades crossed forward.
+function EnemyAnim.bossMyDashPose(): LimbPose
+	return {
+		torso = CFrame.new(0, -0.48, -0.35) * CFrame.Angles(-0.55, 0, 0),
+		head = CFrame.Angles(0.45, 0, 0),
+		leftLeg = CFrame.Angles(-0.75, 0, -0.12),
+		rightLeg = CFrame.Angles(-0.45, 0, 0.12),
+		leftArm = CFrame.Angles(0.45, -0.58, -0.25),
+		rightArm = CFrame.Angles(0.45, 0.58, 0.25),
+	}
+end
+
+-- Boss My sweeping photonic laser: pivots torso steadily while extending both emitters straight ahead.
+function EnemyAnim.bossMySweepPose(clock: number): LimbPose
+	local hum = math.sin(clock * 34) * 0.03
+	return {
+		torso = CFrame.new(0, -0.12, 0.12) * CFrame.Angles(0.12, hum, 0),
+		head = CFrame.Angles(-0.08, -hum, 0),
+		leftLeg = CFrame.Angles(0.28, 0, -0.18),
+		rightLeg = CFrame.Angles(-0.28, 0, 0.18),
+		leftArm = CFrame.Angles(0.45 + hum, -0.25, -0.15),
+		rightArm = CFrame.Angles(0.45 - hum, 0.25, 0.15),
+	}
+end
+
+-- Boss Gon containment / gravity channel: plants wide and thrusts both emitter cannons outward.
+function EnemyAnim.bossGonChannelPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local pulse = math.sin(clock * 26) * 0.05 * p
+	return {
+		torso = CFrame.new(0, -0.25 * p, 0.15 * p) * CFrame.Angles(0.18 * p, pulse, 0),
+		head = CFrame.Angles(-0.15 * p, -pulse, 0),
+		leftLeg = CFrame.Angles(0.32 * p, 0, -0.22 * p),
+		rightLeg = CFrame.Angles(0.32 * p, 0, 0.22 * p),
+		leftArm = CFrame.Angles(0.85 * p, 0.45 * p, -0.65 * p),
+		rightArm = CFrame.Angles(0.85 * p, -0.45 * p, 0.65 * p),
+	}
+end
+
+-- Boss OhMyGon Phase 2 transformation: rises upward throwing wings, blade, and maul skyward.
+function EnemyAnim.bossPhaseShiftPose(progress: number, clock: number): LimbPose
+	local p = easeOutCubic(progress)
+	local roar = math.sin(clock * 44) * 0.08 * p
+	return {
+		torso = CFrame.new(roar, 0.55 * p, 0) * CFrame.Angles(0.38 * p, roar, 0),
+		head = CFrame.Angles(-0.42 * p, -roar, 0),
+		leftLeg = CFrame.Angles(0.22 * p, 0, -0.25 * p),
+		rightLeg = CFrame.Angles(0.22 * p, 0, 0.25 * p),
+		leftArm = CFrame.Angles(1.25 * p, 0.55 * p, -1.15 * p),
+		rightArm = CFrame.Angles(1.35 * p, -0.55 * p, 1.15 * p),
+	}
+end
+
 -- Dazed stagger pose while stunned (Tank war cry, Support shockwave, heavy slams).
 function EnemyAnim.stunPose(clock: number): LimbPose
 	local sway = math.sin(clock * 5.2)
@@ -743,6 +810,11 @@ function EnemyAnim.selfTest()
 	local caA = EnemyAnim.contactActivePose(0, 0)
 	local caB = EnemyAnim.contactActivePose(1.0, 0.2)
 	assert(caA.leftLeg ~= caB.leftLeg and caA.torso.Position.Z < -0.05, "contact active surge strides forward aggressively")
+	assert(EnemyAnim.bossMyDashWindupPose(1, 0).torso.Position.Y < -0.4, "boss My dash windup crouches low")
+	assert(EnemyAnim.bossMyDashPose().torso.Position.Z < -0.2, "boss My dash leans aggressively forward")
+	assert(EnemyAnim.bossMySweepPose(0.2).rightArm ~= CFrame.identity, "boss My sweep extends beam emitters")
+	assert(EnemyAnim.bossGonChannelPose(1, 0.2).leftArm ~= CFrame.identity, "boss Gon channel raises emitter arms")
+	assert(EnemyAnim.bossPhaseShiftPose(1, 0.2).torso.Position.Y > 0.3, "boss OhMyGon phase shift surges upward")
 
 	local hs1 = EnemyAnim.hitstunPose(0.2, 1)
 	local hs2 = EnemyAnim.hitstunPose(0.2, 2)

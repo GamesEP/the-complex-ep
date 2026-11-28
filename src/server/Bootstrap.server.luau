@@ -30,6 +30,9 @@ local Brain = require(Shared.features.enemies.Brain)
 local Classes = require(Shared.features.classes.Classes)
 local Difficulty = require(Shared.features.enemies.Difficulty)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
+local FloorGenerator = require(Shared.features.run.FloorGenerator)
+local PartyRules = require(Shared.features.party.PartyRules)
+local ReviveRules = require(Shared.features.revive.ReviveRules)
 local RunFlow = require(Shared.features.run.RunFlow)
 local Tactics = require(Shared.features.enemies.Tactics)
 local Tonemapper = require(Shared.features.tonemapping.Tonemapper)
@@ -44,8 +47,12 @@ local CombatService = require(Server.features.combat.CombatService)
 local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
 local FlagService = require(Server.features.flags.FlagService)
+local HubService = require(Server.features.hub.HubService)
 local LogSink = require(Server.features.telemetry.LogSink)
+local PartyService = require(Server.features.party.PartyService)
+local ReviveService = require(Server.features.revive.ReviveService)
 local RunDirector = require(Server.features.run.RunService)
+local RunTeleport = require(Server.features.hub.RunTeleport)
 local UpgradeService = require(Server.features.upgrades.UpgradeService)
 local WaveDirector = require(Server.features.enemies.WaveDirector)
 local WorldBuilder = require(Server.features.world.WorldBuilder)
@@ -68,6 +75,9 @@ if RunService:IsStudio() then
 	Classes.selfTest()
 	Difficulty.selfTest()
 	EnemyAnim.selfTest()
+	FloorGenerator.selfTest()
+	PartyRules.selfTest()
+	ReviveRules.selfTest()
 	RunFlow.selfTest()
 	Tactics.selfTest()
 	Tonemapper.selfTest()
@@ -87,6 +97,27 @@ Lighting.Brightness = Config.LIGHTING_BRIGHTNESS
 Lighting.ClockTime = Config.LIGHTING_CLOCK_TIME
 
 local world = WorldBuilder.build()
+local initialMode = RunTeleport.currentServerMode()
+HubService.start({
+	world = world,
+	worldBuilder = WorldBuilder,
+	initialMode = initialMode,
+})
+RunTeleport.start({
+	record = LogSink.record,
+	onTeleportFailed = function(player: Player, _result: string, errMsg: string)
+		PartyService.unlockPlayerParty(player, `Teletransporte fallido: {errMsg}`)
+	end,
+})
+PartyService.start({
+	isHubMode = HubService.isHub,
+	onLaunchRequest = function(payload)
+		return RunTeleport.launchParty(payload, function(localPayload)
+			HubService.enterLocalRun()
+			RunDirector.launchFromHub(localPayload.difficulty)
+		end)
+	end,
+})
 
 -- Pillar 1 (VS-01): everyone starts equal with the base sword and builds their kit from 1-of-3
 -- run upgrades. `RunDirector` owns the 5-room floor loop, Difficulty, StartRun/RetryRun, and pause.
@@ -94,9 +125,20 @@ UpgradeService.start({
 	onUpgradesChanged = CombatService.applyUpgrades,
 })
 -- Each takes the other through its `start` rather than by path (CLAUDE.md): enemies hurt players
--- only through CombatService.hurt, so the dash's invulnerability covers every source of damage.
-CombatService.start({ enemies = EnemyService, isPaused = RunDirector.isPaused })
+-- only through CombatService.hurt, so the dash's invulnerability and Co-op Downed cover every source.
+CombatService.start({
+	enemies = EnemyService,
+	world = world,
+	isPaused = RunDirector.isPaused,
+	onLethalDamage = ReviveService.onLethalDamage,
+})
 CombatService.startSupportTick()
+ReviveService.start({
+	isInRun = RunDirector.isInRun,
+	onSquadWipe = RunDirector.triggerWipe,
+	onPlayerDowned = CombatService.onPlayerDowned,
+	onPlayerRevived = CombatService.onPlayerRevived,
+})
 DropService.start({ world = world, onPickup = CombatService.applyDrop, isPaused = RunDirector.isPaused })
 EnemyService.start({
 	hurt = CombatService.hurt,
@@ -104,6 +146,7 @@ EnemyService.start({
 	onKill = function(pos: Vector3)
 		DropService.maybeSpawn(pos)
 		RunDirector.onEnemyKilled()
+		CombatService.onEnemyKilled()
 	end,
 	canGrab = CombatService.canGrab,
 	setGrabbed = CombatService.setGrabbed,
@@ -118,11 +161,26 @@ WaveDirector.start({
 })
 RunDirector.start({
 	world = world,
+	worldBuilder = WorldBuilder,
 	waveDirector = WaveDirector,
 	combatService = CombatService,
 	dropService = DropService,
 	enemyService = EnemyService,
 	upgradeService = UpgradeService,
+	isHubMode = HubService.isHub,
+	onHubDifficulty = PartyService.setDifficulty,
+	onHubStartRequest = PartyService.requestLaunch,
+	onReturnHubRequest = function(player: Player)
+		RunTeleport.returnToHub(player, function()
+			RunDirector.resetToPreparing()
+			PartyService.unlockAll()
+			HubService.enterHub()
+		end)
+	end,
+	getTeleportDifficulty = RunTeleport.extractTeleportDifficulty,
+	isAnyoneStanding = ReviveService.isAnyoneStanding,
+	resetReviveAll = ReviveService.resetAll,
+	reviveDownedAll = ReviveService.reviveDownedAll,
 })
 
 -- Staff, in one place, so the flags and the admin-only remotes cannot disagree about who counts.
@@ -174,6 +232,14 @@ Dispatcher.connect("GrabEscape", EnemyService.onGrabEscape)
 Dispatcher.connect("ChooseDifficulty", RunDirector.chooseDifficulty)
 Dispatcher.connect("StartRun", RunDirector.startRun)
 Dispatcher.connect("RetryRun", RunDirector.retryRun)
+Dispatcher.connect("ReturnToHub", RunDirector.returnToHub)
+Dispatcher.connect("CreateParty", PartyService.createParty)
+Dispatcher.connect("SetPartyPrivacy", PartyService.setPartyPrivacy)
+Dispatcher.connect("JoinParty", PartyService.joinParty)
+Dispatcher.connect("InvitePlayer", PartyService.invitePlayer)
+Dispatcher.connect("RespondInvite", PartyService.respondInvite)
+Dispatcher.connect("LeaveParty", PartyService.leaveParty)
+Dispatcher.connect("KickMember", PartyService.kickMember)
 Dispatcher.connect("PickUpgrade", UpgradeService.onPickUpgrade)
 Dispatcher.connect("ReplaceAbility", UpgradeService.onReplaceAbility)
 Dispatcher.connect("UseAbility", CombatService.useAbility)
@@ -185,6 +251,9 @@ local function onPlayerRemoving(player: Player)
 	-- rather than by grepping for PlayerRemoving.
 	CombatService.forget(player)
 	EnemyService.forget(player)
+	PartyService.forget(player)
+	ReviveService.forget(player)
+	RunTeleport.forget(player)
 	UpgradeService.forget(player)
 end
 

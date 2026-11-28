@@ -45,6 +45,16 @@ export type Phase =
 	| "areaWindup"
 	| "contactWindup"
 	| "contactActive"
+	| "myDashWindup"
+	| "myDash"
+	| "mySweepWindup"
+	| "mySweep"
+	| "myBladesWindup"
+	| "gonRainWindup"
+	| "gonGravityWindup"
+	| "gonGravity"
+	| "gonRingsWindup"
+	| "bossPhaseShift"
 
 export type State = {
 	phase: Phase,
@@ -66,10 +76,19 @@ export type State = {
 	nextNovaAt: number?,
 	nextAreaAt: number?,
 	nextContactAt: number?,
+	myDashLeft: number?,
+	nextMyDashAt: number?,
+	nextMySweepAt: number?,
+	nextMyBladesAt: number?,
+	nextGonRainAt: number?,
+	nextGonGravityAt: number?,
+	nextGonRingsAt: number?,
+	bossPhase2: boolean?,
+	phase2Triggered: boolean?,
 }
 
 export type Intent = {
-	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "axeRetrieve" | "evade" | "rush" | "bossLeap" | "contactSurge",
+	move: "toward" | "away" | "hold" | "flank" | "lunge" | "spin" | "phantomStep" | "axeRetrieve" | "evade" | "rush" | "bossLeap" | "contactSurge" | "myDash" | "mySweep",
 	action: (
 		"strike"
 		| "spinTick"
@@ -92,6 +111,16 @@ export type Intent = {
 		| "bossNovaFire"
 		| "areaLaunch"
 		| "contactSurgeStart"
+		| "myDashLaunch"
+		| "myDashCheck"
+		| "mySweepStart"
+		| "mySweepTick"
+		| "myBladesFire"
+		| "gonRainFire"
+		| "gonGravityStart"
+		| "gonGravityEnd"
+		| "gonRingsFire"
+		| "bossPhaseShiftDone"
 	)?,
 }
 
@@ -154,6 +183,23 @@ export type Kind = {
 	contactWindup: number?,
 	contactDuration: number?,
 	contactCooldown: number?,
+	myDashCount: number?,
+	myDashWindup: number?,
+	myDashDuration: number?,
+	myDashCooldown: number?,
+	mySweepWindup: number?,
+	mySweepDuration: number?,
+	mySweepRange: number?,
+	mySweepCooldown: number?,
+	myBladesWindup: number?,
+	myBladesCooldown: number?,
+	gonRainWindup: number?,
+	gonRainCooldown: number?,
+	gonGravityWindup: number?,
+	gonGravityDuration: number?,
+	gonGravityCooldown: number?,
+	gonRingsWindup: number?,
+	gonRingsCooldown: number?,
 }
 
 -- A ranged enemy backs off inside this fraction of its distance, and only fires inside this
@@ -188,6 +234,15 @@ function Brain.initial(now: number): State
 		nextNovaAt = now + 5.5,
 		nextAreaAt = now + 1.4,
 		nextContactAt = now + 1.2,
+		myDashLeft = 0,
+		nextMyDashAt = now + 1.8,
+		nextMySweepAt = now + 4.5,
+		nextMyBladesAt = now + 2.8,
+		nextGonRainAt = now + 1.8,
+		nextGonGravityAt = now + 4.8,
+		nextGonRingsAt = now + 3.0,
+		bossPhase2 = false,
+		phase2Triggered = false,
 	}
 end
 
@@ -232,7 +287,24 @@ local function with(
 		nextNovaAt = if nextNovaAt ~= nil then nextNovaAt else state.nextNovaAt,
 		nextAreaAt = if nextAreaAt ~= nil then nextAreaAt else state.nextAreaAt,
 		nextContactAt = if nextContactAt ~= nil then nextContactAt else state.nextContactAt,
+		myDashLeft = state.myDashLeft,
+		nextMyDashAt = state.nextMyDashAt,
+		nextMySweepAt = state.nextMySweepAt,
+		nextMyBladesAt = state.nextMyBladesAt,
+		nextGonRainAt = state.nextGonRainAt,
+		nextGonGravityAt = state.nextGonGravityAt,
+		nextGonRingsAt = state.nextGonRingsAt,
+		bossPhase2 = state.bossPhase2,
+		phase2Triggered = state.phase2Triggered,
 	}
+end
+
+local function patch(state: State, updates: { [string]: any }): State
+	local copy = table.clone(state) :: any
+	for k, v in pairs(updates) do
+		copy[k] = v
+	end
+	return copy :: State
 end
 
 local function melee(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
@@ -605,6 +677,245 @@ local function contact(kind: Kind, state: State, distance: number, now: number, 
 	return state, { move = "toward" }
 end
 
+local function bossMy(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
+	local cdScale = if state.bossPhase2 then 0.75 else 1
+	if state.phase == "myDashWindup" then
+		if now >= state.endsAt then
+			local count = (kind.myDashCount or 3) + (if state.bossPhase2 then 1 else 0)
+			return patch(state, {
+				phase = "myDash",
+				endsAt = now + (kind.myDashDuration or 0.24),
+				myDashLeft = count,
+				nextMyDashAt = now + (kind.myDashCooldown or 5.2) * cdScale,
+			}), { move = "myDash", action = "myDashLaunch" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "myDash" then
+		if now >= state.endsAt then
+			local left = (state.myDashLeft or 1) - 1
+			if left > 0 then
+				return patch(state, {
+					phase = "myDash",
+					endsAt = now + (kind.myDashDuration or 0.24),
+					myDashLeft = left,
+				}), { move = "myDash", action = "myDashLaunch" }
+			end
+			return patch(state, { phase = "recover", endsAt = now + (kind.recover or 0.95) * cdScale, myDashLeft = 0 }),
+				{ move = "hold" }
+		end
+		return state, { move = "myDash", action = "myDashCheck" }
+	end
+	if state.phase == "mySweepWindup" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "mySweep",
+				endsAt = now + (kind.mySweepDuration or 1.15),
+				nextMySweepAt = now + (kind.mySweepCooldown or 7.5) * cdScale,
+			}), { move = "mySweep", action = "mySweepStart" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "mySweep" then
+		if now >= state.endsAt then
+			return patch(state, { phase = "recover", endsAt = now + (kind.recover or 0.95) * cdScale }), { move = "hold" }
+		end
+		return state, { move = "mySweep", action = "mySweepTick" }
+	end
+	if state.phase == "myBladesWindup" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "recover",
+				endsAt = now + (kind.recover or 0.85) * cdScale,
+				nextMyBladesAt = now + (kind.myBladesCooldown or 4.6) * cdScale,
+			}), { move = "hold", action = "myBladesFire" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return patch(state, { phase = "chase", endsAt = 0 }), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	-- 1. Sweeping photonic laser beam at mid/long range.
+	if now >= (state.nextMySweepAt or 0) and distance <= (kind.mySweepRange or 42) then
+		return patch(state, { phase = "mySweepWindup", endsAt = now + (kind.mySweepWindup or 0.85) * cdScale }),
+			{ move = "hold" }
+	end
+	-- 2. Chained lightning dashes closing any distance.
+	if now >= (state.nextMyDashAt or 0) and distance <= 48 then
+		return patch(state, { phase = "myDashWindup", endsAt = now + (kind.myDashWindup or 0.65) * cdScale }),
+			{ move = "hold" }
+	end
+	-- 3. Fan of 4 parriable photonic cross blades.
+	if now >= (state.nextMyBladesAt or 0) and distance <= 52 then
+		return patch(state, { phase = "myBladesWindup", endsAt = now + (kind.myBladesWindup or 0.55) * cdScale }),
+			{ move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
+local function bossGon(kind: Kind, state: State, distance: number, now: number, _canAttack: boolean): (State, Intent)
+	local cdScale = if state.bossPhase2 then 0.75 else 1
+	if state.phase == "gonRainWindup" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "recover",
+				endsAt = now + (kind.recover or 1.1) * cdScale,
+				nextGonRainAt = now + (kind.gonRainCooldown or 6.8) * cdScale,
+			}), { move = "hold", action = "gonRainFire" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "gonGravityWindup" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "gonGravity",
+				endsAt = now + (kind.gonGravityDuration or 2.0),
+				nextGonGravityAt = now + (kind.gonGravityCooldown or 8.5) * cdScale,
+			}), { move = "hold", action = "gonGravityStart" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "gonGravity" then
+		if now >= state.endsAt then
+			return patch(state, { phase = "recover", endsAt = now + (kind.recover or 1.15) * cdScale }),
+				{ move = "hold", action = "gonGravityEnd" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "gonRingsWindup" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "recover",
+				endsAt = now + (kind.recover or 1.1) * cdScale,
+				nextGonRingsAt = now + (kind.gonRingsCooldown or 6.2) * cdScale,
+			}), { move = "hold", action = "gonRingsFire" }
+		end
+		return state, { move = "hold" }
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return patch(state, { phase = "chase", endsAt = 0 }), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	-- 1. Gravity Well vortex pulling players inward before detonating.
+	if now >= (state.nextGonGravityAt or 0) and distance <= 42 then
+		return patch(state, { phase = "gonGravityWindup", endsAt = now + (kind.gonGravityWindup or 0.9) * cdScale }),
+			{ move = "hold" }
+	end
+	-- 2. Containment Rain mortar grid (4-5 telegraphed ground hazard zones).
+	if now >= (state.nextGonRainAt or 0) and distance <= 56 then
+		return patch(state, { phase = "gonRainWindup", endsAt = now + (kind.gonRainWindup or 0.7) * cdScale }),
+			{ move = "hold" }
+	end
+	-- 3. Dual expanding jumpable seismic shockwave rings.
+	if now >= (state.nextGonRingsAt or 0) and distance <= 50 then
+		return patch(state, { phase = "gonRingsWindup", endsAt = now + (kind.gonRingsWindup or 0.7) * cdScale }),
+			{ move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
+local function bossOhMyGon(kind: Kind, state: State, distance: number, now: number, canAttack: boolean): (State, Intent)
+	if state.phase == "bossPhaseShift" then
+		if now >= state.endsAt then
+			return patch(state, {
+				phase = "chase",
+				endsAt = 0,
+				bossPhase2 = true,
+				nextMyDashAt = now + 0.6,
+				nextGonRingsAt = now + 2.2,
+				nextLeapAt = now + 3.8,
+			}), { move = "hold", action = "bossPhaseShiftDone" }
+		end
+		return state, { move = "hold" }
+	end
+
+	-- Delegate any active multi-step phase to its owning boss behaviour cleanly.
+	if
+		state.phase == "bossConeWindup"
+		or state.phase == "bossLeapWindup"
+		or state.phase == "bossLeap"
+		or state.phase == "bossNovaWindup"
+	then
+		return bossOh(kind, state, distance, now, canAttack)
+	end
+	if
+		state.phase == "myDashWindup"
+		or state.phase == "myDash"
+		or state.phase == "mySweepWindup"
+		or state.phase == "mySweep"
+		or state.phase == "myBladesWindup"
+	then
+		return bossMy(kind, state, distance, now, canAttack)
+	end
+	if
+		state.phase == "gonRainWindup"
+		or state.phase == "gonGravityWindup"
+		or state.phase == "gonGravity"
+		or state.phase == "gonRingsWindup"
+	then
+		return bossGon(kind, state, distance, now, canAttack)
+	end
+	if state.phase == "recover" then
+		if now >= state.endsAt then
+			return patch(state, { phase = "chase", endsAt = 0 }), { move = "hold" }
+		end
+		return state, { move = "hold" }
+	end
+
+	local cdScale = if state.bossPhase2 then 0.75 else 1
+	-- Fused selector combining learned attacks from Oh, My, and Gon without untaught mechanics.
+	if now >= (state.nextGonGravityAt or 0) and distance <= 42 then
+		return patch(state, { phase = "gonGravityWindup", endsAt = now + (kind.gonGravityWindup or 0.85) * cdScale }),
+			{ move = "hold" }
+	end
+	if now >= (state.nextMySweepAt or 0) and distance <= (kind.mySweepRange or 44) then
+		return patch(state, { phase = "mySweepWindup", endsAt = now + (kind.mySweepWindup or 0.8) * cdScale }),
+			{ move = "hold" }
+	end
+	if now >= (state.nextNovaAt or 0) and distance <= 54 then
+		return patch(state, {
+			phase = "bossNovaWindup",
+			endsAt = now + (kind.novaWindup or 0.95) * cdScale,
+			nextNovaAt = now + (kind.novaCooldown or 11.5) * cdScale,
+		}), { move = "hold" }
+	end
+	if now >= (state.nextMyDashAt or 0) and distance <= 48 then
+		return patch(state, { phase = "myDashWindup", endsAt = now + (kind.myDashWindup or 0.62) * cdScale }),
+			{ move = "hold" }
+	end
+	if now >= (state.nextGonRainAt or 0) and distance <= 56 then
+		return patch(state, { phase = "gonRainWindup", endsAt = now + (kind.gonRainWindup or 0.65) * cdScale }),
+			{ move = "hold" }
+	end
+	if now >= (state.nextLeapAt or 0) and distance >= (kind.leapMinRange or 18) and distance <= (kind.leapMaxRange or 56) then
+		return patch(state, {
+			phase = "bossLeapWindup",
+			endsAt = now + (kind.leapWindup or 0.62) * cdScale,
+			nextLeapAt = now + (kind.leapCooldown or 9.0) * cdScale,
+		}), { move = "hold" }
+	end
+	if now >= (state.nextGonRingsAt or 0) and distance <= 50 then
+		return patch(state, { phase = "gonRingsWindup", endsAt = now + (kind.gonRingsWindup or 0.68) * cdScale }),
+			{ move = "hold" }
+	end
+	if now >= (state.nextMyBladesAt or 0) and distance <= 52 then
+		return patch(state, { phase = "myBladesWindup", endsAt = now + (kind.myBladesWindup or 0.52) * cdScale }),
+			{ move = "hold" }
+	end
+	if distance <= (kind.reach or 18) then
+		return patch(state, { phase = "bossConeWindup", endsAt = now + (kind.coneWindup or 0.8) * cdScale }),
+			{ move = "hold" }
+	end
+	return state, { move = "toward" }
+end
+
 local BEHAVIOURS = {
 	melee = melee,
 	ranged = ranged,
@@ -613,7 +924,24 @@ local BEHAVIOURS = {
 	area = area,
 	contact = contact,
 	bossOh = bossOh,
+	bossMy = bossMy,
+	bossGon = bossGon,
+	bossOhMyGon = bossOhMyGon,
 }
+
+-- Single-fire Phase 2 transition for Boss OhMyGon when HP crosses <= 50%.
+function Brain.triggerPhase2(state: State, duration: number, now: number): (State, boolean)
+	if state.phase2Triggered then
+		return state, false
+	end
+	return patch(state, {
+		phase = "bossPhaseShift",
+		endsAt = now + math.max(duration, 0.2),
+		phase2Triggered = true,
+		bossPhase2 = true,
+		myDashLeft = 0,
+	}), true
+end
 
 -- Transitions a grabber into `holding` once EnemyService confirms the target was caught.
 function Brain.enterHolding(state: State): State
@@ -662,6 +990,8 @@ function Brain.applyHitstun(
 		or state.phase == "phantomStep"
 		or state.phase == "rush"
 		or state.phase == "bossLeap"
+		or state.phase == "myDash"
+		or state.phase == "bossPhaseShift"
 		or state.phase == "axeRetrieve"
 		or (state.phase == "windup" and state.phantomStepFinisher == true)
 	then
@@ -1176,6 +1506,73 @@ function Brain.selfTest()
 	assert(is(ct.phase, "chase"), "contact unit waits out contactCooldown before surging again")
 	local ctHit, ctFl = Brain.applyHitstun("contact", { phase = "contactActive", endsAt = 9, nextFireAt = 0, nextContactAt = 0 }, 0.6, 2.0, 0.4)
 	assert(ctFl and is(ctHit.phase, "hitstun") and (ctHit.nextContactAt or 0) >= 3.0, "hitstun interrupts contactActive and delays next surge")
+
+	-- Boss My: lightning dashes (3 chained), sweeping laser, and parriable cross blades.
+	local myKind: Kind = {
+		recover = 0.9,
+		myDashCount = 3,
+		myDashWindup = 0.65,
+		myDashDuration = 0.24,
+		myDashCooldown = 5.2,
+		mySweepWindup = 0.85,
+		mySweepDuration = 1.15,
+		mySweepRange = 42,
+		mySweepCooldown = 7.5,
+		myBladesWindup = 0.55,
+		myBladesCooldown = 4.6,
+	}
+	local bm: any = Brain.initial(0)
+	bm, intent = Brain.step("bossMy", myKind, bm, 24, 2.0, true)
+	assert(is(bm.phase, "myDashWindup"), "boss My winds up lightning dashes")
+	bm, intent = Brain.step("bossMy", myKind, bm, 24, 2.7, true)
+	assert(is(bm.phase, "myDash") and is(intent.action, "myDashLaunch") and bm.myDashLeft == 3, "boss My launches dash 1 of 3")
+	bm, intent = Brain.step("bossMy", myKind, bm, 18, 3.0, true)
+	assert(is(bm.phase, "myDash") and is(intent.action, "myDashLaunch") and bm.myDashLeft == 2, "boss My chains dash 2")
+	bm, intent = Brain.step("bossMy", myKind, bm, 18, 3.3, true)
+	assert(is(bm.phase, "myDash") and is(intent.action, "myDashLaunch") and bm.myDashLeft == 1, "boss My chains dash 3")
+	bm, intent = Brain.step("bossMy", myKind, bm, 18, 3.6, true)
+	assert(is(bm.phase, "recover"), "boss My recovers after final dash")
+	bm, intent = Brain.step("bossMy", myKind, bm, 28, 4.7, true)
+	assert(is(bm.phase, "chase"), "boss My exits recover")
+	bm, intent = Brain.step("bossMy", myKind, bm, 28, 4.8, true)
+	assert(is(bm.phase, "mySweepWindup"), "boss My winds up sweeping photonic laser")
+	bm, intent = Brain.step("bossMy", myKind, bm, 28, 5.7, true)
+	assert(is(bm.phase, "mySweep") and is(intent.action, "mySweepStart"), "boss My starts laser sweep")
+
+	-- Boss Gon: containment rain, gravity well, and dual seismic rings.
+	local gonKind: Kind = {
+		recover = 1.1,
+		gonRainWindup = 0.7,
+		gonRainCooldown = 6.8,
+		gonGravityWindup = 0.9,
+		gonGravityDuration = 2.0,
+		gonGravityCooldown = 8.5,
+		gonRingsWindup = 0.7,
+		gonRingsCooldown = 6.2,
+	}
+	local bg: any = Brain.initial(0)
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 2.0, true)
+	assert(is(bg.phase, "gonRainWindup"), "boss Gon winds up containment rain")
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 2.8, true)
+	assert(is(bg.phase, "recover") and is(intent.action, "gonRainFire"), "boss Gon fires containment rain")
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 4.9, true)
+	assert(is(bg.phase, "chase"), "boss Gon exits rain recover")
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 5.0, true)
+	assert(is(bg.phase, "gonGravityWindup"), "boss Gon winds up gravity well")
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 6.0, true)
+	assert(is(bg.phase, "gonGravity") and is(intent.action, "gonGravityStart"), "boss Gon activates gravity well")
+	bg, intent = Brain.step("bossGon", gonKind, bg, 25, 8.1, true)
+	assert(is(bg.phase, "recover") and is(intent.action, "gonGravityEnd"), "boss Gon detonates gravity well")
+
+	-- Boss OhMyGon: single-fire Phase 2 transition accelerates cadence and completes cleanly.
+	local omg: any = Brain.initial(0)
+	local shifted: boolean
+	omg, shifted = Brain.triggerPhase2(omg, 1.5, 10.0)
+	assert(shifted and is(omg.phase, "bossPhaseShift") and omg.bossPhase2 == true, "triggerPhase2 enters bossPhaseShift")
+	local _, secondShift = Brain.triggerPhase2(omg, 1.5, 10.5)
+	assert(not secondShift, "triggerPhase2 fires at most once per fight")
+	omg, intent = Brain.step("bossOhMyGon", myKind, omg, 20, 11.6, true)
+	assert(is(omg.phase, "chase") and is(intent.action, "bossPhaseShiftDone"), "bossPhaseShift completes into Phase 2")
 
 	-- Progressive daze speed factors drop with each stack and clamp cleanly.
 	local factors = { 0.6, 0.4, 0.25, 0.15 }

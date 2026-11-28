@@ -29,6 +29,13 @@ local DAMAGE_FIELDS = {
 	"areaTickDamage",
 	"contactDamage",
 	"passiveContactDamage",
+	"myDashDamage",
+	"mySweepDamage",
+	"myBladeDamage",
+	"gonRainImpactDamage",
+	"gonRainTickDamage",
+	"gonGravityDamage",
+	"gonRingDamage",
 }
 
 local SPEED_FIELDS = {
@@ -50,8 +57,18 @@ function Difficulty.get(id: any): Config.DifficultyDef
 	return Config.DIFFICULTIES[Config.DEFAULT_DIFFICULTY]
 end
 
--- Scales an enemy count for `kind` under `diffId`. Boss kinds never duplicate.
-function Difficulty.scaleCount(kind: string, baseCount: number, diffId: any): number
+function Difficulty.coopWaveMultiplier(playerCount: number?): number
+	local clamped = math.clamp(math.floor(playerCount or 1), 1, Config.PARTY_MAX_PLAYERS)
+	return Config.COOP_WAVE_COUNT_SCALE[clamped] or 1.0
+end
+
+function Difficulty.coopBossHealthMultiplier(playerCount: number?): number
+	local clamped = math.clamp(math.floor(playerCount or 1), 1, Config.PARTY_MAX_PLAYERS)
+	return Config.COOP_BOSS_HEALTH_SCALE[clamped] or 1.0
+end
+
+-- Scales an enemy count for `kind` under `diffId` and `playerCount` (1..4). Boss kinds never duplicate.
+function Difficulty.scaleCount(kind: string, baseCount: number, diffId: any, playerCount: number?): number
 	if baseCount <= 0 then
 		return 0
 	end
@@ -60,13 +77,14 @@ function Difficulty.scaleCount(kind: string, baseCount: number, diffId: any): nu
 		return math.floor(baseCount)
 	end
 	local diff = Difficulty.get(diffId)
-	return math.max(1, math.round(baseCount * diff.countMultiplier))
+	local coopMult = Difficulty.coopWaveMultiplier(playerCount)
+	return math.max(1, math.round(baseCount * diff.countMultiplier * coopMult))
 end
 
-function Difficulty.scaleWave(wave: { [string]: number }, diffId: any): { [string]: number }
+function Difficulty.scaleWave(wave: { [string]: number }, diffId: any, playerCount: number?): { [string]: number }
 	local out: { [string]: number } = {}
 	for kind, count in pairs(wave) do
-		local scaled = Difficulty.scaleCount(kind, count, diffId)
+		local scaled = Difficulty.scaleCount(kind, count, diffId, playerCount)
 		if scaled > 0 then
 			out[kind] = scaled
 		end
@@ -75,12 +93,13 @@ function Difficulty.scaleWave(wave: { [string]: number }, diffId: any): { [strin
 end
 
 -- Returns a shallow-cloned enemy spec with health, movement/charge speeds, and all damage fields
--- calibrated for `diffId`.
-function Difficulty.scaleSpec(spec: { [string]: any }, diffId: any): { [string]: any }
+-- calibrated for `diffId` and `playerCount` (boss HP scales for 1-4 player co-op).
+function Difficulty.scaleSpec(spec: { [string]: any }, diffId: any, playerCount: number?): { [string]: any }
 	local diff = Difficulty.get(diffId)
 	local scaled = table.clone(spec)
 	if type(scaled.health) == "number" then
-		scaled.health = math.max(1, math.round(scaled.health * diff.healthMultiplier))
+		local coopHp = if scaled.isBoss == true then Difficulty.coopBossHealthMultiplier(playerCount) else 1.0
+		scaled.health = math.max(1, math.round(scaled.health * diff.healthMultiplier * coopHp))
 	end
 	for _, key in ipairs(SPEED_FIELDS) do
 		if type(scaled[key]) == "number" then
@@ -131,6 +150,21 @@ function Difficulty.selfTest()
 	assert(sample.health == 100 and sample.damage == 10, "scaleSpec never mutates base spec")
 	assert(deadSpec.health == 150 and deadSpec.damage == 17.5 and deadSpec.slamDamage == 35, "Zona Muerta scales health and damage")
 	assert(math.abs(deadSpec.speed - 27) < 1e-5, "Zona Muerta scales movement speed")
+
+	-- Co-op scaling (1..4 players): waves swell smoothly, bosses never duplicate, boss HP scales up.
+	local soloWave = Difficulty.scaleWave({ melee = 4, bossOh = 1 }, "normal", 1)
+	local duoWave = Difficulty.scaleWave({ melee = 4, bossOh = 1 }, "normal", 2)
+	local quadWave = Difficulty.scaleWave({ melee = 4, bossOh = 1 }, "normal", 4)
+	assert(soloWave.melee == 4 and duoWave.melee > soloWave.melee and quadWave.melee > duoWave.melee, "co-op wave counts scale 1->4")
+	assert(soloWave.bossOh == 1 and duoWave.bossOh == 1 and quadWave.bossOh == 1, "co-op never duplicates bosses")
+
+	local bossBase = { health = 1000, isBoss = true, speed = 15, damage = 20 }
+	local boss1 = Difficulty.scaleSpec(bossBase, "normal", 1)
+	local boss4 = Difficulty.scaleSpec(bossBase, "normal", 4)
+	assert(boss1.health == 1000 and boss4.health > boss1.health, "boss HP scales for 4-player co-op")
+	local mob1 = Difficulty.scaleSpec({ health = 100, speed = 15, damage = 10 }, "normal", 1)
+	local mob4 = Difficulty.scaleSpec({ health = 100, speed = 15, damage = 10 }, "normal", 4)
+	assert(mob1.health == mob4.health, "regular enemy HP stays crisp in co-op while count scales")
 end
 
 return Difficulty

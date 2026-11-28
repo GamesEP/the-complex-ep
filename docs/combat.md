@@ -109,7 +109,10 @@ renamed. Read the name from Config anywhere it reaches a screen — never write 
 | `contact` | Voltaico | Fast spiral chaser with a 5.5-stud high-voltage contact aura |
 | `exploder` | Detonante | Fast suicide runner |
 | `grabber` | Coloso | Juggernaut that grabs and rushes |
-| `bossOh` | Oh | Wave 6 heavy mechanical titan boss (cone smash, seismic leap, 360° plasma nova) |
+| `bossOh` | Oh | Floor 2 Room 5 heavy mechanical titan boss (cone smash, seismic leap, 360° plasma nova) |
+| `bossMy` | My | Floor 3 Room 5 agile photonic assassin boss (3× lightning dash, 140° sweeping laser, parriable cross blades) |
+| `bossGon` | Gon | Floor 4 Room 5 bio-containment boss (mortar containment rain, pulling gravity well, jumpable dual seismic rings) |
+| `bossOhMyGon` | OhMyGon | Floor 5 Room 5 fused 2-phase final boss (Phase 1 mixes Oh/My/Gon attacks; Phase 2 at ≤50% HP accelerates cadence 25% and escalates patterns) |
 
 **Anchored parts, not rigs.** An enemy is a Model with one anchored part (`Body`), moved by the
 server every Heartbeat. A Humanoid rig per enemy brings physics, pathfinding and a network owner

@@ -6,11 +6,13 @@
 	"cleared") as attributes on `workspace.World` for `CombatHud` and `ArenaTheme`.
 ]]
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.core.Config)
 local Difficulty = require(Shared.features.enemies.Difficulty)
+local FloorGenerator = require(Shared.features.run.FloorGenerator)
 local Waves = require(Shared.features.enemies.Waves)
 
 local EnemyService = require(script.Parent.EnemyService)
@@ -29,18 +31,23 @@ local generation = 0
 
 local function spawnWave(waveSpec: { [string]: number })
 	local diffId = if getDifficulty then getDifficulty() else Config.DEFAULT_DIFFICULTY
-	local scaled = Difficulty.scaleWave(waveSpec, diffId)
+	-- Read current live player count right as each wave spawns so mid-run abandonment (`HS-03`)
+	-- automatically rescales subsequent waves and bosses while staying capped at MAX_ACTIVE_ENEMIES.
+	local partySize = math.clamp(#Players:GetPlayers(), 1, Config.PARTY_MAX_PLAYERS)
+	local scaled = FloorGenerator.capWave(Difficulty.scaleWave(waveSpec, diffId, partySize), Config.MAX_ACTIVE_ENEMIES)
 	local kinds = Waves.expand(scaled)
+	local obstacles = Config.getArenaObstacles(world and world:GetAttribute("ArenaModel"))
 	for i, kind in ipairs(kinds) do
+		local spec = Config.ENEMY_KINDS[kind]
 		local rawPos: Vector3
-		if kind == "bossOh" then
-			-- Boss Oh enters dramatically from the North Blast Door bay!
+		if spec and spec.isBoss == true then
+			-- Floor bosses enter dramatically from the North Blast Door bay!
 			rawPos = Vector3.new(0, 0, -(Config.ROOM_SIZE.Y / 2 - 18))
 		else
 			rawPos = Waves.spawnPoint(i, #kinds, Config.ROOM_SIZE, SPAWN_INSET, 0)
 		end
-		local safePos = Waves.avoidObstacles(rawPos, 3.5, Config.ARENA_PILLARS)
-		EnemyService.spawn(kind, safePos, diffId)
+		local safePos = Waves.avoidObstacles(rawPos, 3.5, obstacles)
+		EnemyService.spawn(kind, safePos, diffId, partySize)
 	end
 end
 

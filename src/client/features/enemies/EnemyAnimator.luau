@@ -46,6 +46,9 @@ type Rig = {
 	lastHitCount: number,
 	hitstunStartedAt: number,
 	spinRing: Part?,
+	spinTrails: { Part }?,
+	spinSparks: { Part }?,
+	spinRimSegs: { Part }?,
 	beamGuide: Part?,
 	beamOrb: Part?,
 	parryGlint: Part?,
@@ -59,8 +62,46 @@ type Rig = {
 	stunOrbs: { Part }?,
 	contactAura: Part?,
 	contactArcs: { Part }?,
+	contactBolts: { Part }?,
+	contactSparks: { Part }?,
+	contactRingSegs: { Part }?,
+	contactLight: PointLight?,
+	nextBoltReseedAt: number,
+	boltSeeds: { { angle: number, distFrac: number, jitter1: Vector3, jitter2: Vector3, colorIdx: number } },
+	bossSweepBeam: Part?,
+	bossDashLine: Part?,
 	lastAfterimageAt: number,
 	afterimageIndex: number,
+}
+
+type ToxicBubble = {
+	part: Part,
+	angle: number,
+	distFrac: number,
+	speed: number,
+	phase: number,
+	maxSize: number,
+	maxRise: number,
+}
+
+type ToxicPoolRig = {
+	source: BasePart,
+	radius: number,
+	anchor: Part,
+	swirls: { Part },
+	rimSegs: { Part },
+	bubbles: { ToxicBubble },
+	emitter: ParticleEmitter,
+}
+
+type BallisticChunk = {
+	part: Part,
+	velocity: Vector3,
+	gravity: number,
+	startedAt: number,
+	duration: number,
+	baseSize: Vector3,
+	stretch: boolean,
 }
 
 type DeathAnim = {
@@ -74,6 +115,8 @@ type DeathAnim = {
 }
 
 local rigs: { [Model]: Rig } = {}
+local toxicPools: { [BasePart]: ToxicPoolRig } = {}
+local ballistics: { BallisticChunk } = {}
 local deaths: { DeathAnim } = {}
 local corpseFolder: Folder? = nil
 
@@ -172,7 +215,361 @@ local function registerMotor(model: Model, body: BasePart, rig: Rig, child: Inst
 	end
 end
 
+local function makeVfxPart(
+	name: string,
+	color: Color3,
+	material: Enum.Material?,
+	shape: Enum.PartType?,
+	transparency: number?
+): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Material = material or Enum.Material.Neon
+	p.Color = color
+	p.Transparency = transparency or 0
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = getCorpseFolder()
+	return p
+end
+
+local function positionSegment(part: Part, p0: Vector3, p1: Vector3, thickness: number)
+	local delta = p1 - p0
+	local len = delta.Magnitude
+	if len < 1e-3 then
+		part.Size = Vector3.new(thickness, thickness, 0.05)
+		part.CFrame = CFrame.new(p0)
+		return
+	end
+	local mid = (p0 + p1) * 0.5
+	part.Size = Vector3.new(thickness, thickness, len)
+	part.CFrame = CFrame.lookAt(mid, p1)
+end
+
+local function destroyPartList(list: { Part }?)
+	if not list then
+		return
+	end
+	for _, p in ipairs(list) do
+		if p.Parent then
+			p:Destroy()
+		end
+	end
+end
+
+local function detachToxicPool(source: BasePart)
+	local pool = toxicPools[source]
+	if not pool then
+		return
+	end
+	toxicPools[source] = nil
+	destroyPartList(pool.swirls)
+	destroyPartList(pool.rimSegs)
+	for _, b in ipairs(pool.bubbles) do
+		if b.part.Parent then
+			b.part:Destroy()
+		end
+	end
+	if pool.anchor.Parent then
+		pool.anchor:Destroy()
+	end
+end
+
+local function attachToxicPool(source: BasePart)
+	if toxicPools[source] then
+		return
+	end
+	local radAttr = source:GetAttribute("HazardRadius")
+	local radius = if type(radAttr) == "number" and radAttr > 0 then radAttr else (source.Size.Y * 0.5)
+	local center = Vector3.new(source.Position.X, 0.25, source.Position.Z)
+
+	local anchor = makeVfxPart("ToxicPoolVaporAnchor", Color3.fromRGB(115, 255, 65), Enum.Material.SmoothPlastic, nil, 1)
+	anchor.Size = Vector3.new(radius * 1.45, 0.2, radius * 1.45)
+	anchor.CFrame = CFrame.new(center)
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(165, 255, 70)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(82, 225, 45)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(28, 90, 22)),
+	})
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.65),
+		NumberSequenceKeypoint.new(0.45, 1.55),
+		NumberSequenceKeypoint.new(1, 2.2),
+	})
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.82),
+		NumberSequenceKeypoint.new(0.35, 0.55),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Lifetime = NumberRange.new(0.9, 1.5)
+	emitter.Rate = 16
+	emitter.Speed = NumberRange.new(2.2, 4.8)
+	emitter.SpreadAngle = Vector2.new(22, 22)
+	emitter.RotSpeed = NumberRange.new(-45, 45)
+	emitter.LightEmission = 0.55
+	emitter.Enabled = source:GetAttribute("HazardActive") == true
+	emitter.Parent = anchor
+
+	-- Organic swirling acid currents rotating across the sludge surface.
+	local swirls: { Part } = {}
+	for i = 1, 6 do
+		local c = if i % 2 == 0 then Color3.fromRGB(150, 255, 62) else Color3.fromRGB(72, 210, 38)
+		local p = makeVfxPart(`ToxicSwirl_{i}`, c, Enum.Material.Neon, nil, 1)
+		p.Size = Vector3.new(radius * 0.65, 0.12, 0.6)
+		table.insert(swirls, p)
+	end
+
+	-- Bubbling outer edge slime ring segments undulating around the puddle perimeter.
+	local rimSegs: { Part } = {}
+	for i = 1, 10 do
+		local p = makeVfxPart(`ToxicRim_{i}`, Color3.fromRGB(130, 255, 55), Enum.Material.Neon, nil, 1)
+		table.insert(rimSegs, p)
+	end
+
+	-- Rising & popping translucent toxic acid bubbles across the puddle.
+	local bubbles: { ToxicBubble } = {}
+	for i = 1, 9 do
+		local c = if i % 3 == 0 then Color3.fromRGB(210, 255, 115) else Color3.fromRGB(135, 255, 58)
+		local bPart = makeVfxPart(`ToxicBubble_{i}`, c, Enum.Material.Neon, Enum.PartType.Ball, 1)
+		table.insert(bubbles, {
+			part = bPart,
+			angle = (i / 9) * math.pi * 2 + math.random() * 0.5,
+			distFrac = 0.14 + math.random() * 0.72,
+			speed = 0.85 + math.random() * 0.75,
+			phase = math.random(),
+			maxSize = 0.75 + math.random() * 0.85,
+			maxRise = 1.1 + math.random() * 1.4,
+		})
+	end
+
+	toxicPools[source] = {
+		source = source,
+		radius = radius,
+		anchor = anchor,
+		swirls = swirls,
+		rimSegs = rimSegs,
+		bubbles = bubbles,
+		emitter = emitter,
+	}
+end
+
+local function spawnToxicSplash(origin: Vector3, radius: number)
+	local base = Vector3.new(origin.X, 0.35, origin.Z)
+	-- Expanding hollow toxic splash rim (10 arc segments).
+	local segCount = 10
+	local arcLen = (2 * math.pi * radius) / segCount * 0.82
+	for i = 1, segCount do
+		local angle = (i / segCount) * math.pi * 2
+		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+		local seg = makeVfxPart("ToxicSplashRim", Color3.fromRGB(165, 255, 65), Enum.Material.Neon, nil, 0.15)
+		local startPos = base + dir * 1.5
+		local endPos = base + dir * (radius * 1.02)
+		seg.Size = Vector3.new(1.4, 0.35, 0.75)
+		seg.CFrame = CFrame.lookAt(startPos, startPos + dir)
+		TweenService:Create(seg, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(arcLen, 0.14, 0.45),
+			CFrame = CFrame.lookAt(endPos, endPos + dir),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(seg, 0.38)
+	end
+
+	-- 10 flying neon-green acid droplets arcing upward and splashing back into the pool.
+	local t = os.clock()
+	for i = 1, 10 do
+		local angle = (i / 10) * math.pi * 2 + (math.random() - 0.5) * 0.4
+		local spd = (0.65 + math.random() * 0.75) * radius * 1.45
+		local up = 13 + math.random() * 10
+		local drop = makeVfxPart(
+			"ToxicDroplet",
+			if i % 2 == 0 then Color3.fromRGB(195, 255, 85) else Color3.fromRGB(110, 245, 48),
+			Enum.Material.Neon,
+			Enum.PartType.Ball,
+			0.1
+		)
+		local sz = 0.55 + math.random() * 0.55
+		drop.Size = Vector3.one * sz
+		drop.Position = base + Vector3.new(0, 0.5, 0)
+		table.insert(ballistics, {
+			part = drop,
+			velocity = Vector3.new(math.cos(angle) * spd, up, math.sin(angle) * spd),
+			gravity = 42,
+			startedAt = t,
+			duration = 0.45 + math.random() * 0.25,
+			baseSize = Vector3.one * sz,
+			stretch = false,
+		})
+	end
+end
+
+-- Multi-layered cinematic explosion for Detonante (`exploder`): blinding core flash + dynamic
+-- light + fireball puffs + billowing dark smoke clouds + hollow ground shockwave rim + flying
+-- incandescent shrapnel arcs + rising ember ash burst.
+local function spawnExplosion(origin: Vector3, blastRadius: number, accentColor: Color3?)
+	local center = Vector3.new(origin.X, math.max(origin.Y, 1.4), origin.Z)
+	local floorBase = Vector3.new(origin.X, 0.32, origin.Z)
+	local hotColor = accentColor or Color3.fromRGB(255, 118, 36)
+	local t = os.clock()
+
+	-- 1. Blinding white-gold detonation core + brief arena PointLight flash.
+	local core = makeVfxPart("ExploderCoreFlash", Color3.fromRGB(255, 250, 215), Enum.Material.Neon, Enum.PartType.Ball, 0.0)
+	core.Size = Vector3.one * 2.2
+	core.Position = center
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 168, 62)
+	light.Range = math.max(blastRadius * 2.6, 36)
+	light.Brightness = 5.5
+	light.Shadows = false
+	light.Parent = core
+	TweenService:Create(core, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.one * (blastRadius * 1.15),
+		Transparency = 1,
+	}):Play()
+	TweenService:Create(light, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Brightness = 0,
+	}):Play()
+	Debris:AddItem(core, 0.3)
+
+	-- 2. Staggered inner fiery fireball puffs expanding rapidly outward.
+	for i = 1, 4 do
+		local a = (i / 4) * math.pi * 2 + math.random() * 0.8
+		local rOff = blastRadius * (0.18 + math.random() * 0.2)
+		local startPos = center + Vector3.new(math.cos(a) * 1.2, (math.random() - 0.3) * 1.4, math.sin(a) * 1.2)
+		local endPos = center + Vector3.new(math.cos(a) * rOff, 2.2 + math.random() * 2.8, math.sin(a) * rOff)
+		local puff = makeVfxPart(
+			"ExploderFireball",
+			if i % 2 == 0 then Color3.fromRGB(255, 175, 45) else hotColor,
+			Enum.Material.Neon,
+			Enum.PartType.Ball,
+			0.12
+		)
+		puff.Size = Vector3.one * (blastRadius * 0.26)
+		puff.Position = startPos
+		local targetDiam = blastRadius * (0.68 + math.random() * 0.32)
+		local dur = 0.32 + math.random() * 0.16
+		TweenService:Create(puff, TweenInfo.new(dur, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = Vector3.one * targetDiam,
+			Position = endPos,
+			Color = Color3.fromRGB(165, 42, 16),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(puff, dur + 0.06)
+	end
+
+	-- 3. Billowing dark smoke clouds rolling outward and rising from the blast.
+	for i = 1, 7 do
+		local a = (i / 7) * math.pi * 2 + (math.random() - 0.5) * 0.45
+		local rEnd = blastRadius * (0.42 + math.random() * 0.36)
+		local startPos = floorBase + Vector3.new(math.cos(a) * 1.5, 0.8, math.sin(a) * 1.5)
+		local endPos = floorBase + Vector3.new(math.cos(a) * rEnd, 3.8 + math.random() * 4.5, math.sin(a) * rEnd)
+		local smoke = makeVfxPart(
+			"ExploderSmoke",
+			if i % 3 == 0 then Color3.fromRGB(95, 52, 34) else Color3.fromRGB(48, 44, 48),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Ball,
+			0.22
+		)
+		smoke.Size = Vector3.one * (blastRadius * 0.22)
+		smoke.Position = startPos
+		local targetDiam = blastRadius * (0.55 + math.random() * 0.35)
+		local dur = 0.52 + math.random() * 0.32
+		TweenService:Create(smoke, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.one * targetDiam,
+			Position = endPos,
+			Color = Color3.fromRGB(26, 26, 30),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(smoke, dur + 0.08)
+	end
+
+	-- 4. Hollow segmented ground shockwave ring racing across the floor to blastRadius.
+	local segCount = 12
+	local segWidth = (2 * math.pi * blastRadius) / segCount * 0.86
+	for i = 1, segCount do
+		local angle = (i / segCount) * math.pi * 2
+		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+		local startPos = floorBase + dir * 1.4
+		local endPos = floorBase + dir * blastRadius
+		local rim = makeVfxPart("ExploderShockRim", Color3.fromRGB(255, 195, 72), Enum.Material.Neon, nil, 0.1)
+		rim.Size = Vector3.new(1.5, 0.55, 0.9)
+		rim.CFrame = CFrame.lookAt(startPos, startPos + dir)
+		TweenService:Create(rim, TweenInfo.new(0.34, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = Vector3.new(segWidth, 0.14, 0.55),
+			CFrame = CFrame.lookAt(endPos, endPos + dir),
+			Color = Color3.fromRGB(255, 72, 28),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(rim, 0.4)
+	end
+
+	-- 5. 12 incandescent flying shrapnel / spark streaks launched in 3D ballistic arcs.
+	for i = 1, 12 do
+		local angle = (i / 12) * math.pi * 2 + (math.random() - 0.5) * 0.45
+		local horizSpeed = (1.6 + math.random() * 1.8) * math.max(blastRadius, 10)
+		local upSpeed = 16 + math.random() * 20
+		local spark = makeVfxPart(
+			"ExploderShrapnel",
+			if i % 2 == 0 then Color3.fromRGB(255, 240, 140) else Color3.fromRGB(255, 115, 35),
+			Enum.Material.Neon,
+			nil,
+			0.05
+		)
+		local baseSz = Vector3.new(0.28, 0.28, 1.55)
+		spark.Size = baseSz
+		spark.Position = center
+		table.insert(ballistics, {
+			part = spark,
+			velocity = Vector3.new(math.cos(angle) * horizSpeed, upSpeed, math.sin(angle) * horizSpeed),
+			gravity = 56,
+			startedAt = t,
+			duration = 0.42 + math.random() * 0.3,
+			baseSize = baseSz,
+			stretch = true,
+		})
+	end
+
+	-- 6. One-shot rising glowing ember & ash burst.
+	local emitterHost = makeVfxPart("ExploderEmberHost", hotColor, Enum.Material.SmoothPlastic, nil, 1)
+	emitterHost.Size = Vector3.new(2, 1, 2)
+	emitterHost.Position = center
+	local embers = Instance.new("ParticleEmitter")
+	embers.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 140)),
+		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 110, 32)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 36, 40)),
+	})
+	embers.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.7),
+		NumberSequenceKeypoint.new(1, 0.1),
+	})
+	embers.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.05),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	embers.Lifetime = NumberRange.new(0.45, 0.9)
+	embers.Speed = NumberRange.new(10, 26)
+	embers.SpreadAngle = Vector2.new(85, 85)
+	embers.Acceleration = Vector3.new(0, -18, 0)
+	embers.LightEmission = 0.85
+	embers.Enabled = false
+	embers.Parent = emitterHost
+	embers:Emit(22)
+	Debris:AddItem(emitterHost, 1.1)
+end
+
 local function detachEnemy(inst: Instance)
+	if inst:IsA("BasePart") then
+		detachToxicPool(inst)
+		return
+	end
 	if not inst:IsA("Model") then
 		return
 	end
@@ -182,6 +579,12 @@ local function detachEnemy(inst: Instance)
 			rig.spinRing:Destroy()
 			rig.spinRing = nil
 		end
+		destroyPartList(rig.spinTrails)
+		rig.spinTrails = nil
+		destroyPartList(rig.spinSparks)
+		rig.spinSparks = nil
+		destroyPartList(rig.spinRimSegs)
+		rig.spinRimSegs = nil
 		if rig.beamGuide then
 			rig.beamGuide:Destroy()
 			rig.beamGuide = nil
@@ -202,14 +605,8 @@ local function detachEnemy(inst: Instance)
 			rig.slamInner:Destroy()
 			rig.slamInner = nil
 		end
-		if rig.bossConeArc then
-			for _, p in ipairs(rig.bossConeArc) do
-				if p.Parent then
-					p:Destroy()
-				end
-			end
-			rig.bossConeArc = nil
-		end
+		destroyPartList(rig.bossConeArc)
+		rig.bossConeArc = nil
 		if rig.bossLeapOuter then
 			rig.bossLeapOuter:Destroy()
 			rig.bossLeapOuter = nil
@@ -226,25 +623,31 @@ local function detachEnemy(inst: Instance)
 			rig.alertGui:Destroy()
 			rig.alertGui = nil
 		end
-		if rig.stunOrbs then
-			for _, orb in ipairs(rig.stunOrbs) do
-				if orb.Parent then
-					orb:Destroy()
-				end
-			end
-			rig.stunOrbs = nil
-		end
+		destroyPartList(rig.stunOrbs)
+		rig.stunOrbs = nil
 		if rig.contactAura then
 			rig.contactAura:Destroy()
 			rig.contactAura = nil
 		end
-		if rig.contactArcs then
-			for _, arc in ipairs(rig.contactArcs) do
-				if arc.Parent then
-					arc:Destroy()
-				end
-			end
-			rig.contactArcs = nil
+		destroyPartList(rig.contactArcs)
+		rig.contactArcs = nil
+		destroyPartList(rig.contactBolts)
+		rig.contactBolts = nil
+		destroyPartList(rig.contactSparks)
+		rig.contactSparks = nil
+		destroyPartList(rig.contactRingSegs)
+		rig.contactRingSegs = nil
+		if rig.contactLight and rig.contactLight.Parent then
+			rig.contactLight:Destroy()
+		end
+		rig.contactLight = nil
+		if rig.bossSweepBeam then
+			rig.bossSweepBeam:Destroy()
+			rig.bossSweepBeam = nil
+		end
+		if rig.bossDashLine then
+			rig.bossDashLine:Destroy()
+			rig.bossDashLine = nil
 		end
 		for _, conn in ipairs(rig.connections) do
 			conn:Disconnect()
@@ -254,6 +657,10 @@ local function detachEnemy(inst: Instance)
 end
 
 local function attachEnemy(inst: Instance)
+	if inst:IsA("BasePart") and (inst.Name == "AreaHazardOuter" or inst:GetAttribute("HazardZone") == true) then
+		attachToxicPool(inst)
+		return
+	end
 	if not inst:IsA("Model") or rigs[inst] then
 		return
 	end
@@ -283,6 +690,9 @@ local function attachEnemy(inst: Instance)
 			lastHitCount = 0,
 			hitstunStartedAt = -math.huge,
 			spinRing = nil,
+			spinTrails = nil,
+			spinSparks = nil,
+			spinRimSegs = nil,
 			beamGuide = nil,
 			beamOrb = nil,
 			parryGlint = nil,
@@ -296,6 +706,14 @@ local function attachEnemy(inst: Instance)
 			stunOrbs = nil,
 			contactAura = nil,
 			contactArcs = nil,
+			contactBolts = nil,
+			contactSparks = nil,
+			contactRingSegs = nil,
+			contactLight = nil,
+			nextBoltReseedAt = 0,
+			boltSeeds = {},
+			bossSweepBeam = nil,
+			bossDashLine = nil,
 			lastAfterimageAt = 0,
 			afterimageIndex = 0,
 		}
@@ -705,6 +1123,16 @@ local function onRenderStepped(dt: number)
 			targetPose = EnemyAnim.bossLeapAirPose(phaseProgress)
 		elseif phase == "bossNovaWindup" then
 			targetPose = EnemyAnim.bossNovaWindupPose(phaseProgress, clock)
+		elseif phase == "myDashWindup" or phase == "myBladesWindup" then
+			targetPose = EnemyAnim.bossMyDashWindupPose(phaseProgress, clock)
+		elseif phase == "myDash" then
+			targetPose = EnemyAnim.bossMyDashPose()
+		elseif phase == "mySweepWindup" or phase == "mySweep" then
+			targetPose = EnemyAnim.bossMySweepPose(clock)
+		elseif phase == "gonRainWindup" or phase == "gonGravityWindup" or phase == "gonGravity" or phase == "gonRingsWindup" then
+			targetPose = EnemyAnim.bossGonChannelPose(phaseProgress, clock)
+		elseif phase == "bossPhaseShift" then
+			targetPose = EnemyAnim.bossPhaseShiftPose(phaseProgress, clock)
 		elseif phase == "holding" then
 			targetPose = EnemyAnim.grabHoldPose(clock)
 		elseif phase == "hitstun" then
@@ -879,34 +1307,112 @@ local function onRenderStepped(dt: number)
 			end
 		end
 
-		-- Client-only crimson-magenta danger disc while a dual-blade enemy executes its DPS spin.
+		-- Dual-blade whirling sword-slash trails (2 opposing curved tapered crimson/white blade
+		-- ribbons + tangential metallic sparks + subtle slim perimeter edge dashes for hitbox read).
 		if phase == "spin" then
-			local ring = rig.spinRing
-			if not ring or not ring.Parent then
-				local disc = Instance.new("Part")
-				disc.Name = "EnemySpinRing"
-				disc.Shape = Enum.PartType.Cylinder
-				disc.Anchored = true
-				disc.CanCollide = false
-				disc.CanQuery = false
-				disc.CanTouch = false
-				disc.CastShadow = false
-				disc.Material = Enum.Material.Neon
-				disc.Color = Color3.fromRGB(255, 65, 110)
-				disc.Transparency = 0.65
-				disc.Size = Vector3.new(0.35, 15.5, 15.5)
-				disc.Parent = getCorpseFolder()
-				rig.spinRing = disc
-				ring = disc
+			local trails = rig.spinTrails
+			if not trails then
+				trails = {}
+				for i = 1, 12 do
+					local segIdx = ((i - 1) % 6) + 1
+					local color = if segIdx == 1
+						then Color3.fromRGB(255, 235, 245)
+						elseif segIdx <= 3 then Color3.fromRGB(255, 58, 118)
+						else Color3.fromRGB(185, 22, 72)
+					table.insert(trails, makeVfxPart(`DualSpinTrail_{i}`, color, Enum.Material.Neon, nil, 0.1))
+				end
+				rig.spinTrails = trails
 			end
-			if ring then
-				local pulse = 15.0 + math.sin(clock * 24) * 1.2
-				ring.Size = Vector3.new(0.35, pulse, pulse)
-				ring.CFrame = CFrame.new(pos.X, 0.35, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+			local sparks = rig.spinSparks
+			if not sparks then
+				sparks = {}
+				for i = 1, 4 do
+					local col = if i % 2 == 0 then Color3.fromRGB(255, 230, 145) else Color3.fromRGB(255, 110, 155)
+					table.insert(sparks, makeVfxPart(`DualSpinSpark_{i}`, col, Enum.Material.Neon, nil, 0.15))
+				end
+				rig.spinSparks = sparks
 			end
-		elseif rig.spinRing then
-			rig.spinRing:Destroy()
-			rig.spinRing = nil
+			local rimSegs = rig.spinRimSegs
+			if not rimSegs then
+				rimSegs = {}
+				for i = 1, 10 do
+					table.insert(rimSegs, makeVfxPart(`DualSpinRim_{i}`, Color3.fromRGB(255, 65, 110), Enum.Material.Neon, nil, 0.68))
+				end
+				rig.spinRimSegs = rimSegs
+			end
+
+			local spinRadius = 7.4
+			local baseAngle = clock * 19.5
+			local segStep = math.rad(22)
+			for bladeIdx = 0, 1 do
+				local bladeBase = baseAngle + bladeIdx * math.pi
+				local bladeY = pos.Y + (if bladeIdx == 0 then 0.25 else -0.25)
+				local tiltDir = if bladeIdx == 0 then 1 else -1
+				for seg = 1, 6 do
+					local p = trails[bladeIdx * 6 + seg]
+					if p and p.Parent then
+						local a0 = bladeBase - (seg - 1) * segStep
+						local a1 = bladeBase - seg * segStep
+						local frac = (seg - 1) / 5
+						local rOuter = spinRadius * (1.0 - frac * 0.16)
+						local y0 = bladeY + math.sin(a0) * 0.45 * tiltDir
+						local y1 = bladeY + math.sin(a1) * 0.45 * tiltDir
+						local pt0 = Vector3.new(pos.X + math.cos(a0) * rOuter, y0, pos.Z + math.sin(a0) * rOuter)
+						local pt1 = Vector3.new(pos.X + math.cos(a1) * rOuter, y1, pos.Z + math.sin(a1) * rOuter)
+						local mid = (pt0 + pt1) * 0.5
+						local chord = (pt1 - pt0).Magnitude
+						local ribbonWidth = 1.65 * (1 - frac * 0.72)
+						local ribbonHeight = 0.24 * (1 - frac * 0.55)
+						p.Size = Vector3.new(ribbonWidth, ribbonHeight, math.max(chord * 1.12, 0.4))
+						p.CFrame = CFrame.lookAt(mid, pt0) * CFrame.Angles(0, 0, math.rad(14 * tiltDir))
+						p.Transparency = 0.08 + frac * 0.76
+					end
+				end
+			end
+
+			-- Tangential steel spark streaks spinning off the outer edge of the blades.
+			for k, sp in ipairs(sparks) do
+				if sp.Parent then
+					local cycle = (clock * 3.8 + k * 0.25) % 1
+					local a = baseAngle * 0.55 + k * (math.pi * 0.5) + cycle * 0.8
+					local r = spinRadius * (0.88 + cycle * 0.32)
+					local pt = Vector3.new(pos.X + math.cos(a) * r, pos.Y + (cycle - 0.5) * 1.2, pos.Z + math.sin(a) * r)
+					local tangent = Vector3.new(-math.sin(a), 0.12, math.cos(a)).Unit
+					sp.Size = Vector3.new(0.16, 0.16, 1.45 * (1 - cycle * 0.5))
+					sp.CFrame = CFrame.lookAt(pt, pt + tangent)
+					sp.Transparency = 0.15 + cycle * 0.82
+				end
+			end
+
+			-- Subtle slim floor perimeter arcs (combined cleanly with blade trails so hitbox stays readable).
+			local rimR = 7.75
+			for k, seg in ipairs(rimSegs) do
+				if seg.Parent then
+					local a = -clock * 4.5 + (k / 10) * math.pi * 2
+					local pt = Vector3.new(pos.X + math.cos(a) * rimR, 0.18, pos.Z + math.sin(a) * rimR)
+					local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+					seg.Size = Vector3.new(0.28, 0.1, 2.3)
+					seg.CFrame = CFrame.lookAt(pt, pt + tangent)
+					seg.Transparency = 0.58 + 0.14 * math.sin(clock * 18 + k)
+				end
+			end
+		else
+			if rig.spinRing then
+				rig.spinRing:Destroy()
+				rig.spinRing = nil
+			end
+			if rig.spinTrails then
+				destroyPartList(rig.spinTrails)
+				rig.spinTrails = nil
+			end
+			if rig.spinSparks then
+				destroyPartList(rig.spinSparks)
+				rig.spinSparks = nil
+			end
+			if rig.spinRimSegs then
+				destroyPartList(rig.spinRimSegs)
+				rig.spinRimSegs = nil
+			end
 		end
 
 		-- Boss Oh telegraphs: frontal cone smash fan, seismic leap red landing zone, and 360 nova charge ring.
@@ -1048,70 +1554,195 @@ local function onRenderStepped(dt: number)
 			rig.bossNovaRing = nil
 		end
 
-		-- Voltaico (`contact`) high-voltage aura ring + crackling orbiting electric arcs.
+		-- Boss My / OhMyGon sweeping photonic laser beam & dash line telegraph.
+		local sweepDir = model:GetAttribute("SweepDir")
+		if (phase == "mySweepWindup" or phase == "mySweep") and typeof(sweepDir) == "Vector3" and sweepDir.Magnitude > 1e-3 then
+			local beam = rig.bossSweepBeam
+			if not beam or not beam.Parent then
+				local p = Instance.new("Part")
+				p.Name = "BossMySweepBeam"
+				p.Shape = Enum.PartType.Cylinder
+				p.Anchored = true
+				p.CanCollide = false
+				p.CanQuery = false
+				p.CanTouch = false
+				p.CastShadow = false
+				p.Material = Enum.Material.Neon
+				p.Parent = getCorpseFolder()
+				rig.bossSweepBeam = p
+				beam = p
+			end
+			if beam then
+				local unit = Vector3.new(sweepDir.X, 0, sweepDir.Z).Unit
+				local rangeAttr = model:GetAttribute("SweepRange")
+				local range = if type(rangeAttr) == "number" and rangeAttr > 0 then rangeAttr else 42
+				local active = phase == "mySweep" or model:GetAttribute("SweepActive") == true
+				local thickness = if active then 2.2 + 0.35 * math.sin(clock * 32) else 0.32 + phaseProgress * 0.3
+				local origin = Vector3.new(pos.X, 2.4, pos.Z)
+				local mid = origin + unit * (range * 0.5)
+				beam.Size = Vector3.new(range, thickness, thickness)
+				beam.CFrame = CFrame.lookAt(mid, mid + unit) * CFrame.Angles(0, math.rad(90), 0)
+				beam.Color = if active then Color3.fromRGB(85, 245, 255) else Color3.fromRGB(224, 78, 255)
+				beam.Transparency = if active then 0.08 else 0.45 - 0.25 * phaseProgress
+			end
+		elseif rig.bossSweepBeam then
+			rig.bossSweepBeam:Destroy()
+			rig.bossSweepBeam = nil
+		end
+
+		local dashDir = model:GetAttribute("MyDashDir")
+		if phase == "myDashWindup" and typeof(dashDir) == "Vector3" and dashDir.Magnitude > 1e-3 then
+			local line = rig.bossDashLine
+			if not line or not line.Parent then
+				local p = Instance.new("Part")
+				p.Name = "BossMyDashGuide"
+				p.Anchored = true
+				p.CanCollide = false
+				p.CanQuery = false
+				p.CanTouch = false
+				p.CastShadow = false
+				p.Material = Enum.Material.Neon
+				p.Color = Color3.fromRGB(224, 78, 255)
+				p.Parent = getCorpseFolder()
+				rig.bossDashLine = p
+				line = p
+			end
+			if line then
+				local unit = Vector3.new(dashDir.X, 0, dashDir.Z).Unit
+				local len = 26 * (0.4 + 0.6 * phaseProgress)
+				local mid = Vector3.new(pos.X, 0.22, pos.Z) + unit * (len * 0.5)
+				line.Size = Vector3.new(1.8, 0.14, len)
+				line.CFrame = CFrame.lookAt(mid, mid + unit)
+				line.Transparency = 0.68 - 0.38 * phaseProgress
+			end
+		elseif rig.bossDashLine then
+			rig.bossDashLine:Destroy()
+			rig.bossDashLine = nil
+		end
+
+		-- Voltaico (`contact`) jagged multi-segment lightning bolts + crackling ground spark nodes
+		-- + slim dashed danger perimeter (real jagged electricity, never a flat solid neon circle).
 		if phase == "contactWindup" or phase == "contactActive" then
 			local radiusAttr = model:GetAttribute("ContactRadius")
-			local contactDiam = (if type(radiusAttr) == "number" and radiusAttr > 0 then radiusAttr else 5.5) * 2
-			local aura = rig.contactAura
-			if not aura or not aura.Parent then
-				local disc = Instance.new("Part")
-				disc.Name = "ContactAuraRing"
-				disc.Shape = Enum.PartType.Cylinder
-				disc.Anchored = true
-				disc.CanCollide = false
-				disc.CanQuery = false
-				disc.CanTouch = false
-				disc.CastShadow = false
-				disc.Material = Enum.Material.Neon
-				disc.Parent = getCorpseFolder()
-				rig.contactAura = disc
-				aura = disc
-			end
-			local arcs = rig.contactArcs
-			if not arcs then
-				arcs = {}
-				for k = 1, 3 do
-					local bolt = Instance.new("Part")
-					bolt.Name = `ContactArc_{k}`
-					bolt.Anchored = true
-					bolt.CanCollide = false
-					bolt.CanQuery = false
-					bolt.CanTouch = false
-					bolt.CastShadow = false
-					bolt.Material = Enum.Material.Neon
-					bolt.Parent = getCorpseFolder()
-					table.insert(arcs, bolt)
-				end
-				rig.contactArcs = arcs
-			end
+			local contactRadius = if type(radiusAttr) == "number" and radiusAttr > 0 then radiusAttr else 5.5
 			local isActive = phase == "contactActive"
-			if aura then
-				local diam = if isActive
-					then contactDiam * (0.96 + 0.06 * math.sin(clock * 28))
-					else math.max(contactDiam * (0.35 + 0.65 * phaseProgress), 2.2)
-				aura.Size = Vector3.new(0.24, diam, diam)
-				aura.CFrame = CFrame.new(pos.X, 0.24, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
-				aura.Color = if isActive then Color3.fromRGB(55, 240, 255) else Color3.fromRGB(255, 230, 75)
-				aura.Transparency = if isActive then 0.52 + 0.14 * math.sin(clock * 32) else 0.72 - 0.25 * phaseProgress
+			local boltCount = 5
+			local segsPerBolt = 4
+
+			local bolts = rig.contactBolts
+			if not bolts then
+				bolts = {}
+				for i = 1, boltCount * segsPerBolt do
+					table.insert(bolts, makeVfxPart(`VoltaicBolt_{i}`, Color3.fromRGB(90, 245, 255), Enum.Material.Neon, nil, 0.1))
+				end
+				rig.contactBolts = bolts
 			end
-			if arcs then
-				local orbitR = if isActive then contactDiam * 0.44 else contactDiam * (0.2 + 0.22 * phaseProgress)
-				for k, bolt in ipairs(arcs) do
-					if bolt.Parent then
-						local angle = clock * (if isActive then 9.5 else 6.0) + (k - 1) * (math.pi * 2 / 3)
-						local jitter = math.sin(clock * 48 + k * 2) * 0.35
-						local h = if isActive then 3.2 + math.abs(jitter) else 1.8 + phaseProgress * 1.2
-						bolt.Size = Vector3.new(0.22, h, 0.22)
-						bolt.Color = if (k + math.floor(clock * 16)) % 2 == 0
-							then Color3.fromRGB(70, 245, 255)
-							else Color3.fromRGB(255, 238, 95)
-						bolt.Transparency = if isActive then 0.16 else 0.4
-						bolt.CFrame = CFrame.new(
-							pos.X + math.cos(angle) * orbitR,
-							h * 0.5 + 0.3,
-							pos.Z + math.sin(angle) * orbitR
-						) * CFrame.Angles(jitter * 0.6, angle, jitter * 0.6)
+			local sparks = rig.contactSparks
+			if not sparks then
+				sparks = {}
+				for i = 1, boltCount do
+					table.insert(sparks, makeVfxPart(`VoltaicSpark_{i}`, Color3.fromRGB(230, 252, 255), Enum.Material.Neon, Enum.PartType.Ball, 0.2))
+				end
+				rig.contactSparks = sparks
+			end
+			local ringSegs = rig.contactRingSegs
+			if not ringSegs then
+				ringSegs = {}
+				for i = 1, 12 do
+					table.insert(ringSegs, makeVfxPart(`VoltaicPerimeter_{i}`, Color3.fromRGB(70, 240, 255), Enum.Material.Neon, nil, 0.55))
+				end
+				rig.contactRingSegs = ringSegs
+			end
+			if not rig.contactLight or not rig.contactLight.Parent then
+				local pl = Instance.new("PointLight")
+				pl.Name = "VoltaicArcLight"
+				pl.Color = Color3.fromRGB(85, 240, 255)
+				pl.Range = contactRadius * 2.4
+				pl.Brightness = 1.6
+				pl.Shadows = false
+				pl.Parent = rig.body
+				rig.contactLight = pl
+			end
+
+			-- Re-seed sharp zig-zag lightning geometry ~18 times per second for authentic electric crackle.
+			if clock >= rig.nextBoltReseedAt or #rig.boltSeeds ~= boltCount then
+				rig.nextBoltReseedAt = clock + (if isActive then 0.055 else 0.085)
+				table.clear(rig.boltSeeds)
+				for b = 1, boltCount do
+					table.insert(rig.boltSeeds, {
+						angle = (b / boltCount) * math.pi * 2 + (math.random() - 0.5) * 0.95,
+						distFrac = if isActive then (0.72 + math.random() * 0.34) else (0.32 + math.random() * 0.32),
+						jitter1 = Vector3.new((math.random() - 0.5) * 2.6, (math.random() - 0.35) * 2.2, (math.random() - 0.5) * 2.6),
+						jitter2 = Vector3.new((math.random() - 0.5) * 2.8, (math.random() - 0.45) * 1.9, (math.random() - 0.5) * 2.8),
+						colorIdx = math.random(1, 3),
+					})
+				end
+			end
+
+			if rig.contactLight then
+				rig.contactLight.Color = if isActive then Color3.fromRGB(90, 245, 255) else Color3.fromRGB(255, 232, 95)
+				rig.contactLight.Brightness = if isActive then (2.2 + math.random() * 1.4) else (0.8 + phaseProgress * 1.1)
+			end
+
+			local originBody = Vector3.new(pos.X, pos.Y + 0.6, pos.Z)
+			for b = 1, boltCount do
+				local seed = rig.boltSeeds[b]
+				local rEnd = contactRadius * seed.distFrac * (if isActive then 1 else (0.45 + 0.55 * phaseProgress))
+				local endPt: Vector3
+				local startPt: Vector3
+				if isActive and b == boltCount then
+					-- One perimeter-to-perimeter chain arc snapping horizontally around the outside.
+					local s1 = rig.boltSeeds[1]
+					local s2 = rig.boltSeeds[3]
+					startPt = Vector3.new(pos.X + math.cos(s1.angle) * contactRadius * 0.92, 1.4, pos.Z + math.sin(s1.angle) * contactRadius * 0.92)
+					endPt = Vector3.new(pos.X + math.cos(s2.angle) * contactRadius * 0.92, 1.4, pos.Z + math.sin(s2.angle) * contactRadius * 0.92)
+				else
+					startPt = originBody + Vector3.new(math.cos(seed.angle) * 0.9, (b % 2 - 0.5) * 0.9, math.sin(seed.angle) * 0.9)
+					endPt = Vector3.new(pos.X + math.cos(seed.angle) * rEnd, if isActive then 0.35 else (1.2 + (b % 2) * 1.1), pos.Z + math.sin(seed.angle) * rEnd)
+				end
+
+				local p1 = startPt:Lerp(endPt, 0.28) + seed.jitter1 * (if isActive then 0.85 else 0.45)
+				local p2 = startPt:Lerp(endPt, 0.56) + seed.jitter2 * (if isActive then 0.95 else 0.5)
+				local p3 = startPt:Lerp(endPt, 0.82) - seed.jitter1 * (if isActive then 0.55 else 0.3)
+				local pts = { startPt, p1, p2, p3, endPt }
+
+				local boltColor = if not isActive
+					then Color3.fromRGB(255, 232, 95)
+					elseif seed.colorIdx == 1 then Color3.fromRGB(220, 252, 255)
+					elseif seed.colorIdx == 2 then Color3.fromRGB(70, 242, 255)
+					else Color3.fromRGB(255, 245, 120)
+				local baseThick = if isActive then 0.24 else 0.15
+
+				for s = 1, segsPerBolt do
+					local segPart = bolts[(b - 1) * segsPerBolt + s]
+					if segPart and segPart.Parent then
+						positionSegment(segPart, pts[s], pts[s + 1], baseThick * (1.1 - s * 0.14))
+						segPart.Color = boltColor
+						segPart.Transparency = if isActive then 0.05 else 0.25
 					end
+				end
+
+				local sp = sparks[b]
+				if sp and sp.Parent then
+					local sz = if isActive then (0.45 + math.random() * 0.55) else (0.25 + phaseProgress * 0.25)
+					sp.Size = Vector3.one * sz
+					sp.Position = endPt
+					sp.Color = boltColor
+					sp.Transparency = if isActive then 0.12 else 0.45
+				end
+			end
+
+			-- Subtle slim dashed outer perimeter so the exact electric danger range stays legible.
+			local perimR = contactRadius * (if isActive then 1 else (0.5 + 0.5 * phaseProgress))
+			for k, seg in ipairs(ringSegs) do
+				if seg.Parent then
+					local a = clock * (if isActive then 3.2 else 1.6) + (k / 12) * math.pi * 2
+					local pt = Vector3.new(pos.X + math.cos(a) * perimR, 0.16, pos.Z + math.sin(a) * perimR)
+					local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+					seg.Size = Vector3.new(0.22, 0.1, if isActive then 1.35 else 0.9)
+					seg.CFrame = CFrame.lookAt(pt, pt + tangent)
+					seg.Color = if isActive then Color3.fromRGB(75, 245, 255) else Color3.fromRGB(255, 228, 85)
+					seg.Transparency = if isActive then (0.42 + 0.22 * math.sin(clock * 26 + k)) else (0.7 - 0.25 * phaseProgress)
 				end
 			end
 		else
@@ -1120,13 +1751,25 @@ local function onRenderStepped(dt: number)
 				rig.contactAura = nil
 			end
 			if rig.contactArcs then
-				for _, arc in ipairs(rig.contactArcs) do
-					if arc.Parent then
-						arc:Destroy()
-					end
-				end
+				destroyPartList(rig.contactArcs)
 				rig.contactArcs = nil
 			end
+			if rig.contactBolts then
+				destroyPartList(rig.contactBolts)
+				rig.contactBolts = nil
+			end
+			if rig.contactSparks then
+				destroyPartList(rig.contactSparks)
+				rig.contactSparks = nil
+			end
+			if rig.contactRingSegs then
+				destroyPartList(rig.contactRingSegs)
+				rig.contactRingSegs = nil
+			end
+			if rig.contactLight and rig.contactLight.Parent then
+				rig.contactLight:Destroy()
+			end
+			rig.contactLight = nil
 		end
 
 		-- Overhead yellow warning triangle (`!`) for Grabber and single-sword Paso Fantasma abilities.
@@ -1250,6 +1893,107 @@ local function onRenderStepped(dt: number)
 		end
 	end
 
+	-- Animate active Artillero / Gon bubbling swirling toxic pools on the floor.
+	for source, pool in pairs(toxicPools) do
+		if not source.Parent then
+			detachToxicPool(source)
+			continue
+		end
+		local active = source:GetAttribute("HazardActive") == true
+		local fadeAttr = source:GetAttribute("HazardFade")
+		local fade = if type(fadeAttr) == "number" then math.clamp(fadeAttr, 0, 1) else 0
+		pool.emitter.Enabled = active and fade < 0.75
+
+		local center = source.Position
+		local radius = pool.radius
+		if not active then
+			for _, p in ipairs(pool.swirls) do
+				p.Transparency = 1
+			end
+			for _, p in ipairs(pool.rimSegs) do
+				p.Transparency = 1
+			end
+			for _, b in ipairs(pool.bubbles) do
+				b.part.Transparency = 1
+			end
+		else
+			-- Counter-rotating organic toxic currents churning across the acid puddle.
+			for i, p in ipairs(pool.swirls) do
+				if p.Parent then
+					local dirSign = if i % 2 == 0 then 1 else -1
+					local a = clock * (1.3 + (i % 3) * 0.35) * dirSign + i * 1.05
+					local ringR = radius * (0.28 + ((i - 1) % 3) * 0.24)
+					local pt = Vector3.new(center.X + math.cos(a) * ringR, 0.24, center.Z + math.sin(a) * ringR)
+					local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+					local waveLen = radius * (0.42 + 0.14 * math.sin(clock * 4.5 + i))
+					p.Size = Vector3.new(0.55 + 0.2 * math.sin(clock * 6 + i), 0.12, waveLen)
+					p.CFrame = CFrame.lookAt(pt, pt + tangent)
+					p.Transparency = 0.42 + 0.58 * fade
+				end
+			end
+
+			-- Undulating toxic edge rim around the puddle perimeter.
+			local rimLen = (2 * math.pi * radius) / #pool.rimSegs * 0.78
+			for i, p in ipairs(pool.rimSegs) do
+				if p.Parent then
+					local a = clock * 0.55 + (i / #pool.rimSegs) * math.pi * 2
+					local wobble = radius * (0.96 + 0.04 * math.sin(clock * 5.2 + i * 1.4))
+					local pt = Vector3.new(center.X + math.cos(a) * wobble, 0.22, center.Z + math.sin(a) * wobble)
+					local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+					p.Size = Vector3.new(0.45, 0.14, rimLen)
+					p.CFrame = CFrame.lookAt(pt, pt + tangent)
+					p.Transparency = 0.35 + 0.65 * fade
+				end
+			end
+
+			-- Rising, swelling, and popping acid bubbles across the puddle.
+			for _, b in ipairs(pool.bubbles) do
+				if b.part.Parent then
+					local u = (clock * b.speed + b.phase) % 1
+					local popAlpha = if u > 0.82 then (u - 0.82) / 0.18 else 0
+					local grow = math.sin(math.min(u / 0.82, 1) * math.pi * 0.5)
+					local diam = math.max(b.maxSize * (0.25 + 0.75 * grow) * (1 + popAlpha * 0.45), 0.15)
+					local r = radius * b.distFrac
+					local drift = clock * 0.35 + b.angle
+					local bx = center.X + math.cos(drift) * r + math.sin(clock * 5 + b.phase * 12) * 0.25
+					local bz = center.Z + math.sin(drift) * r + math.cos(clock * 5 + b.phase * 12) * 0.25
+					local by = 0.25 + u * b.maxRise
+					b.part.Size = Vector3.one * diam
+					b.part.Position = Vector3.new(bx, by, bz)
+					b.part.Transparency = math.clamp(0.22 + popAlpha * 0.78 + fade * 0.78, 0, 1)
+				end
+			end
+		end
+	end
+
+	-- Advance ballistic explosion shrapnel & toxic acid droplets with real gravity.
+	for i = #ballistics, 1, -1 do
+		local c = ballistics[i]
+		local u = (clock - c.startedAt) / math.max(c.duration, 0.05)
+		if u >= 1 or not c.part.Parent then
+			if c.part.Parent then
+				c.part:Destroy()
+			end
+			table.remove(ballistics, i)
+		else
+			local vel = c.velocity + Vector3.new(0, -c.gravity * dt, 0)
+			local nextPos = c.part.Position + vel * dt
+			if nextPos.Y < 0.22 then
+				nextPos = Vector3.new(nextPos.X, 0.22, nextPos.Z)
+				vel = Vector3.new(vel.X * 0.45, math.abs(vel.Y) * 0.28, vel.Z * 0.45)
+			end
+			c.velocity = vel
+			if c.stretch and vel.Magnitude > 1 then
+				c.part.CFrame = CFrame.lookAt(nextPos, nextPos + vel)
+				c.part.Size = Vector3.new(c.baseSize.X * (1 - u * 0.4), c.baseSize.Y * (1 - u * 0.4), c.baseSize.Z * (1 - u * 0.35))
+			else
+				c.part.Position = nextPos
+				c.part.Size = c.baseSize * (1 - u * 0.5)
+			end
+			c.part.Transparency = 0.08 + 0.92 * (u * u)
+		end
+	end
+
 	-- Advance client-side death collapses and clean them up once faded out.
 	for i = #deaths, 1, -1 do
 		local d = deaths[i]
@@ -1341,6 +2085,15 @@ function EnemyAnimator.start()
 			end
 			if typeof(arg2) == "Vector3" and type(arg3) == "number" then
 				spawnSlamShockwave(arg2, arg3)
+			end
+		elseif eventKind == "explosion" then
+			if typeof(arg1) == "Vector3" and type(arg2) == "number" then
+				local color = if typeof(arg3) == "Color3" then arg3 else nil
+				spawnExplosion(arg1, arg2, color)
+			end
+		elseif eventKind == "toxicSplash" then
+			if typeof(arg1) == "Vector3" and type(arg2) == "number" then
+				spawnToxicSplash(arg1, arg2)
 			end
 		elseif eventKind == "death" then
 			if type(arg1) == "string" and typeof(arg3) == "CFrame" then

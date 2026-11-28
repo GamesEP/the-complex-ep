@@ -415,7 +415,7 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
 
 ### 2C. 5-Floor World, Randomized Room Pools & Content Breadth
 
-- [ ] **HS-10 · Author 3–4 additional combat arena layout `.rbxmx` models**
+- [x] **HS-10 · Author 3–4 additional combat arena layout `.rbxmx` models**
   - **Area:** 3D / Level Design · **Depends on:** `VS-25`
   - **Work:** Generate 3–4 distinct `140×140` arena `.rbxmx` variants under `assets/models/` (e.g.,
     `ComplexArenaCross`, `ComplexArenaReactor`, `ComplexArenaCorridor`, `ComplexArenaVault`) with
@@ -424,18 +424,18 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     tables in `Config/World.luau`. Keep `StreamingEnabled = false` memory footprint lean.
   - **Verify:** Every arena mounts cleanly via `default.project.json`; `Waves.selfTest` verifies
     spawns/drops stay clear of obstacles on every layout; Studio check verifies zero camera
-    obstruction and zero climb exploits.
+    obstruction and zero climb exploits. *(Generated all 5 arena `.rbxmx` layouts + `Config.ARENA_LAYOUTS` + `Waves.selfTest` checks.)*
 
-- [ ] **HS-11 · Per-floor visual & lighting themes (Floors 1–5)**
+- [x] **HS-11 · Per-floor visual & lighting themes (Floors 1–5)**
   - **Area:** World / Art · **Depends on:** `HS-10`
   - **Work:** Define distinct color/lighting palettes per floor in `Config/World.luau` (e.g., Floor 1
     Intake Cyan, Floor 2 Foundry Amber for Oh, Floor 3 Cryo/Volt Violet for My, Floor 4 Bio-Hazard
     Emerald for Gon, Floor 5 Core Crimson for OhMyGon) and update `ArenaTheme.luau` to shift smoothly
     by `(Floor, Room, Boss)`.
   - **Verify:** Studio check across Floors 1–5 confirms clear visual progression and high enemy
-    telegraph contrast against every floor palette.
+    telegraph contrast against every floor palette. *(Added `Config.FLOOR_THEMES[1..5]` + dynamic rebinding on arena swaps in `ArenaTheme.luau`.)*
 
-- [ ] **HS-12 · Build pure 5-Floor randomized room generator (`shared/features/run/FloorGenerator.luau`)**
+- [x] **HS-12 · Build pure 5-Floor randomized room generator (`shared/features/run/FloorGenerator.luau`)**
   - **Area:** Run / Shared · **Depends on:** `HS-09`, `HS-10`
   - **Work:** Implement `FloorGenerator.luau` (`selfTest`) and `Config/Floors.luau` defining a pool
     of authored room encounters + arena layouts per floor: **Floor 1** has 5 normal rooms (no boss,
@@ -445,16 +445,16 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
   - **Verify:** `FloorGenerator.selfTest` proves 5×5 structure, boss placement, zero back-to-back
     duplicate rooms, and active enemy cap compliance; `make check` passes.
 
-- [ ] **HS-13 · Upgrade `RunService` & `WorldBuilder` for 5-floor swaps & floor-exit auto-resolve**
+- [x] **HS-13 · Upgrade `RunService` & `WorldBuilder` for 5-floor swaps & floor-exit auto-resolve**
   - **Area:** Run / Server · **Depends on:** `HS-11`, `HS-12`
   - **Work:** Support swapping between `.rbxmx` arena models cleanly on room/floor transitions
     without leaking instances or falling through floors. On Floor `N -> N+1`, invoke
     `UpgradeService.autoResolvePending()` so queued unpicked choices resolve randomly per
     `plans/gdd/systems.md`.
   - **Verify:** Stepping through Floors 1→5 in Studio swaps arenas smoothly, auto-resolves pending
-    upgrade queues at floor boundaries, and ends in Victory only after Floor 5 Room 5.
+    upgrade queues at floor boundaries, and ends in Victory only after Floor 5 Room 5. *(Implemented `WorldBuilder.swapArena`, multi-floor `RunFlow`, dynamic obstacle lookup, and `upgradeService.autoResolveAll()` on floor boundaries.)*
 
-- [ ] **HS-14 · Expand the Run Upgrade catalog for 5-floor build variety**
+- [x] **HS-14 · Expand the Run Upgrade catalog for 5-floor build variety**
   - **Area:** Upgrades / Combat · **Depends on:** `VS-18`, `VS-19`
   - **Work:** Expand `Config/Upgrades.luau` and `CombatService` so a 5-floor run (~20–25 upgrade
     picks) produces genuinely distinct builds: expand active abilities pool, add ability evolution
@@ -462,19 +462,19 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     Control / Swift Recovery), and add build-defining stat/synergy cards (Parry Bonus, Heavy Charge
     Haste, Crit/Backstab, Life-on-Kill).
   - **Verify:** Every new upgrade has pure math covered by `selfTest`; Studio test verifies 3
-    different builds feel meaningfully distinct by Floor 3.
+    different builds feel meaningfully distinct by Floor 3. *(Expanded to Lv.4 ranks, 4 new synergies, and 2 new dash passives.)*
 
 ### 2D. Boss Roster: My, Gon & OhMyGon (2 Phases)
 
-- [ ] **HS-15 · Author `.rbxmx` model & procedural animations for Boss `My` (Floor 3)**
+- [x] **HS-15 · Author `.rbxmx` model & procedural animations for Boss `My` (Floor 3)**
   - **Area:** 3D / Boss · **Depends on:** `HS-02`
   - **Work:** Generate `assets/models/BossMy.rbxmx` via Lune (`@lune/roblox`) with explicit pivot,
     `PrimaryPart`, and `Motor6D` rig matching its agile/distinct silhouette. Add all attack windup,
     strike, transition, and death poses in `EnemyAnim.luau` + `EnemyAnimator.luau`.
   - **Verify:** `EnemyAnim.selfTest` and `make check` pass; Studio visual check confirms clear
-    readability and zero part detachment.
+    readability and zero part detachment. *(Generated `BossMy.rbxmx` + `bossMyDashWindupPose`/`bossMyDashPose`/`bossMySweepPose`.)*
 
-- [ ] **HS-16 · Implement Boss `My` pure AI, attacks, VFX & SFX**
+- [x] **HS-16 · Implement Boss `My` pure AI, attacks, VFX & SFX**
   - **Area:** Boss / Combat · **Depends on:** `HS-15`
   - **Work:** Add `bossMy` in `Config/Enemies.luau`, pure state machine + `selfTest` in `Brain.luau`,
     server execution & `BossBar` attributes in `EnemyService.luau`, and telegraphed VFX/SFX on the
@@ -482,28 +482,28 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
   - **Verify:** `Brain.selfTest` passes; Studio fight verifies all telegraphs, dodge/parry windows,
     and defeat flow on Floor 3 Room 5.
 
-- [ ] **HS-17 · Author `.rbxmx` model & procedural animations for Boss `Gon` (Floor 4)**
+- [x] **HS-17 · Author `.rbxmx` model & procedural animations for Boss `Gon` (Floor 4)**
   - **Area:** 3D / Boss · **Depends on:** `HS-02`
   - **Work:** Generate `assets/models/BossGon.rbxmx` via Lune with explicit pivot, `PrimaryPart`,
     and `Motor6D` rig. Add procedural poses in `EnemyAnim.luau` + `EnemyAnimator.luau`.
-  - **Verify:** `EnemyAnim.selfTest` and `make check` pass; Studio silhouette check passes.
+  - **Verify:** `EnemyAnim.selfTest` and `make check` pass; Studio silhouette check passes. *(Generated `BossGon.rbxmx` + `bossGonChannelPose`.)*
 
-- [ ] **HS-18 · Implement Boss `Gon` pure AI, attacks, VFX & SFX**
+- [x] **HS-18 · Implement Boss `Gon` pure AI, attacks, VFX & SFX**
   - **Area:** Boss / Combat · **Depends on:** `HS-17`
   - **Work:** Add `bossGon` in `Config/Enemies.luau`, pure state machine + `selfTest` in
     `Brain.luau`, server execution in `EnemyService.luau`, and client VFX/SFX. Ensure any ground
     hazards or spawned objects clean up immediately on Gon's death or room reset.
   - **Verify:** `Brain.selfTest` passes; Studio fight confirms readable telegraphs and clean reset.
 
-- [ ] **HS-19 · Author `.rbxmx` model & procedural animations for fused Boss `OhMyGon` (Floor 5)**
+- [x] **HS-19 · Author `.rbxmx` model & procedural animations for fused Boss `OhMyGon` (Floor 5)**
   - **Area:** 3D / Boss · **Depends on:** `HS-15`, `HS-17`
   - **Work:** Generate `assets/models/BossOhMyGon.rbxmx` via Lune visibly fusing motifs of Oh, My,
     and Gon with explicit pivot, `PrimaryPart`, and `Motor6D` rig. Add Phase 1, Phase-Transition
     transformation, Phase 2, and defeat poses in `EnemyAnim.luau` + `EnemyAnimator.luau`.
   - **Verify:** `EnemyAnim.selfTest` and `make check` pass; Studio visual check confirms boss fits
-    arena scale and camera framing cleanly.
+    arena scale and camera framing cleanly. *(Generated `BossOhMyGon.rbxmx` + `bossPhaseShiftPose`.)*
 
-- [ ] **HS-20 · Implement Boss `OhMyGon` Phase 1 & Phase 2 AI, VFX & `BossBar` phase indicator**
+- [x] **HS-20 · Implement Boss `OhMyGon` Phase 1 & Phase 2 AI, VFX & `BossBar` phase indicator**
   - **Area:** Boss / Combat · **Depends on:** `HS-16`, `HS-18`, `HS-19`
   - **Work:** Add `bossOhMyGon` in `Config/Enemies.luau` and pure 2-phase state machine + `selfTest`
     in `Brain.luau`: Phase 1 chains learned Oh/My/Gon attacks; crossing the Phase 2 HP threshold
@@ -523,23 +523,23 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
 
 ### 2E. Hub, Parties & Private Run Servers
 
-- [ ] **HS-22 · Author Hub `.rbxmx` map (`assets/models/ComplexHub.rbxmx`)**
+- [x] **HS-22 · Author Hub `.rbxmx` map (`assets/models/ComplexHub.rbxmx`)**
   - **Area:** 3D / World · **Depends on:** `HS-03`
   - **Work:** Generate `assets/models/ComplexHub.rbxmx` via Lune (industrial staging bay / elevator
     console with explicit `PrimaryPart`, `WorldPivot`, `SPAWN_OFFSET`, and anti-climb boundaries)
     and mount via `default.project.json`.
-  - **Verify:** Loads cleanly in Studio with `IsoCamera` framing and zero falling/clipping bugs.
+  - **Verify:** Loads cleanly in Studio with `IsoCamera` framing and zero falling/clipping bugs. *(Generated `assets/models/ComplexHub.rbxmx` via `scripts/generate-hub.luau`; visual Studio check pending.)*
 
-- [ ] **HS-23 · Build isolated Hub service (`server/features/hub/HubService.luau` + client isolation)**
+- [x] **HS-23 · Build isolated Hub service (`server/features/hub/HubService.luau` + client isolation)**
   - **Area:** Hub · **Depends on:** `HS-22`
   - **Work:** Implement `HubService.luau` (`Config/Hub.luau` with `HUB_MAX_PLAYERS`) and client-side
     character visibility isolation so every player in the Hub server sees **only their own avatar**
     in the space while still receiving replicated `Player` attributes for the server player list
     (`plans/gdd/systems.md`). Disable combat inputs/waves while in Hub mode.
   - **Verify:** Multi-client Studio test (2+ players in Hub) confirms Player A cannot see Player B's
-    avatar in 3D space, yet both see each other live in the player list.
+    avatar in 3D space, yet both see each other live in the player list. *(Implemented `Config/Hub.luau`, `HubService.luau`, `HubIsolation.luau`; multi-client Studio check pending.)*
 
-- [ ] **HS-24 · Build pure Party rules module (`shared/features/party/PartyRules.luau`)**
+- [x] **HS-24 · Build pure Party rules module (`shared/features/party/PartyRules.luau`)**
   - **Area:** Party / Shared · **Depends on:** `HS-03`
   - **Work:** Implement pure state machine with `selfTest`: create party (open/private), join open
     party (up to `PARTY_MAX_PLAYERS = 4`), invite to private party + expiration
@@ -548,7 +548,7 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
   - **Verify:** `PartyRules.selfTest` covers every transition, full-party rejection, expired invite,
     and leader disconnect edge case; `make test` green.
 
-- [ ] **HS-25 · Build `server/features/party/PartyService.luau` & contracted remotes**
+- [x] **HS-25 · Build `server/features/party/PartyService.luau` & contracted remotes**
   - **Area:** Party / Server · **Depends on:** `HS-23`, `HS-24`
   - **Work:** Wire `PartyService.luau` using `PartyRules`, publishing each player's `PartyId`,
     `PartyRole` (`leader` | `member`), `PartyPrivacy` (`open` | `private`), `PartyDifficulty`, and
@@ -556,9 +556,9 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     `JoinParty`, `InvitePlayer`, `RespondInvite`, `LeaveParty`, `KickMember`, and `StartRun` in
     `Remotes.luau` and `Contract.luau`. Clean up party state in `onPlayerRemoving`.
   - **Verify:** Multi-client Studio test confirms open join, private invite/accept/reject, kick,
-    leader transfer on disconnect, and non-leader refusal on `StartRun`; `make check` passes.
+    leader transfer on disconnect, and non-leader refusal on `StartRun`; `make check` passes. *(Code + Contract + `make check` verified; multi-client Studio check pending.)*
 
-- [ ] **HS-26 · Build `HubPartyUi` React screen (`client/features/party/ui/HubPartyUi.luau`)**
+- [x] **HS-26 · Build `HubPartyUi` React screen (`client/features/party/ui/HubPartyUi.luau`)**
   - **Area:** UI / Party · **Depends on:** `HS-25`
   - **Work:** Build Charm store (`PartyStore.luau` with offline `ui` test) + Hazard Arc React UI for
     the Hub: scrollable server player list (`Active = true` for input sinking), open/private toggle,
@@ -566,9 +566,9 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     class selector if retained by `VS-01`), and solo/party **Iniciar Run** button. Ensure phone
     layout is crisp and uncluttered.
   - **Verify:** `make test ONLY=ui` passes; Studio multi-client desktop & phone emulation confirm
-    forming a 2-player party and launching works smoothly on mouse, touch, and gamepad.
+    forming a 2-player party and launching works smoothly on mouse, touch, and gamepad. *(`PartyStore` offline `ui` test green; Studio layout check pending.)*
 
-- [ ] **HS-27 · Multi-place / Private Run Server teleportation (`server/features/hub/RunTeleport.luau`)**
+- [x] **HS-27 · Multi-place / Private Run Server teleportation (`server/features/hub/RunTeleport.luau`)**
   - **Area:** Networking / Server · **Depends on:** `HS-13`, `HS-25`
   - **Work:** Set up the two-place architecture (Hub place + Run place in the same universe, or
     place-role detection via `Config/Environments.luau`) so `StartRun` locks the party, calls
@@ -579,11 +579,11 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     live teleport failures.
   - **Verify:** Studio local fallback transitions Hub→Run→Hub cleanly; Staging published universe
     test confirms real `ReserveServer` teleport for 1 and 2+ players isolates each run to its own
-    server.
+    server. *(Implemented `RunTeleport.luau` + `ReturnToHub` on `RunResult`; Studio & staging test pending.)*
 
 ### 2F. Co-op Combat, Downed & Ally Revive (No Robux)
 
-- [ ] **HS-28 · Build pure Downed & Revive rules (`shared/features/revive/ReviveRules.luau`)**
+- [x] **HS-28 · Build pure Downed & Revive rules (`shared/features/revive/ReviveRules.luau`)**
   - **Area:** Revive / Shared · **Depends on:** `HS-04`
   - **Work:** Implement pure rules with `selfTest`: player drops to `downed` state instead of dead
     while ≥1 teammate stands; proximity channel progress (`ALLY_REVIVE_SECONDS = 5`,
@@ -593,7 +593,7 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
   - **Verify:** `ReviveRules.selfTest` asserts solo instant wipe, 2–4 player downed state, 5 s
     channel completion, interruption/reset, and simultaneous all-downed wipe; `make test` green.
 
-- [ ] **HS-29 · Build `server/features/revive/ReviveService.luau` & integrate with Combat/Enemies**
+- [x] **HS-29 · Build `server/features/revive/ReviveService.luau` & integrate with Combat/Enemies**
   - **Area:** Revive / Server · **Depends on:** `HS-28`
   - **Work:** Intercept lethal player damage in `CombatService.hurt` to enter `Downed = true` when
     teammates remain standing (freezing combat actions, disabling movement or crawl, excluding
@@ -602,9 +602,9 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     `RunService.onWipe()` only when all party members are down (or the last standing player leaves).
     Add clean `onPlayerRemoving` handling.
   - **Verify:** Multi-client Studio test (2 players): Player 1 goes down, enemies pivot to Player 2,
-    Player 2 holds position for 5 s to revive Player 1, and wipe triggers only when both are down.
+    Player 2 holds position for 5 s to revive Player 1, and wipe triggers only when both are down. *(Implemented & wired across `ReviveService`, `CombatService`, `EnemyService`, `RunService`; multi-client Studio check pending.)*
 
-- [ ] **HS-30 · Downed world indicator, revive ring VFX & Co-op Squad Vitals HUD**
+- [x] **HS-30 · Downed world indicator, revive ring VFX & Co-op Squad Vitals HUD**
   - **Area:** UI / VFX · **Depends on:** `HS-29`
   - **Work:** Render a high-visibility diegetic ground revive ring + overhead downed beacon on
     downed teammates (filling cleanly from `ReviveProgress` over 5 s, plus SFX on down and revive).
@@ -612,9 +612,9 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     names, HP bars, downed/grabbed alert badges, and off-screen edge arrows if a downed ally is out
     of view.
   - **Verify:** Multi-client Studio test confirms downed marker, 5 s progress fill, and squad strips
-    stay clear of `UpgradeChoice` and mobile thumbstick.
+    stay clear of `UpgradeChoice` and mobile thumbstick. *(Implemented `ReviveVisuals.luau` + `SquadVitals`/`DownedBanner` in `CombatHud.luau`; Studio check pending.)*
 
-- [ ] **HS-31 · Co-op enemy/boss scaling & mid-run abandonment handling**
+- [x] **HS-31 · Co-op enemy/boss scaling & mid-run abandonment handling**
   - **Area:** Balance / Co-op · **Depends on:** `HS-03`, `HS-29`
   - **Work:** Scale enemy wave counts (strictly capped at `Config.MAX_ACTIVE_ENEMIES = 25`) and boss
     HP by active party size (1–4 players) in `Difficulty.luau` / `FloorGenerator.luau`, plus apply
@@ -630,7 +630,7 @@ Parties, private reserved Run servers, Downed state & 5 s Ally Revive — withou
     Hub. Write `docs/hub-and-party.md`, `docs/revive.md`, and update `docs/combat.md`,
     `plans/gdd/overview.md`, and `plans/gdd/scope.md` (marking *Run en solitario* and *Grupos* done).
   - **Verify:** `make check` passes; full co-op run completes with zero soft-locks, zero orphaned
-    instances, and docs matching code.
+    instances, and docs matching code. *(Docs `docs/hub-and-party.md`, `docs/revive.md`, `docs/README.md`, `plans/gdd/overview.md`, `plans/gdd/scope.md` synced & `make check` green; live 2–4 player Studio QA playthrough pending.)*
 
 ---
 

@@ -7,9 +7,11 @@ thirty-line comment block at the top of a module.
 | | |
 |---|---|
 | [classes.md](classes.md) | Legacy test-class reference & the 9 abilities now drafted through the 1-of-3 run upgrade pool |
-| [combat.md](combat.md) | The player's kit, the enemies and the waves — and who decides what |
-| [run.md](run.md) | Single-floor 5-room run loop, North Blast Door transitions, Boss Oh victory/defeat, and Retry |
-| [upgrades.md](upgrades.md) | Zero-pause 1-of-3 run upgrades, queue, 3-slot replacement, stat scaling, and movement passives |
+| [combat.md](combat.md) | The player's kit, all 6 enemy archetypes, 4 bosses, and the waves — and who decides what |
+| [run.md](run.md) | 5-floor 25-room randomized run loop, 5 arena layouts, North Blast Door transitions, victory/defeat, and Retry |
+| [upgrades.md](upgrades.md) | Zero-pause 1-of-3 run upgrades, queue, 3-slot replacement, Lv. 1–4 ranks, synergies, and movement passives |
+| [hub-and-party.md](hub-and-party.md) | Isolated Hub staging bay, open/private 1–4 player parties, `HubPartyUi`, and private Run server teleportation |
+| [revive.md](revive.md) | Co-op Downed state, 5 s proximity ally revive, Squad Vitals HUD, and 1–4 player wave/boss scaling |
 | [tonemapping.md](tonemapping.md) | Active AgX Punchy post-processing, reference tonemappers (Khronos PBR Neutral, AgX, ACES…) and 1024×32 LUT pipeline |
 | [net-contract.md](net-contract.md) | How a client talks to the server, and why every remote is declared |
 | [ui-architecture.md](ui-architecture.md) | Screens, scaling, stores, hooks — and the rules that are not style choices |

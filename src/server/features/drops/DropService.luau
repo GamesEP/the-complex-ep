@@ -109,7 +109,7 @@ local function step()
 			local character = player.Character
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+			if humanoid and humanoid.Health > 0 and player:GetAttribute("Downed") ~= true and root and root:IsA("BasePart") then
 				local dx = root.Position.X - drop.position.X
 				local dz = root.Position.Z - drop.position.Z
 				if dx * dx + dz * dz <= Config.DROP_PICKUP_RADIUS * Config.DROP_PICKUP_RADIUS then
@@ -138,7 +138,8 @@ function DropService.spawn(kind: Drops.DropKind, position: Vector3): Model?
 	end
 
 	local clamped = Waves.clamp(position, Config.ROOM_SIZE, WALL_MARGIN)
-	local clearPos = Waves.avoidObstacles(clamped, 2.2, Config.ARENA_PILLARS)
+	local obstacles = Config.getArenaObstacles(worldRef and worldRef:GetAttribute("ArenaModel"))
+	local clearPos = Waves.avoidObstacles(clamped, 2.2, obstacles)
 	local dropPos = Vector3.new(clearPos.X, Config.DROP_HEIGHT, clearPos.Z)
 
 	local model = template:Clone()

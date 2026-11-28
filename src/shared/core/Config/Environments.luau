@@ -48,11 +48,15 @@ Config.ENV_DEFAULT = Config.ENV_PRODUCTION
 ]]
 Config.ENV_IDS = {
 	[Config.ENV_PRODUCTION] = {
+		HUB_PLACE_ID = 0,
+		RUN_PLACE_ID = 0,
 		-- GAMEPASS_VIP = 0,
 		-- PRODUCT_1000_COINS = 0,
 		-- BADGE_FIRST_WIN = 0,
 	},
 	[Config.ENV_DEVELOPMENT] = {
+		HUB_PLACE_ID = 0,
+		RUN_PLACE_ID = 0,
 		-- GAMEPASS_VIP = 0,
 	},
 } :: { [string]: { [string]: number } }

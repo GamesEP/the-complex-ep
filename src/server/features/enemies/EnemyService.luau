@@ -103,6 +103,28 @@ export type Enemy = {
 	knockbackSpeed: number,
 	knockbackEndsAt: number,
 	contactHitAt: { [Player]: number },
+	myDashDir: Vector3?,
+	myDashHit: { [Player]: boolean }?,
+	mySweepBaseDir: Vector3?,
+	mySweepSign: number,
+	mySweepStartedAt: number,
+	mySweepDuration: number,
+	mySweepHitAt: { [Player]: number },
+	gonGravityPos: Vector3?,
+	gonGravityRing: Part?,
+	gonGravityCore: Part?,
+	gonGravityNextPullAt: number,
+}
+
+type ShockRing = {
+	origin: Vector3,
+	startedAt: number,
+	duration: number,
+	maxRadius: number,
+	height: number,
+	damage: number,
+	hit: { [Player]: boolean },
+	part: Part,
 }
 
 export type HitInfo = {
@@ -168,6 +190,8 @@ local worldRef: Instance? = nil
 local enemies: { Enemy } = {}
 local projectiles: { Projectile } = {}
 local hazardZones: { HazardZone } = {}
+local shockRings: { ShockRing } = {}
+local destroyHazardZone: (HazardZone) -> ()
 local variantCursor: { [string]: number } = {}
 local lastRangedShotAt: { [Player]: number } = {}
 local lastAreaLaunchAt: { [Player]: number } = {}
@@ -235,11 +259,16 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
+-- Resolves the active arena layout's obstacle table dynamically whenever RunService swaps arenas.
+local function activeObstacles(): { Waves.Obstacle }
+	return Config.getArenaObstacles(worldRef and worldRef:GetAttribute("ArenaModel"))
+end
+
 -- Keeps any enemy (or grab hold point) strictly inside the room perimeter and outside every
 -- solid arena structure/prop (pillars, bunkers, cryo tanks, crates, consoles, racks, pallets).
 local function clampEnemyPos(candidate: Vector3, radius: number): Vector3
 	local clamped = Waves.clamp(candidate, Config.ROOM_SIZE, WALL_MARGIN)
-	local cleared = Waves.avoidObstacles(clamped, radius, Config.ARENA_PILLARS)
+	local cleared = Waves.avoidObstacles(clamped, radius, activeObstacles())
 	return Waves.clamp(cleared, Config.ROOM_SIZE, WALL_MARGIN)
 end
 
@@ -252,7 +281,7 @@ local function targets(): ({ { player: Player, root: BasePart } }, { Vector3 })
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+		if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") and player:GetAttribute("Downed") ~= true then
 			if player:GetAttribute("Grabbed") == true then
 				table.insert(grabbed, root.Position)
 			else
@@ -408,10 +437,33 @@ local function syncBossHud(enemy: Enemy?)
 		worldRef:SetAttribute("BossName", enemy.spec.bossTitle or enemy.spec.displayName or "JEFE")
 		worldRef:SetAttribute("BossHealth", math.max(enemy.health, 0))
 		worldRef:SetAttribute("BossMaxHealth", enemy.spec.health)
+		worldRef:SetAttribute("BossPhase", if enemy.state.bossPhase2 then 2 else 1)
 	else
 		worldRef:SetAttribute("BossName", "")
 		worldRef:SetAttribute("BossHealth", 0)
 		worldRef:SetAttribute("BossMaxHealth", 0)
+		worldRef:SetAttribute("BossPhase", 0)
+	end
+end
+
+local function clearBossEffects(enemy: Enemy)
+	enemy.myDashDir = nil
+	enemy.myDashHit = nil
+	enemy.mySweepBaseDir = nil
+	table.clear(enemy.mySweepHitAt)
+	enemy.gonGravityPos = nil
+	if enemy.gonGravityRing and enemy.gonGravityRing.Parent then
+		enemy.gonGravityRing:Destroy()
+	end
+	enemy.gonGravityRing = nil
+	if enemy.gonGravityCore and enemy.gonGravityCore.Parent then
+		enemy.gonGravityCore:Destroy()
+	end
+	enemy.gonGravityCore = nil
+	if enemy.model and enemy.model.Parent then
+		enemy.model:SetAttribute("MyDashDir", nil)
+		enemy.model:SetAttribute("SweepDir", nil)
+		enemy.model:SetAttribute("SweepActive", false)
 	end
 end
 
@@ -549,7 +601,19 @@ local function kill(enemy: Enemy)
 	enemy.dead = true
 	if enemy.spec.isBoss == true then
 		syncBossHud(nil)
+		-- Clean up lingering boss-owned hazard zones & shock rings immediately on boss defeat (`HS-18`/`HS-20`).
+		for _, zone in ipairs(hazardZones) do
+			destroyHazardZone(zone)
+		end
+		table.clear(hazardZones)
+		for _, ring in ipairs(shockRings) do
+			if ring.part.Parent then
+				ring.part:Destroy()
+			end
+		end
+		table.clear(shockRings)
 	end
+	clearBossEffects(enemy)
 	grid:remove(enemy)
 	clearDroppedAxe(enemy)
 	releaseGrab(enemy, now(), true)
@@ -672,11 +736,11 @@ local function explode(enemy: Enemy, list: { { player: Player, root: BasePart } 
 		end
 	end
 
-	burst(origin, blastRadius, enemy.spec.color, blastHeight)
+	Remotes.EnemyAnim:FireAllClients("explosion", origin, blastRadius, enemy.spec.color)
 	Remotes.CombatSfx:FireAllClients("enemyExploderBlast", origin)
 end
 
-local function destroyHazardZone(zone: HazardZone)
+function destroyHazardZone(zone: HazardZone)
 	if zone.partOuter.Parent then
 		zone.partOuter:Destroy()
 	end
@@ -688,17 +752,86 @@ local function destroyHazardZone(zone: HazardZone)
 	end
 end
 
--- Launches an Artillero (`area`) arcing mortar round toward `targetPos`, creating a floor warning
+local function spawnShockRing(origin: Vector3, maxRadius: number, duration: number, height: number, damage: number, color: Color3, t: number)
+	local part = Instance.new("Part")
+	part.Name = "BossShockRing"
+	part.Shape = Enum.PartType.Cylinder
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Transparency = 0.22
+	part.Size = Vector3.new(0.45, 4, 4)
+	part.CFrame = CFrame.new(origin.X, 0.35, origin.Z) * CFrame.Angles(0, 0, math.rad(90))
+	part.Parent = folder
+	table.insert(shockRings, {
+		origin = Vector3.new(origin.X, 0, origin.Z),
+		startedAt = t,
+		duration = math.max(duration, 0.2),
+		maxRadius = maxRadius,
+		height = height,
+		damage = damage,
+		hit = {},
+		part = part,
+	})
+	Remotes.CombatSfx:FireAllClients("enemyAreaDetonate", origin)
+end
+
+local function stepShockRings(list: { { player: Player, root: BasePart } }, t: number)
+	for i = #shockRings, 1, -1 do
+		local ring = shockRings[i]
+		local u = (t - ring.startedAt) / ring.duration
+		if u >= 1 or not ring.part.Parent then
+			if ring.part.Parent then
+				ring.part:Destroy()
+			end
+			table.remove(shockRings, i)
+		else
+			local curRadius = 2 + (ring.maxRadius - 2) * u
+			local diam = curRadius * 2
+			ring.part.Size = Vector3.new(0.42, diam, diam)
+			ring.part.Transparency = 0.22 + 0.72 * (u * u)
+			local innerR = math.max(curRadius - 2.6, 0)
+			local outerR = curRadius + 2.6
+			for _, candidate in ipairs(list) do
+				if not ring.hit[candidate.player] then
+					local pos = candidate.root.Position
+					local dy = pos.Y - ring.origin.Y
+					if dy <= ring.height then
+						local dx = pos.X - ring.origin.X
+						local dz = pos.Z - ring.origin.Z
+						local dist = math.sqrt(dx * dx + dz * dz)
+						if dist >= innerR and dist <= outerR then
+							ring.hit[candidate.player] = true
+							hurt(candidate.player, ring.damage, { canBlock = true, canParry = false, origin = ring.origin })
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Launches an Artillero (`area`) or Boss Gon/OhMyGon arcing mortar round toward `targetPos`, creating a floor warning
 -- circle that fills over `areaTelegraph` seconds before detonating into an active hazard pool.
 -- Enforces `Tactics.isGrabSafeZone` so a player trapped by a Coloso is never melted unfairly.
-local function launchAreaHazard(enemy: Enemy, targetPos: Vector3, grabbedPositions: { Vector3 }, t: number)
-	local radius = enemy.spec.areaRadius or 11
+local function launchAreaHazard(
+	enemy: Enemy,
+	targetPos: Vector3,
+	grabbedPositions: { Vector3 },
+	t: number,
+	overrides: { radius: number?, telegraph: number?, duration: number?, impactDamage: number?, tickDamage: number? }?
+)
+	local radius = (overrides and overrides.radius) or enemy.spec.areaRadius or 11
 	local height = enemy.spec.areaHeight or 3.6
-	local telegraphDur = enemy.spec.areaTelegraph or 1.05
-	local activeDur = enemy.spec.areaDuration or 3.5
+	local telegraphDur = (overrides and overrides.telegraph) or enemy.spec.areaTelegraph or 1.05
+	local activeDur = (overrides and overrides.duration) or enemy.spec.areaDuration or 3.5
 	local tickEvery = enemy.spec.areaTickEvery or 0.5
-	local impactDmg = enemy.spec.areaImpactDamage or 14
-	local tickDmg = enemy.spec.areaTickDamage or 10
+	local impactDmg = (overrides and overrides.impactDamage) or enemy.spec.areaImpactDamage or 14
+	local tickDmg = (overrides and overrides.tickDamage) or enemy.spec.areaTickDamage or 10
 
 	local rawLand = Vector3.new(targetPos.X, 0, targetPos.Z)
 	local clamped = Waves.clamp(rawLand, Config.ROOM_SIZE, math.max(WALL_MARGIN, radius * 0.45))
@@ -721,6 +854,10 @@ local function launchAreaHazard(enemy: Enemy, targetPos: Vector3, grabbedPositio
 	outer.Transparency = 0.68
 	outer.Size = Vector3.new(0.14, diam, diam)
 	outer.CFrame = CFrame.new(landPos.X, 0.14, landPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+	outer:SetAttribute("HazardZone", true)
+	outer:SetAttribute("HazardRadius", radius)
+	outer:SetAttribute("HazardActive", false)
+	outer:SetAttribute("HazardFade", 0)
 	outer.Parent = folder
 
 	local inner = Instance.new("Part")
@@ -748,9 +885,28 @@ local function launchAreaHazard(enemy: Enemy, targetPos: Vector3, grabbedPositio
 	shell.CanTouch = false
 	shell.CastShadow = false
 	shell.Material = Enum.Material.Neon
-	shell.Color = Color3.fromRGB(185, 255, 75)
-	shell.Size = Vector3.one * 1.45
+	shell.Color = Color3.fromRGB(165, 255, 65)
+	shell.Size = Vector3.one * 1.5
 	shell.Position = shellOrigin
+	local shellTrail = Instance.new("ParticleEmitter")
+	shellTrail.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(190, 255, 85)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 150, 32)),
+	})
+	shellTrail.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1.1),
+		NumberSequenceKeypoint.new(1, 0.1),
+	})
+	shellTrail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.25),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	shellTrail.Lifetime = NumberRange.new(0.25, 0.45)
+	shellTrail.Rate = 40
+	shellTrail.Speed = NumberRange.new(1, 3)
+	shellTrail.SpreadAngle = Vector2.new(35, 35)
+	shellTrail.LightEmission = 0.7
+	shellTrail.Parent = shell
 	shell.Parent = folder
 
 	table.insert(hazardZones, {
@@ -800,12 +956,16 @@ local function stepHazardZones(list: { { player: Player, root: BasePart } }, t: 
 					zone.partShell:Destroy()
 					zone.partShell = nil
 				end
-				zone.partOuter.Color = Color3.fromRGB(135, 255, 55)
-				zone.partOuter.Transparency = 0.34
-				zone.partInner.Color = Color3.fromRGB(220, 255, 85)
-				zone.partInner.Size = Vector3.new(0.22, diam * 0.92, diam * 0.92)
-				zone.partInner.Transparency = 0.45
-				burst(zone.position + Vector3.new(0, 0.6, 0), zone.radius * 0.85, Color3.fromRGB(165, 255, 65), zone.height)
+				-- Dark toxic sludge base + subtle inner slick; client EnemyAnimator adds swirling
+				-- surface ripples, rising/popping acid bubbles, and toxic mist over `HazardActive`.
+				zone.partOuter.Material = Enum.Material.SmoothPlastic
+				zone.partOuter.Color = Color3.fromRGB(34, 96, 26)
+				zone.partOuter.Transparency = 0.22
+				zone.partOuter:SetAttribute("HazardActive", true)
+				zone.partInner.Color = Color3.fromRGB(120, 240, 52)
+				zone.partInner.Size = Vector3.new(0.2, diam * 0.88, diam * 0.88)
+				zone.partInner.Transparency = 0.66
+				Remotes.EnemyAnim:FireAllClients("toxicSplash", zone.position, zone.radius)
 				Remotes.CombatSfx:FireAllClients("enemyAreaDetonate", zone.position)
 				for _, target in ipairs(list) do
 					if Hitbox.inGroundZone(zone.position, target.root.Position, zone.radius, zone.height) then
@@ -814,14 +974,15 @@ local function stepHazardZones(list: { { player: Player, root: BasePart } }, t: 
 				end
 			end
 		else
-			-- Active toxic plasma pool: gently pulses on the floor and ticks grounded players.
+			-- Active bubbling toxic pool: subtle organic breathing on the sludge base + DoT ticks.
 			local remain = math.max(zone.expiresAt - t, 0)
-			local fade = if remain < 0.45 then 1 - remain / 0.45 else 0
-			local pulse = 0.9 + 0.06 * math.sin(t * 14)
+			local fade = if remain < 0.5 then 1 - remain / 0.5 else 0
+			local pulse = 0.84 + 0.08 * math.sin(t * 7.5)
 			local diam = zone.radius * 2
-			zone.partInner.Size = Vector3.new(0.22, diam * pulse, diam * pulse)
-			zone.partOuter.Transparency = 0.34 + 0.66 * fade
-			zone.partInner.Transparency = 0.48 + 0.52 * fade
+			zone.partInner.Size = Vector3.new(0.2, diam * pulse, diam * pulse)
+			zone.partOuter.Transparency = 0.22 + 0.78 * fade
+			zone.partInner.Transparency = 0.66 + 0.34 * fade
+			zone.partOuter:SetAttribute("HazardFade", fade)
 			if t >= zone.nextTickAt then
 				zone.nextTickAt = t + zone.tickEvery
 				for _, target in ipairs(list) do
@@ -1031,6 +1192,14 @@ local function stepEnemy(
 			telegraphColor = Color3.fromRGB(255, 232, 75)
 		elseif state.phase == "contactActive" then
 			telegraphColor = Color3.fromRGB(55, 240, 255)
+		elseif state.phase == "myDashWindup" or state.phase == "myDash" or state.phase == "myBladesWindup" then
+			telegraphColor = Color3.fromRGB(220, 75, 255)
+		elseif state.phase == "mySweepWindup" or state.phase == "mySweep" then
+			telegraphColor = Color3.fromRGB(75, 240, 255)
+		elseif state.phase == "gonRainWindup" or state.phase == "gonGravityWindup" or state.phase == "gonGravity" or state.phase == "gonRingsWindup" then
+			telegraphColor = Color3.fromRGB(78, 255, 138)
+		elseif state.phase == "bossPhaseShift" then
+			telegraphColor = Color3.fromRGB(255, 42, 62)
 		elseif state.phase == "windup" or state.phase == "lunge" then
 			telegraphColor = Color3.fromRGB(255, 190, 85)
 		end
@@ -1047,7 +1216,15 @@ local function stepEnemy(
 		local isGrabAlert = enemy.kind == "grabber"
 			and (state.phase == "windup" or state.phase == "lunge" or state.phase == "rushWindup" or state.phase == "rush")
 		local isBossAlert = enemy.spec.isBoss == true
-			and (state.phase == "bossConeWindup" or state.phase == "bossLeapWindup" or state.phase == "bossNovaWindup")
+			and (
+				state.phase == "bossConeWindup"
+				or state.phase == "bossLeapWindup"
+				or state.phase == "bossNovaWindup"
+				or state.phase == "myDashWindup"
+				or state.phase == "mySweepWindup"
+				or state.phase == "gonGravityWindup"
+				or state.phase == "gonRingsWindup"
+			)
 		local isAxeAlert = state.phase == "axeThrowWindup"
 		enemy.model:SetAttribute("ParryTelegraph", isPhantomFinisher)
 		enemy.model:SetAttribute("AlertIcon", isPhantomAbility or isGrabAlert or isBossAlert or isAxeAlert)
@@ -1066,7 +1243,7 @@ local function stepEnemy(
 		if state.phase == "bossLeapWindup" then
 			local rawLand = Vector3.new(target.root.Position.X, enemy.spec.size.Y / 2, target.root.Position.Z)
 			local clampedLand = Waves.clamp(rawLand, Config.ROOM_SIZE, WALL_MARGIN + enemy.radius)
-			local safeLand = Waves.avoidObstacles(clampedLand, enemy.radius, Config.ARENA_PILLARS)
+			local safeLand = Waves.avoidObstacles(clampedLand, enemy.radius, activeObstacles())
 			enemy.bossLeapTarget = safeLand
 			enemy.model:SetAttribute("BossLeapTarget", Vector3.new(safeLand.X, 0.15, safeLand.Z))
 			enemy.model:SetAttribute("BossLeapRadius", enemy.spec.leapRadius or 18)
@@ -1076,6 +1253,36 @@ local function stepEnemy(
 		end
 		if state.phase == "bossNovaWindup" then
 			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
+		end
+		if state.phase == "myDashWindup" then
+			local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+			local dir = if toT.Magnitude > 1e-3 then toT.Unit else Vector3.new(0, 0, -1)
+			enemy.myDashDir = dir
+			enemy.model:SetAttribute("MyDashDir", dir)
+			Remotes.CombatSfx:FireAllClients("enemyGrabberWindup", position)
+		elseif before == "myDashWindup" and state.phase ~= "myDash" then
+			enemy.model:SetAttribute("MyDashDir", nil)
+		end
+		if state.phase == "mySweepWindup" then
+			local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+			local dir = if toT.Magnitude > 1e-3 then toT.Unit else Vector3.new(0, 0, -1)
+			enemy.mySweepBaseDir = dir
+			enemy.mySweepSign = if math.random() < 0.5 then 1 else -1
+			enemy.model:SetAttribute("SweepDir", dir)
+			enemy.model:SetAttribute("SweepRange", enemy.spec.mySweepRange or 42)
+			enemy.model:SetAttribute("SweepActive", false)
+			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
+		elseif before == "mySweep" or (before == "mySweepWindup" and state.phase ~= "mySweep") then
+			enemy.model:SetAttribute("SweepDir", nil)
+			enemy.model:SetAttribute("SweepActive", false)
+		end
+		if state.phase == "gonGravityWindup" then
+			local rawG = Vector3.new(target.root.Position.X, 0, target.root.Position.Z)
+			local clampedG = Waves.clamp(rawG, Config.ROOM_SIZE, 14)
+			enemy.gonGravityPos = Vector3.new(clampedG.X, 0, clampedG.Z)
+			Remotes.CombatSfx:FireAllClients("playerHeavyCharge", position)
+		elseif state.phase == "gonRainWindup" or state.phase == "gonRingsWindup" or state.phase == "myBladesWindup" then
+			Remotes.CombatSfx:FireAllClients("enemyMeleeWindup", position)
 		end
 		if before == "evade" then
 			-- Ensure ground elevation snaps cleanly to exact floor height on landing.
@@ -1376,7 +1583,7 @@ local function stepEnemy(
 		enemy.bossLeapDuration = enemy.spec.leapDuration or 0.72
 		if not enemy.bossLeapTarget then
 			local rawLand = Vector3.new(target.root.Position.X, enemy.spec.size.Y / 2, target.root.Position.Z)
-			enemy.bossLeapTarget = Waves.avoidObstacles(Waves.clamp(rawLand, Config.ROOM_SIZE, WALL_MARGIN + enemy.radius), enemy.radius, Config.ARENA_PILLARS)
+			enemy.bossLeapTarget = Waves.avoidObstacles(Waves.clamp(rawLand, Config.ROOM_SIZE, WALL_MARGIN + enemy.radius), enemy.radius, activeObstacles())
 		end
 		Remotes.CombatSfx:FireAllClients("playerDash", position)
 	elseif intent.action == "bossLeapLand" then
@@ -1406,8 +1613,8 @@ local function stepEnemy(
 			end
 		end
 	elseif intent.action == "bossNovaFire" then
-		-- Boss Oh: fires 2 staggered 360-deg rings of plasma orbs (jumpable, cover-blockable, and parriable!).
-		local wavesCount = enemy.spec.novaWaves or 2
+		-- Boss Oh / OhMyGon: fires staggered 360-deg rings of plasma orbs (jumpable, cover-blockable, and parriable!).
+		local wavesCount = (enemy.spec.novaWaves or 2) + (if enemy.state.bossPhase2 then 1 else 0)
 		local orbCount = enemy.spec.novaOrbCount or 10
 		local orbSpeed = enemy.spec.novaOrbSpeed or 34
 		local orbDamage = enemy.spec.novaDamage or 18
@@ -1449,7 +1656,7 @@ local function stepEnemy(
 		for w = 2, wavesCount do
 			local offset = (math.pi / orbCount) * (w - 1)
 			task.delay(0.35 * (w - 1), function()
-				if not (isPaused and isPaused()) then
+				if not enemy.dead and enemy.body.Parent and not (isPaused and isPaused()) then
 					emitRing(offset)
 				end
 			end)
@@ -1462,6 +1669,142 @@ local function stepEnemy(
 		launchAreaHazard(enemy, target.root.Position, grabbedPositions, t)
 	elseif intent.action == "contactSurgeStart" then
 		Remotes.CombatSfx:FireAllClients("enemyContactZap", position)
+	elseif intent.action == "myDashLaunch" then
+		local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local dir = if toT.Magnitude > 1e-3 then toT.Unit else (enemy.myDashDir or Vector3.new(0, 0, -1))
+		enemy.myDashDir = dir
+		enemy.myDashHit = {}
+		enemy.model:SetAttribute("MyDashDir", dir)
+		Remotes.CombatSfx:FireAllClients("playerDash", position)
+	elseif intent.action == "mySweepStart" then
+		enemy.mySweepStartedAt = t
+		enemy.mySweepDuration = enemy.spec.mySweepDuration or 1.15
+		table.clear(enemy.mySweepHitAt)
+		enemy.model:SetAttribute("SweepActive", true)
+		Remotes.CombatSfx:FireAllClients("playerHeavyAttack", position)
+	elseif intent.action == "myBladesFire" then
+		local toT = Vector3.new(target.root.Position.X - position.X, 0, target.root.Position.Z - position.Z)
+		local baseDir = if toT.Magnitude > 1e-3 then toT.Unit else Vector3.new(0, 0, -1)
+		local count = (enemy.spec.myBladesCount or 4) + (if enemy.state.bossPhase2 then 2 else 0)
+		local spread = enemy.spec.myBladesSpreadDeg or 54
+		local speed = enemy.spec.myBladeSpeed or 56
+		local dmg = enemy.spec.myBladeDamage or 16
+		local spawnPos = Vector3.new(position.X, Config.PROJECTILE_HEIGHT + 0.3, position.Z)
+		for b = 1, count do
+			local frac = if count > 1 then ((b - 1) / (count - 1) - 0.5) else 0
+			local rad = math.rad(frac * spread)
+			local c, s = math.cos(rad), math.sin(rad)
+			local dir = Vector3.new(baseDir.X * c - baseDir.Z * s, 0, baseDir.X * s + baseDir.Z * c).Unit
+			local blade = Instance.new("Part")
+			blade.Name = "BossMyBlade"
+			blade.Anchored = true
+			blade.CanCollide = false
+			blade.CanQuery = false
+			blade.CanTouch = false
+			blade.Material = Enum.Material.Neon
+			blade.Color = if b % 2 == 0 then Color3.fromRGB(70, 242, 255) else Color3.fromRGB(224, 78, 255)
+			blade.Size = Vector3.new(2.2, 0.32, 3.6)
+			blade.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+			blade.Parent = folder
+			table.insert(projectiles, {
+				part = blade,
+				position = spawnPos,
+				velocity = dir * speed,
+				expiresAt = t + 2.6,
+				damage = dmg,
+				reflected = false,
+				isTracer = true,
+				canParry = true,
+				shooter = enemy,
+			})
+		end
+		Remotes.CombatSfx:FireAllClients("enemyRangedFire", position)
+	elseif intent.action == "gonRainFire" then
+		local count = (enemy.spec.gonRainCount or 4) + (if enemy.state.bossPhase2 then 1 else 0)
+		local overrides = {
+			radius = enemy.spec.gonRainRadius or 10,
+			telegraph = enemy.spec.gonRainTelegraph or 1.1,
+			duration = enemy.spec.gonRainDuration or 4.0,
+			impactDamage = enemy.spec.gonRainImpactDamage or 18,
+			tickDamage = enemy.spec.gonRainTickDamage or 10,
+		}
+		-- First zone targets player; remaining zones form a tactical ring cutting off escape lanes.
+		launchAreaHazard(enemy, target.root.Position, grabbedPositions, t, overrides)
+		for k = 2, count do
+			local angle = ((k - 2) / math.max(count - 1, 1)) * math.pi * 2 + math.random() * 0.5
+			local dist = 16 + math.random() * 14
+			local spot = target.root.Position + Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
+			launchAreaHazard(enemy, spot, grabbedPositions, t, overrides)
+		end
+	elseif intent.action == "gonGravityStart" then
+		local gPos = enemy.gonGravityPos or Vector3.new(target.root.Position.X, 0, target.root.Position.Z)
+		enemy.gonGravityPos = gPos
+		enemy.gonGravityNextPullAt = t
+		local pullR = enemy.spec.gonGravityPullRadius or 24
+		local coreR = enemy.spec.gonGravityCoreRadius or 12
+		local ring = Instance.new("Part")
+		ring.Name = "GonGravityWell"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = Color3.fromRGB(68, 255, 145)
+		ring.Transparency = 0.68
+		ring.Size = Vector3.new(0.22, pullR * 2, pullR * 2)
+		ring.CFrame = CFrame.new(gPos.X, 0.18, gPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Parent = folder
+		enemy.gonGravityRing = ring
+
+		local core = Instance.new("Part")
+		core.Name = "GonGravityCore"
+		core.Shape = Enum.PartType.Cylinder
+		core.Anchored = true
+		core.CanCollide = false
+		core.CanQuery = false
+		core.CanTouch = false
+		core.Material = Enum.Material.Neon
+		core.Color = Color3.fromRGB(230, 255, 95)
+		core.Transparency = 0.45
+		core.Size = Vector3.new(0.28, coreR * 2, coreR * 2)
+		core.CFrame = CFrame.new(gPos.X, 0.24, gPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+		core.Parent = folder
+		enemy.gonGravityCore = core
+	elseif intent.action == "gonGravityEnd" then
+		local gPos = enemy.gonGravityPos
+		clearBossEffects(enemy)
+		if gPos then
+			local coreR = enemy.spec.gonGravityCoreRadius or 12
+			local dmg = enemy.spec.gonGravityDamage or 28
+			burst(gPos + Vector3.new(0, 1, 0), coreR, Color3.fromRGB(85, 255, 145), 6)
+			Remotes.CombatSfx:FireAllClients("enemyExploderBlast", gPos)
+			for _, candidate in ipairs(list) do
+				if Hitbox.inEllipsoid(gPos, candidate.root.Position, coreR, 5.5) then
+					local landed, outcome = hurt(candidate.player, dmg, { canBlock = true, canParry = false, origin = gPos })
+					if landed and stunPlayer then
+						stunPlayer(candidate.player, if outcome == "block" then 0.4 else 0.85)
+					end
+				end
+			end
+		end
+	elseif intent.action == "gonRingsFire" then
+		local count = (enemy.spec.gonRingsCount or 2) + (if enemy.state.bossPhase2 then 1 else 0)
+		local maxR = enemy.spec.gonRingMaxRadius or 46
+		local dur = enemy.spec.gonRingDuration or 1.25
+		local h = enemy.spec.gonRingHeight or 3.2
+		local dmg = enemy.spec.gonRingDamage or 20
+		local color = if enemy.kind == "bossOhMyGon" then Color3.fromRGB(255, 85, 72) else Color3.fromRGB(85, 255, 145)
+		spawnShockRing(position, maxR, dur, h, dmg, color, t)
+		for k = 2, count do
+			task.delay(0.45 * (k - 1), function()
+				if not enemy.dead and enemy.body.Parent and not (isPaused and isPaused()) then
+					spawnShockRing(enemy.body.Position, maxR, dur, h, dmg, color, now())
+				end
+			end)
+		end
+	elseif intent.action == "bossPhaseShiftDone" then
+		syncBossHud(enemy)
 	end
 
 	-- Continue any in-progress multi-shot burst (double-shot shotgun/plasma or 6-round minigun).
@@ -1604,6 +1947,77 @@ local function stepEnemy(
 		local baseY = enemy.spec.size.Y / 2
 		local standPos = Vector3.new(position.X, baseY, position.Z)
 		moveEnemy(enemy, CFrame.lookAt(standPos, standPos + aimDir))
+		return
+	elseif intent.move == "myDash" then
+		-- Boss My / OhMyGon high-speed photonic dash slash: parriable at crossing!
+		local dashDir = enemy.myDashDir or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
+		local dashSpeed = enemy.spec.myDashSpeed or 82
+		local candidatePos = position + dashDir * dashSpeed * dt
+		local moved = clampEnemyPos(candidatePos, enemy.radius)
+		local look = Vector3.new(moved.X + dashDir.X, moved.Y, moved.Z + dashDir.Z)
+		moveEnemy(enemy, if (look - moved).Magnitude > 1e-3 then CFrame.lookAt(moved, look) else CFrame.new(moved))
+		grid:move(enemy, moved.X, moved.Z)
+		local hitSet = enemy.myDashHit or {}
+		enemy.myDashHit = hitSet
+		local hitRadius = enemy.spec.myDashRadius or 5.4
+		for _, candidate in ipairs(list) do
+			if not hitSet[candidate.player] and Hitbox.inEllipsoid(moved, candidate.root.Position, hitRadius, 5.2) then
+				hitSet[candidate.player] = true
+				local _, outcome = hurt(candidate.player, enemy.spec.myDashDamage or 20, { canBlock = true, canParry = true, origin = moved })
+				if outcome == "parry" then
+					EnemyService.stun(enemy, Config.PARRY_STUN_SECONDS)
+					return
+				end
+			end
+		end
+		return
+	elseif intent.move == "mySweep" then
+		-- Boss My / OhMyGon continuous sweeping photonic laser across `mySweepArc` (140 deg).
+		local baseDir = enemy.mySweepBaseDir or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
+		local dur = math.max(enemy.mySweepDuration, 0.2)
+		local u = math.clamp((t - enemy.mySweepStartedAt) / dur, 0, 1)
+		local halfArc = math.rad((enemy.spec.mySweepArc or 140) * 0.5)
+		local theta = (-halfArc + u * halfArc * 2) * enemy.mySweepSign
+		local c, s = math.cos(theta), math.sin(theta)
+		local curDir = Vector3.new(baseDir.X * c - baseDir.Z * s, 0, baseDir.X * s + baseDir.Z * c).Unit
+		enemy.model:SetAttribute("SweepDir", curDir)
+		local baseY = enemy.spec.size.Y / 2
+		local standPos = Vector3.new(position.X, baseY, position.Z)
+		moveEnemy(enemy, CFrame.lookAt(standPos, standPos + curDir))
+		local beamOrigin = Vector3.new(standPos.X, 2.4, standPos.Z)
+		local range = enemy.spec.mySweepRange or 42
+		local height = enemy.spec.mySweepHeight or 3.5
+		local dmg = enemy.spec.mySweepDamage or 18
+		for _, candidate in ipairs(list) do
+			local nextAt = enemy.mySweepHitAt[candidate.player] or 0
+			if t >= nextAt and Hitbox.inBeam(beamOrigin, curDir, range, candidate.root.Position, 2.4, height) then
+				enemy.mySweepHitAt[candidate.player] = t + 0.45
+				hurt(candidate.player, dmg, { canBlock = true, canParry = false, origin = beamOrigin })
+			end
+		end
+		return
+	elseif enemy.state.phase == "gonGravity" and enemy.gonGravityPos then
+		-- Active Gravity Well gently pulls free players inward toward the core before detonation.
+		local gPos = enemy.gonGravityPos
+		local pullR = enemy.spec.gonGravityPullRadius or 24
+		if t >= enemy.gonGravityNextPullAt then
+			enemy.gonGravityNextPullAt = t + 0.25
+			for _, candidate in ipairs(list) do
+				local toCenter = Vector3.new(gPos.X - candidate.root.Position.X, 0, gPos.Z - candidate.root.Position.Z)
+				local dist = toCenter.Magnitude
+				if dist > 2.5 and dist <= pullR then
+					Remotes.Knockback:FireClient(candidate.player, toCenter.Unit, 22, 0, 0.18)
+				end
+			end
+		end
+		local baseY = enemy.spec.size.Y / 2
+		local standPos = Vector3.new(position.X, baseY, position.Z)
+		local look = Vector3.new(gPos.X, baseY, gPos.Z)
+		if (look - standPos).Magnitude > 1e-3 then
+			moveEnemy(enemy, CFrame.lookAt(standPos, look))
+		end
+		return
+	elseif enemy.state.phase == "bossPhaseShift" then
 		return
 	elseif intent.move == "rush" then
 		local rushDir = enemy.rushDirection or (if toward.Magnitude > 1e-3 then toward.Unit else Vector3.new(0, 0, -1))
@@ -1853,7 +2267,7 @@ local function stepProjectiles(list, dt: number, t: number)
 		end
 		if not done then
 			local inside = Waves.clamp(position, Config.ROOM_SIZE, 0)
-			if inside.X ~= position.X or inside.Z ~= position.Z or Waves.hitsObstacle(position, Config.PROJECTILE_HIT_RADIUS * 0.45, Config.ARENA_PILLARS) then
+			if inside.X ~= position.X or inside.Z ~= position.Z or Waves.hitsObstacle(position, Config.PROJECTILE_HIT_RADIUS * 0.45, activeObstacles()) then
 				done = true
 				if shot.isAxe and not shot.reflected then
 					axeMissed = true
@@ -2105,6 +2519,7 @@ local function step(dt: number)
 	end
 	stepProjectiles(list, dt, t)
 	stepHazardZones(list, t)
+	stepShockRings(list, t)
 end
 
 function EnemyService.start(dependencies: {
@@ -2154,13 +2569,20 @@ function EnemyService.forget(player: Player)
 	lastAreaLaunchAt[player] = nil
 	for _, enemy in ipairs(enemies) do
 		enemy.contactHitAt[player] = nil
+		enemy.mySweepHitAt[player] = nil
+		if enemy.myDashHit then
+			enemy.myDashHit[player] = nil
+		end
 		if enemy.grabTarget == player then
 			releaseGrab(enemy, now(), false)
 		end
 	end
+	for _, ring in ipairs(shockRings) do
+		ring.hit[player] = nil
+	end
 end
 
-function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): Enemy?
+function EnemyService.spawn(kind: string, position: Vector3, diffId: string?, partySize: number?): Enemy?
 	local spec = Config.ENEMY_KINDS[kind]
 	if not spec then
 		warn(`no enemy kind "{kind}" in Config.ENEMY_KINDS`)
@@ -2171,7 +2593,7 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 	local body: BasePart
 	local modelName, weapon, variantSpec = pickVariant(kind, spec)
 	-- Merge variant-specific combat overrides onto a per-enemy copy of `spec`, then apply the
-	-- active difficulty multipliers (`Fácil`, `Normal`, `Difícil`, `Zona Muerta`).
+	-- active difficulty & co-op multipliers (`Fácil`, `Normal`, `Difícil`, `Zona Muerta`, 1-4 players).
 	local mergedSpec = table.clone(spec)
 	if variantSpec then
 		for k, v in pairs(variantSpec) do
@@ -2180,7 +2602,7 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 			end
 		end
 	end
-	local effectiveSpec = Difficulty.scaleSpec(mergedSpec, diffId)
+	local effectiveSpec = Difficulty.scaleSpec(mergedSpec, diffId, partySize)
 	local hasJoints = false
 	local models = modelName and ReplicatedStorage:FindFirstChild("Models")
 	local template = models and models:FindFirstChild(modelName)
@@ -2324,6 +2746,17 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		knockbackSpeed = 0,
 		knockbackEndsAt = 0,
 		contactHitAt = {},
+		myDashDir = nil,
+		myDashHit = nil,
+		mySweepBaseDir = nil,
+		mySweepSign = 1,
+		mySweepStartedAt = 0,
+		mySweepDuration = 1.15,
+		mySweepHitAt = {},
+		gonGravityPos = nil,
+		gonGravityRing = nil,
+		gonGravityCore = nil,
+		gonGravityNextPullAt = 0,
 	}
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
@@ -2384,6 +2817,7 @@ function EnemyService.stun(enemy: Enemy, duration: number)
 	enemy.bossConeDir = nil
 	enemy.bossLeapOrigin = nil
 	enemy.bossLeapTarget = nil
+	clearBossEffects(enemy)
 	enemy.model:SetAttribute("BossConeDir", nil)
 	enemy.model:SetAttribute("BossLeapTarget", nil)
 	enemy.state = Brain.initial(t)
@@ -2423,7 +2857,7 @@ function EnemyService.count(): number
 end
 
 function EnemyService.damage(enemy: Enemy, amount: number, hitInfo: HitInfo?)
-	if enemy.dead then
+	if enemy.dead or enemy.state.phase == "bossPhaseShift" then
 		return
 	end
 	enemy.health -= amount
@@ -2436,6 +2870,23 @@ function EnemyService.damage(enemy: Enemy, amount: number, hitInfo: HitInfo?)
 		return
 	end
 	local t = now()
+	-- Boss OhMyGon Phase 2 transformation at <= 50% HP (single-fire, invulnerable 1.5 s beat).
+	if
+		enemy.kind == "bossOhMyGon"
+		and not enemy.state.phase2Triggered
+		and enemy.health / math.max(enemy.spec.health, 1) <= (enemy.spec.phase2Threshold or 0.5)
+	then
+		local nextState, shifted = Brain.triggerPhase2(enemy.state, enemy.spec.phase2Duration or 1.5, t)
+		if shifted then
+			clearBossEffects(enemy)
+			enemy.state = nextState
+			setTelegraph(enemy, true, Color3.fromRGB(255, 42, 62))
+			syncPhase(enemy, t)
+			syncBossHud(enemy)
+			burst(enemy.body.Position, 16, Color3.fromRGB(255, 48, 68), 8)
+			Remotes.CombatSfx:FireAllClients("bossOhEntry", enemy.body.Position)
+		end
+	end
 	-- Teammates attacking a grabber contribute toward breaking the trapped player free even if
 	-- the trapped player is not pressing the escape button (plans/gdd/content.md).
 	if enemy.grabTarget then
@@ -2522,6 +2973,7 @@ function EnemyService.clear()
 	for _, enemy in ipairs(enemies) do
 		enemy.dead = true
 		clearDroppedAxe(enemy)
+		clearBossEffects(enemy)
 		releaseGrab(enemy, t, false)
 		enemy.model:Destroy()
 	end
@@ -2534,6 +2986,12 @@ function EnemyService.clear()
 		destroyHazardZone(zone)
 	end
 	table.clear(hazardZones)
+	for _, ring in ipairs(shockRings) do
+		if ring.part.Parent then
+			ring.part:Destroy()
+		end
+	end
+	table.clear(shockRings)
 	for _, shot in ipairs(projectiles) do
 		if shot.model then
 			shot.model:Destroy()

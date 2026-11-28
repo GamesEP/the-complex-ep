@@ -7,7 +7,7 @@ export type StatUpgradeDef = {
 	id: string,
 	title: string,
 	effect: string,
-	stat: "maxHealth" | "damage" | "speed" | "cooldown",
+	stat: "maxHealth" | "damage" | "speed" | "cooldown" | "crit" | "lifeOnKill" | "heavyHaste" | "parryBonus",
 	amount: number,
 }
 
@@ -15,18 +15,27 @@ export type PassiveUpgradeDef = {
 	id: string,
 	title: string,
 	effect: string,
-	attribute: "HasDoubleJump" | "HasDoubleDash",
+	attribute: "HasDoubleJump" | "HasDoubleDash" | "HasDashBoost" | "HasSwiftDash",
 }
 
 Config.UPGRADE_CHOICES = 3
 Config.START_ABILITY_CHOICES = 3
-Config.ABILITY_MAX_LEVEL = 3
+Config.ABILITY_MAX_LEVEL = 4
 
--- Per-level active ability scaling (Lv.1 = 1.0x, Lv.2 = 1.25x dmg / 0.90x cd, Lv.3 = 1.50x / 0.80x).
+-- Per-level active ability scaling (Lv.1 = 1.0x, Lv.2 = 1.25x, Lv.3 = 1.50x, Lv.4 = 1.75x dmg / 0.70x cd).
 Config.ABILITY_LEVEL_DAMAGE_STEP = 0.25
 Config.ABILITY_LEVEL_COOLDOWN_STEP = 0.10
 -- Floor on cumulative cooldown multiplier so haste upgrades stay fast without zero-second spam.
 Config.MIN_COOLDOWN_MULTIPLIER = 0.45
+
+-- Build-defining synergy caps & movement passive multipliers (`HS-14`).
+Config.CRIT_DAMAGE_MULTIPLIER = 1.6
+Config.MAX_CRIT_CHANCE = 0.75
+Config.MIN_HEAVY_CHARGE_MULT = 0.45
+Config.PARRY_COUNTER_RADIUS = 12
+Config.PARRY_COUNTER_BASE_DAMAGE = 24
+Config.DASH_BOOST_DISTANCE_MULT = 1.25
+Config.SWIFT_DASH_COOLDOWN_MULT = 0.75
 
 -- Mid-air jump velocity for the Double Jump movement passive (matches Roblox JumpPower scale).
 Config.DOUBLE_JUMP_POWER = 54
@@ -86,6 +95,34 @@ Config.STAT_UPGRADES = {
 		stat = "cooldown",
 		amount = 0.15,
 	},
+	{
+		id = "stat_crit",
+		title = "Golpe Crítico",
+		effect = "+15% Crítico (×1,6)",
+		stat = "crit",
+		amount = 0.15,
+	},
+	{
+		id = "stat_lifesteal",
+		title = "Sifón Vital",
+		effect = "+8 HP al eliminar",
+		stat = "lifeOnKill",
+		amount = 8,
+	},
+	{
+		id = "stat_heavy_haste",
+		title = "Carga Rápida",
+		effect = "-20% carga Pesado",
+		stat = "heavyHaste",
+		amount = 0.20,
+	},
+	{
+		id = "stat_parry",
+		title = "Contragolpe",
+		effect = "Parry desata onda +40%",
+		stat = "parryBonus",
+		amount = 0.40,
+	},
 } :: { StatUpgradeDef }
 
 -- Unique movement passives (always active once picked; combine together and do not use an ability slot).
@@ -101,6 +138,18 @@ Config.PASSIVE_UPGRADES = {
 		title = "Doble Dash",
 		effect = "2 cargas de Dash",
 		attribute = "HasDoubleDash",
+	},
+	{
+		id = "passive_dash_boost",
+		title = "Impulso Turbo",
+		effect = "+25% distancia Dash",
+		attribute = "HasDashBoost",
+	},
+	{
+		id = "passive_swift_dash",
+		title = "Reflejos Ágiles",
+		effect = "-25% recarga Dash",
+		attribute = "HasSwiftDash",
 	},
 } :: { PassiveUpgradeDef }
 

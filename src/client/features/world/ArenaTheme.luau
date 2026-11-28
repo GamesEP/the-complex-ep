@@ -59,24 +59,43 @@ local function collectAccents(arena: Instance): Accents
 	return out
 end
 
+local HUB_THEME: Config.WaveTheme = {
+	primary = Color3.fromRGB(72, 220, 255),
+	secondary = Color3.fromRGB(255, 168, 58),
+	ambient = Color3.fromRGB(62, 72, 86),
+	outdoorAmbient = Color3.fromRGB(78, 88, 102),
+	shiftTop = Color3.fromRGB(140, 190, 230),
+}
+
 local function resolveTheme(world: Instance): (string, Config.WaveTheme)
+	if world:GetAttribute("ServerMode") == "hub" then
+		return "hub", HUB_THEME
+	end
 	local runState = world:GetAttribute("RunState")
 	local roomState = world:GetAttribute("RoomState")
 	if runState == "victory" or runState == "transition" or roomState == "cleared" then
 		return "cleared", Config.CLEARED_THEME
 	end
-	local themes = Config.WAVE_THEMES
-	local count = #themes
+	local rawFloor = world:GetAttribute("Floor")
+	local floor = if type(rawFloor) == "number" and rawFloor >= 1 then math.floor(rawFloor) else 1
 	local rawRoom = world:GetAttribute("Room")
 	local roomCount = world:GetAttribute("RoomCount")
-	if type(rawRoom) == "number" and rawRoom >= 1 then
-		-- Boss room (Room 5) always shifts dramatically into Theme 6 (molten reactor crimson/gold).
-		if type(roomCount) == "number" and rawRoom >= roomCount and themes[6] then
-			return "boss_room", themes[6]
+	local isBossRoom = world:GetAttribute("IsBossRoom") == true
+		or (floor >= 2 and type(rawRoom) == "number" and type(roomCount) == "number" and rawRoom >= roomCount)
+
+	local floorThemes = Config.FLOOR_THEMES
+	local floorSpec = floorThemes and (floorThemes[floor] or floorThemes[1])
+	if floorSpec then
+		if isBossRoom then
+			return `floor_{floor}_boss`, floorSpec.boss
 		end
-		local idx = ((math.floor(rawRoom) - 1) % math.max(count, 1)) + 1
-		return `room_{idx}`, themes[idx] or themes[1]
+		-- Gently modulate intensity across rooms 1..4 within the floor's signature palette.
+		local room = if type(rawRoom) == "number" and rawRoom >= 1 then math.floor(rawRoom) else 1
+		return `floor_{floor}_room_{room}`, floorSpec.normal
 	end
+
+	local themes = Config.WAVE_THEMES
+	local count = #themes
 	local rawWave = world:GetAttribute("Wave")
 	local wave = if type(rawWave) == "number" and rawWave >= 1 then math.floor(rawWave) else 1
 	local idx = ((wave - 1) % math.max(count, 1)) + 1
@@ -153,31 +172,76 @@ local function applyTheme(world: Instance, accents: Accents, instant: boolean)
 	})
 end
 
-local function watchWorld(world: Instance)
-	task.spawn(function()
-		local arena = world:WaitForChild(Config.ARENA_MODEL, 10)
-		if not arena or not world.Parent then
-			return
+local function findArenaModel(world: Instance): Model?
+	local activeName = world:GetAttribute("ArenaModel")
+	if type(activeName) == "string" and activeName ~= "" then
+		local named = world:FindFirstChild(activeName)
+		if named and named:IsA("Model") then
+			return named
 		end
-		-- Wait briefly for children of the cloned arena model to finish replicating.
-		task.wait(0.2)
-		if not arena.Parent then
-			return
+	end
+	for _, child in ipairs(world:GetChildren()) do
+		if child:IsA("Model") and child:FindFirstChild("Floor") then
+			return child
 		end
-		local accents = collectAccents(arena)
-		currentKey = nil
-		applyTheme(world, accents, true)
+	end
+	local defaultArena = world:FindFirstChild(Config.ARENA_MODEL)
+	return if defaultArena and defaultArena:IsA("Model") then defaultArena else nil
+end
 
-		local function refresh()
-			if arena.Parent and world.Parent then
-				applyTheme(world, accents, false)
-			end
+local function watchWorld(world: Instance)
+	local accents: Accents = { primaryParts = {}, secondaryParts = {}, primaryLights = {}, secondaryLights = {} }
+	local currentArena: Model? = nil
+
+	local function bindArena(arena: Model, instant: boolean)
+		if currentArena == arena then
+			return
 		end
-		world:GetAttributeChangedSignal("Wave"):Connect(refresh)
-		world:GetAttributeChangedSignal("Room"):Connect(refresh)
-		world:GetAttributeChangedSignal("RoomState"):Connect(refresh)
-		world:GetAttributeChangedSignal("RunState"):Connect(refresh)
+		currentArena = arena
+		task.spawn(function()
+			-- Wait briefly for descendants of a newly swapped arena model to replicate.
+			task.wait(0.15)
+			if currentArena ~= arena or not arena.Parent or not world.Parent then
+				return
+			end
+			accents = collectAccents(arena)
+			currentKey = nil
+			applyTheme(world, accents, instant)
+		end)
+	end
+
+	local function refresh()
+		if not world.Parent then
+			return
+		end
+		local found = findArenaModel(world)
+		if found and found ~= currentArena then
+			bindArena(found, true)
+			return
+		end
+		if currentArena and currentArena.Parent then
+			applyTheme(world, accents, false)
+		end
+	end
+
+	local initial = findArenaModel(world)
+	if initial then
+		bindArena(initial, true)
+	end
+
+	world.ChildAdded:Connect(function(child)
+		if child:IsA("Model") and (child.Name:sub(1, 12) == "ComplexArena" or child:FindFirstChild("Floor")) then
+			bindArena(child, true)
+		end
 	end)
+	world:GetAttributeChangedSignal("ArenaModel"):Connect(refresh)
+	world:GetAttributeChangedSignal("ServerMode"):Connect(refresh)
+	world:GetAttributeChangedSignal("Floor"):Connect(refresh)
+	world:GetAttributeChangedSignal("IsBossRoom"):Connect(refresh)
+	world:GetAttributeChangedSignal("Wave"):Connect(refresh)
+	world:GetAttributeChangedSignal("Room"):Connect(refresh)
+	world:GetAttributeChangedSignal("RoomState"):Connect(refresh)
+	world:GetAttributeChangedSignal("RunState"):Connect(refresh)
 end
 
 function ArenaTheme.start()

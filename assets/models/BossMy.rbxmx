@@ -1,0 +1,1974 @@
+<roblox version="4">
+  <Item class="Model" referent="0">
+    <Properties>
+      <string name="Name">BossMy</string>
+      <Ref name="PrimaryPart">1</Ref>
+      <CoordinateFrame name="WorldPivot">
+        <X>0</X>
+        <Y>0</Y>
+        <Z>0</Z>
+        <R00>1</R00>
+        <R01>0</R01>
+        <R02>0</R02>
+        <R10>0</R10>
+        <R11>1</R11>
+        <R12>0</R12>
+        <R20>0</R20>
+        <R21>0</R21>
+        <R22>1</R22>
+      </CoordinateFrame>
+    </Properties>
+    <Item class="Part" referent="1">
+      <Properties>
+        <string name="Name">Body</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">false</bool>
+        <token name="Material">272</token>
+        <Vector3 name="size">
+          <X>3.199997</X>
+          <Y>2.800003</Y>
+          <Z>2.199997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">1</float>
+      </Properties>
+      <Item class="Motor6D" referent="2">
+        <Properties>
+          <string name="Name">Joint_TorsoCore</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-0.94999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">3</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="4">
+        <Properties>
+          <string name="Name">Joint_ChestPlate</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-1.2569427</Y>
+            <Z>0.793808</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>0.9848175</R11>
+            <R12>-0.17364502</R12>
+            <R20>0</R20>
+            <R21>0.17364502</R21>
+            <R22>0.9848175</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">5</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="6">
+        <Properties>
+          <string name="Name">Joint_ChestCore</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.848526</X>
+            <Y>-0.848526</Y>
+            <Z>1.2799988</Z>
+            <R00>0.70710754</R00>
+            <R01>0.70710754</R01>
+            <R02>0</R02>
+            <R10>-0.70710754</R10>
+            <R11>0.70710754</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">7</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="8">
+        <Properties>
+          <string name="Name">Joint_Pelvis</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>0.44999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">9</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="10">
+        <Properties>
+          <string name="Name">Joint_LeftWingFrame</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>2.0971527</X>
+            <Y>-2.5001373</Y>
+            <Z>-0.8161316</Z>
+            <R00>0.8470154</R00>
+            <R01>0.23973083</R01>
+            <R02>-0.47442627</R02>
+            <R10>-0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">11</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="12">
+        <Properties>
+          <string name="Name">Joint_LeftWingBlade</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>2.4971466</X>
+            <Y>-2.6201324</Y>
+            <Z>-1.4661255</Z>
+            <R00>0.8470154</R00>
+            <R01>0.23973083</R01>
+            <R02>-0.47442627</R02>
+            <R10>-0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">13</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="14">
+        <Properties>
+          <string name="Name">Joint_LeftWingJet</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>1.1971588</X>
+            <Y>-2.1801453</Y>
+            <Z>-1.1661377</Z>
+            <R00>0.8470154</R00>
+            <R01>0.23973083</R01>
+            <R02>-0.47442627</R02>
+            <R10>-0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">15</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="16">
+        <Properties>
+          <string name="Name">Joint_RightWingFrame</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-2.0971527</X>
+            <Y>-2.5001373</Y>
+            <Z>-0.8161316</Z>
+            <R00>0.8470154</R00>
+            <R01>-0.23973083</R01>
+            <R02>0.47442627</R02>
+            <R10>0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>-0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">17</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="18">
+        <Properties>
+          <string name="Name">Joint_RightWingBlade</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-2.4971466</X>
+            <Y>-2.6201324</Y>
+            <Z>-1.4661255</Z>
+            <R00>0.8470154</R00>
+            <R01>-0.23973083</R01>
+            <R02>0.47442627</R02>
+            <R10>0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>-0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">19</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="20">
+        <Properties>
+          <string name="Name">Joint_RightWingJet</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIFAAAAdG9yc28=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>-0.69999695</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-1.1971588</X>
+            <Y>-2.1801453</Y>
+            <Z>-1.1661377</Z>
+            <R00>0.8470154</R00>
+            <R01>-0.23973083</R01>
+            <R02>0.47442627</R02>
+            <R10>0.34220886</R10>
+            <R11>0.9288788</R11>
+            <R12>-0.14161682</R12>
+            <R20>-0.40673828</R20>
+            <R21>0.28230286</R21>
+            <R22>0.86883545</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">21</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="22">
+        <Properties>
+          <string name="Name">Joint_LeftThigh</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdExlZw==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0</X>
+            <Y>0.8500061</Y>
+            <Z>0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">23</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="24">
+        <Properties>
+          <string name="Name">Joint_LeftShin</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdExlZw==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0</X>
+            <Y>2.199997</Y>
+            <Z>-0.08000183</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">25</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="26">
+        <Properties>
+          <string name="Name">Joint_LeftBoot</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdExlZw==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0</X>
+            <Y>2.9700012</Y>
+            <Z>0.25</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">27</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="28">
+        <Properties>
+          <string name="Name">Joint_RightThigh</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRMZWc=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>0.8500061</Y>
+            <Z>0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">29</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="30">
+        <Properties>
+          <string name="Name">Joint_RightShin</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRMZWc=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>2.199997</Y>
+            <Z>-0.08000183</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">31</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="32">
+        <Properties>
+          <string name="Name">Joint_RightBoot</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRMZWc=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0.8999939</X>
+            <Y>-1.25</Y>
+            <Z>0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>2.9700012</Y>
+            <Z>0.25</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">33</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="34">
+        <Properties>
+          <string name="Name">Joint_Head</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>2</Y>
+            <Z>-0.1499939</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-0.55000305</Y>
+            <Z>-0</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">35</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="36">
+        <Properties>
+          <string name="Name">Joint_HeadCrest</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>2</Y>
+            <Z>-0.1499939</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-1.2872925</Y>
+            <Z>-0.95150757</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>0.92718506</R11>
+            <R12>-0.37460327</R12>
+            <R20>0</R20>
+            <R21>0.37460327</R21>
+            <R22>0.92718506</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">37</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="38">
+        <Properties>
+          <string name="Name">Joint_Visor</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIEAAAAaGVhZA==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>0</X>
+            <Y>2</Y>
+            <Z>-0.1499939</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0</X>
+            <Y>-0.58000183</Y>
+            <Z>0.93000793</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">39</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="40">
+        <Properties>
+          <string name="Name">Joint_LeftShoulder</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdEFybQ==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0.0012054443</X>
+            <Y>-0.15811157</Y>
+            <Z>-0.05000305</Z>
+            <R00>0.95106506</R00>
+            <R01>0.309021</R01>
+            <R02>0</R02>
+            <R10>-0.309021</R10>
+            <R11>0.95106506</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">41</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="42">
+        <Properties>
+          <string name="Name">Joint_LeftArm</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdEFybQ==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0.4096527</X>
+            <Y>0.932724</Y>
+            <Z>-0.5956116</Z>
+            <R00>0.9848175</R00>
+            <R01>0.1560669</R01>
+            <R02>-0.0761261</R02>
+            <R10>0</R10>
+            <R11>0.438385</R11>
+            <R12>0.89878845</R12>
+            <R20>0.17364502</R20>
+            <R21>-0.8851471</R21>
+            <R22>0.43171692</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">43</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="44">
+        <Properties>
+          <string name="Name">Joint_LeftBladeSpine</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdEFybQ==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0.47000122</X>
+            <Y>1.3999939</Y>
+            <Z>3.449997</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">45</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="46">
+        <Properties>
+          <string name="Name">Joint_LeftBladeEdge</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIHAAAAbGVmdEFybQ==</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>-2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>0.47000122</X>
+            <Y>1.7299957</Y>
+            <Z>3.619995</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">47</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="48">
+        <Properties>
+          <string name="Name">Joint_RightShoulder</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.0012054443</X>
+            <Y>-0.15811157</Y>
+            <Z>-0.05000305</Z>
+            <R00>0.95106506</R00>
+            <R01>-0.309021</R01>
+            <R02>0</R02>
+            <R10>0.309021</R10>
+            <R11>0.95106506</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">49</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="50">
+        <Properties>
+          <string name="Name">Joint_RightArm</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.4096527</X>
+            <Y>0.932724</Y>
+            <Z>-0.5956116</Z>
+            <R00>0.9848175</R00>
+            <R01>-0.1560669</R01>
+            <R02>0.0761261</R02>
+            <R10>-0</R10>
+            <R11>0.438385</R11>
+            <R12>0.89878845</R12>
+            <R20>-0.17364502</R20>
+            <R21>-0.8851471</R21>
+            <R22>0.43171692</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">51</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="52">
+        <Properties>
+          <string name="Name">Joint_RightBladeSpine</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.47000122</X>
+            <Y>1.3999939</Y>
+            <Z>3.449997</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">53</Ref>
+        </Properties>
+      </Item>
+      <Item class="Motor6D" referent="54">
+        <Properties>
+          <string name="Name">Joint_RightBladeEdge</string>
+          <BinaryString name="AttributesSerialize">AQAAAAUAAABHcm91cAIIAAAAcmlnaHRBcm0=</BinaryString>
+          <CoordinateFrame name="C0">
+            <X>2.050003</X>
+            <Y>1.1499939</Y>
+            <Z>-0.1000061</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <CoordinateFrame name="C1">
+            <X>-0.47000122</X>
+            <Y>1.7299957</Y>
+            <Z>3.619995</Z>
+            <R00>1</R00>
+            <R01>0</R01>
+            <R02>0</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>0</R20>
+            <R21>0</R21>
+            <R22>1</R22>
+          </CoordinateFrame>
+          <Ref name="Part0">1</Ref>
+          <Ref name="Part1">55</Ref>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Part" referent="3">
+      <Properties>
+        <string name="Name">TorsoCore</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0.25</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>3</X>
+          <Y>2.699997</Y>
+          <Z>2</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="5">
+      <Properties>
+        <string name="Name">ChestPlate</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0.3999939</Y>
+          <Z>-1</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>0.98480225</R11>
+          <R12>0.17364502</R12>
+          <R20>0</R20>
+          <R21>-0.17364502</R21>
+          <R22>0.98480225</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>2.600006</X>
+          <Y>1.800003</Y>
+          <Z>0.6000061</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="7">
+      <Properties>
+        <string name="Name">ChestCore</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>0.5</Y>
+          <Z>-1.2799988</Z>
+          <R00>0.70710754</R00>
+          <R01>-0.70710754</R01>
+          <R02>0</R02>
+          <R10>0.70710754</R10>
+          <R11>0.70710754</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4649727</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>1</X>
+          <Y>1</Y>
+          <Z>0.3500061</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="9">
+      <Properties>
+        <string name="Name">Pelvis</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>-1.1499939</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>2.300003</X>
+          <Y>0.8500061</Y>
+          <Z>1.699997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="11">
+      <Properties>
+        <string name="Name">LeftWingFrame</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.300003</X>
+          <Y>1.3500061</Y>
+          <Z>1.3500061</Z>
+          <R00>0.84703064</R00>
+          <R01>-0.34222412</R01>
+          <R02>0.40673828</R02>
+          <R10>0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>-0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>3.600006</X>
+          <Y>0.55000305</Y>
+          <Z>1.25</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="13">
+      <Properties>
+        <string name="Name">LeftWingBlade</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.4154968</X>
+          <Y>1.5490723</Y>
+          <Z>2.0875244</Z>
+          <R00>0.84703064</R00>
+          <R01>-0.34222412</R01>
+          <R02>0.40673828</R02>
+          <R10>0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>-0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">14700287</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>4.199997</X>
+          <Y>0.22000122</Y>
+          <Z>0.7200012</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="15">
+      <Properties>
+        <string name="Name">LeftWingJet</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-1.2858124</X>
+          <Y>1.3673248</Y>
+          <Z>1.2724304</Z>
+          <R00>0.84703064</R00>
+          <R01>-0.34222412</R01>
+          <R02>0.40673828</R02>
+          <R10>0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>-0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4649727</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>1.199997</X>
+          <Y>0.41999817</Y>
+          <Z>0.41999817</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="17">
+      <Properties>
+        <string name="Name">RightWingFrame</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.300003</X>
+          <Y>1.3500061</Y>
+          <Z>1.3500061</Z>
+          <R00>0.84703064</R00>
+          <R01>0.34222412</R01>
+          <R02>-0.40673828</R02>
+          <R10>-0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>3.600006</X>
+          <Y>0.55000305</Y>
+          <Z>1.25</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="19">
+      <Properties>
+        <string name="Name">RightWingBlade</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.4154968</X>
+          <Y>1.5490723</Y>
+          <Z>2.0875244</Z>
+          <R00>0.84703064</R00>
+          <R01>0.34222412</R01>
+          <R02>-0.40673828</R02>
+          <R10>-0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">14700287</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>4.199997</X>
+          <Y>0.22000122</Y>
+          <Z>0.7200012</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="21">
+      <Properties>
+        <string name="Name">RightWingJet</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>1.2858124</X>
+          <Y>1.3673248</Y>
+          <Z>1.2724304</Z>
+          <R00>0.84703064</R00>
+          <R01>0.34222412</R01>
+          <R02>-0.40673828</R02>
+          <R10>-0.23973083</R10>
+          <R11>0.92889404</R11>
+          <R12>0.28230286</R12>
+          <R20>0.47442627</R20>
+          <R21>-0.14160156</R21>
+          <R22>0.86883545</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4649727</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>1.199997</X>
+          <Y>0.41999817</Y>
+          <Z>0.41999817</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="23">
+      <Properties>
+        <string name="Name">LeftThigh</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-0.8999939</X>
+          <Y>-2.100006</Y>
+          <Z>-0.1000061</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.9600067</X>
+          <Y>1.75</Y>
+          <Z>1.050003</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="25">
+      <Properties>
+        <string name="Name">LeftShin</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-0.8999939</X>
+          <Y>-3.449997</Y>
+          <Z>0.08000183</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.83999634</X>
+          <Y>1.6499939</Y>
+          <Z>0.9600067</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="27">
+      <Properties>
+        <string name="Name">LeftBoot</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-0.8999939</X>
+          <Y>-4.220001</Y>
+          <Z>-0.25</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">6318722</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.0200043</X>
+          <Y>0.55000305</Y>
+          <Z>1.8500061</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="29">
+      <Properties>
+        <string name="Name">RightThigh</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0.8999939</X>
+          <Y>-2.100006</Y>
+          <Z>-0.1000061</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.9600067</X>
+          <Y>1.75</Y>
+          <Z>1.050003</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="31">
+      <Properties>
+        <string name="Name">RightShin</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0.8999939</X>
+          <Y>-3.449997</Y>
+          <Z>0.08000183</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.83999634</X>
+          <Y>1.6499939</Y>
+          <Z>0.9600067</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="33">
+      <Properties>
+        <string name="Name">RightBoot</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0.8999939</X>
+          <Y>-4.220001</Y>
+          <Z>-0.25</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">6318722</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.0200043</X>
+          <Y>0.55000305</Y>
+          <Z>1.8500061</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="35">
+      <Properties>
+        <string name="Name">Head</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>2.550003</Y>
+          <Z>-0.1499939</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.75</X>
+          <Y>1.6499939</Y>
+          <Z>1.949997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="37">
+      <Properties>
+        <string name="Name">HeadCrest</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>3.550003</Y>
+          <Z>0.25</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>0.92718506</R11>
+          <R12>0.37460327</R12>
+          <R20>0</R20>
+          <R21>-0.37460327</R21>
+          <R22>0.92718506</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">14700287</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>0.32000732</X>
+          <Y>1.050003</Y>
+          <Z>2.649994</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="39">
+      <Properties>
+        <string name="Name">Visor</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>0</X>
+          <Y>2.5800018</Y>
+          <Z>-1.0800018</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4649727</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>1.550003</X>
+          <Y>0.41999817</Y>
+          <Z>0.32000732</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="41">
+      <Properties>
+        <string name="Name">LeftShoulder</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.100006</X>
+          <Y>1.300003</Y>
+          <Z>-0.05000305</Z>
+          <R00>0.9510498</R00>
+          <R01>-0.309021</R01>
+          <R02>0</R02>
+          <R10>0.309021</R10>
+          <R11>0.9510498</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.550003</X>
+          <Y>1.25</Y>
+          <Z>1.949997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="43">
+      <Properties>
+        <string name="Name">LeftArm</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.350006</X>
+          <Y>0.1499939</Y>
+          <Z>-0.6499939</Z>
+          <R00>0.98480225</R00>
+          <R01>0</R01>
+          <R02>0.17364502</R02>
+          <R10>0.1560669</R10>
+          <R11>0.43836975</R11>
+          <R12>-0.88513184</R12>
+          <R20>-0.0761261</R20>
+          <R21>0.89878845</R21>
+          <R22>0.43171692</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.94999695</X>
+          <Y>1.8999939</Y>
+          <Z>1.0200043</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="45">
+      <Properties>
+        <string name="Name">LeftBladeSpine</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.5200043</X>
+          <Y>-0.25</Y>
+          <Z>-3.550003</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">6318722</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.2400055</X>
+          <Y>0.44999695</Y>
+          <Z>5.199997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="47">
+      <Properties>
+        <string name="Name">LeftBladeEdge</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-2.5200043</X>
+          <Y>-0.58000183</Y>
+          <Z>-3.7200012</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">4649727</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>0.16000366</X>
+          <Y>0.32000732</Y>
+          <Z>5.550003</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="49">
+      <Properties>
+        <string name="Name">RightShoulder</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.100006</X>
+          <Y>1.300003</Y>
+          <Z>-0.05000305</Z>
+          <R00>0.9510498</R00>
+          <R01>0.309021</R01>
+          <R02>0</R02>
+          <R10>-0.309021</R10>
+          <R11>0.9510498</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">4991626</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>1.550003</X>
+          <Y>1.25</Y>
+          <Z>1.949997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="51">
+      <Properties>
+        <string name="Name">RightArm</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.350006</X>
+          <Y>0.1499939</Y>
+          <Z>-0.6499939</Z>
+          <R00>0.98480225</R00>
+          <R01>0</R01>
+          <R02>-0.17364502</R02>
+          <R10>-0.1560669</R10>
+          <R11>0.43836975</R11>
+          <R12>-0.88513184</R12>
+          <R20>0.0761261</R20>
+          <R21>0.89878845</R21>
+          <R22>0.43171692</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">1841198</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.94999695</X>
+          <Y>1.8999939</Y>
+          <Z>1.0200043</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="53">
+      <Properties>
+        <string name="Name">RightBladeSpine</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.5200043</X>
+          <Y>-0.25</Y>
+          <Z>-3.550003</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">true</bool>
+        <Color3uint8 name="Color3uint8">6318722</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">1088</token>
+        <Vector3 name="size">
+          <X>0.2400055</X>
+          <Y>0.44999695</Y>
+          <Z>5.199997</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="55">
+      <Properties>
+        <string name="Name">RightBladeEdge</string>
+        <bool name="Anchored">false</bool>
+        <token name="BottomSurface">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>2.5200043</X>
+          <Y>-0.58000183</Y>
+          <Z>-3.7200012</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CastShadow">false</bool>
+        <Color3uint8 name="Color3uint8">14700287</Color3uint8>
+        <bool name="Massless">true</bool>
+        <token name="Material">288</token>
+        <Vector3 name="size">
+          <X>0.16000366</X>
+          <Y>0.32000732</Y>
+          <Z>5.550003</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+        <float name="Transparency">0</float>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>

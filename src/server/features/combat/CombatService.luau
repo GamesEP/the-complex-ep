@@ -177,8 +177,24 @@ local function abilityDamageScale(level: number): number
 end
 
 local function abilityCooldown(player: Player, baseCooldown: number, level: number): number
+	if player:GetAttribute("DebugNoCooldowns") == true then
+		return 0
+	end
 	local _, cdMult = UpgradePool.levelMultipliers(level)
 	return math.max(baseCooldown * cdMult * upgradeCooldownMult(player), 0.35)
+end
+
+local debugLogHook: ((string, string, "info" | "hit" | "hurt" | "parry" | "warn", Player?) -> ())? = nil
+
+local function emitDebugLog(tag: string, text: string, kind: "info" | "hit" | "hurt" | "parry" | "warn", player: Player?)
+	if debugLogHook then
+		debugLogHook(tag, text, kind, player)
+	end
+end
+
+local function debugDamageMult(player: Player): number
+	local v = player:GetAttribute("DebugDamageMult")
+	return if type(v) == "number" and v > 0 then v else 1
 end
 
 -- Strips Roblox's default passive Health regeneration script so healing comes exclusively from
@@ -359,6 +375,15 @@ local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("ChargingHeavy", false)
 	player:SetAttribute("HeavyChargeStart", 0)
 	player:SetAttribute("HeavyReadyAt", 0)
+	if player:GetAttribute("DebugGodMode") == nil then
+		player:SetAttribute("DebugGodMode", false)
+	end
+	if player:GetAttribute("DebugNoCooldowns") == nil then
+		player:SetAttribute("DebugNoCooldowns", false)
+	end
+	if player:GetAttribute("DebugDamageMult") == nil then
+		player:SetAttribute("DebugDamageMult", 1)
+	end
 	player:SetAttribute("DamageBuffUntil", 0)
 	player:SetAttribute("SpeedBuffUntil", 0)
 	player:SetAttribute("DefenseBuffUntil", 0)
@@ -462,6 +487,15 @@ function CombatService.resetPlayerForRun(player: Player)
 	player:SetAttribute("Blocking", false)
 	player:SetAttribute("ParryUntil", 0)
 	player:SetAttribute("HeavyReadyAt", 0)
+	if player:GetAttribute("DebugGodMode") == nil then
+		player:SetAttribute("DebugGodMode", false)
+	end
+	if player:GetAttribute("DebugNoCooldowns") == nil then
+		player:SetAttribute("DebugNoCooldowns", false)
+	end
+	if player:GetAttribute("DebugDamageMult") == nil then
+		player:SetAttribute("DebugDamageMult", 1)
+	end
 	player:SetAttribute("DamageBuffUntil", 0)
 	player:SetAttribute("SpeedBuffUntil", 0)
 	player:SetAttribute("DefenseBuffUntil", 0)
@@ -546,12 +580,19 @@ local function hitEnemy(player: Player, enemy: Enemy, damage: number, from: Vect
 	local vulnerable = isStunned
 		or (enemy.state and enemy.state.phase == "recover")
 		or Classes.isBehind(enemy.body.Position, enemy.body.CFrame.LookVector, from, Config.DPS_BACKSTAB_FRONT_ARC)
-	enemies.damage(
-		enemy,
-		damage * Classes.outgoingMultiplier(classIdOf(player), vulnerable) * upgradeDamageMult(player),
-		{ tier = tier or "light", sourcePos = from }
-	)
+	local finalDamage = damage
+		* Classes.outgoingMultiplier(classIdOf(player), vulnerable)
+		* upgradeDamageMult(player)
+		* debugDamageMult(player)
+	enemies.damage(enemy, finalDamage, { tier = tier or "light", sourcePos = from })
 	local killed = wasAlive and (enemy.dead == true or enemy.health <= 0)
+	local targetLabel = (enemy.weapon or enemy.kind)
+	emitDebugLog(
+		"HIT",
+		`{targetLabel}: {math.floor(finalDamage + 0.5)} dmg ({tier or "light"}){if killed then " [KILL]" else ""}`,
+		"hit",
+		player
+	)
 	return killed, armored
 end
 
@@ -601,11 +642,18 @@ function CombatService.hurt(
 			Remotes.CombatVfx:FireClient(player, "parryConfirm", pos)
 		end
 		Remotes.CombatAnim:FireAllClients(player, "parry")
+		emitDebugLog("PARRY", `Parried {math.floor(amount + 0.5)} incoming dmg`, "parry", player)
 		return false, "parry"
 	end
 
 	if outcome == "block" and pos then
 		Remotes.CombatSfx:FireAllClients("playerBlock", pos)
+	end
+
+	local godMode = player:GetAttribute("DebugGodMode") == true
+	if godMode and finalDamage > 0 then
+		emitDebugLog("GOD", `Negated {math.floor(finalDamage + 0.5)} dmg ({outcome})`, "info", player)
+		finalDamage = 0
 	end
 
 	-- Only heavy enemy attacks (and CC/lethal hits) cancel HeavyCharge; light hits deal damage
@@ -628,6 +676,7 @@ function CombatService.hurt(
 
 	if finalDamage > 0 then
 		humanoid:TakeDamage(finalDamage)
+		emitDebugLog("HURT", `Took {math.floor(finalDamage + 0.5)} dmg ({outcome})`, "hurt", player)
 	end
 	return true, outcome
 end
@@ -794,7 +843,8 @@ function CombatService.block(player: Player, active: boolean)
 		if player:GetAttribute("Blocking") == true then
 			player:SetAttribute("Blocking", false)
 			player:SetAttribute("ParryUntil", 0)
-			player:SetAttribute("BlockReadyAt", t + Config.BLOCK_COOLDOWN)
+			local blockCd = if player:GetAttribute("DebugNoCooldowns") == true then 0 else Config.BLOCK_COOLDOWN
+			player:SetAttribute("BlockReadyAt", t + blockCd)
 			refreshWalkSpeed(player)
 		end
 		return
@@ -904,7 +954,8 @@ function CombatService.heavyAttack(player: Player, aim: Vector3)
 	local t = now()
 	local classId = classIdOf(player)
 	local dmgMult = Drops.damageMultiplier(player:GetAttribute("DamageBuffUntil"), t, Config.BUFF_DAMAGE_MULTIPLIER)
-	player:SetAttribute("HeavyReadyAt", t + Config.HEAVY_ATTACK_COOLDOWN)
+	local heavyCd = if player:GetAttribute("DebugNoCooldowns") == true then 0 else Config.HEAVY_ATTACK_COOLDOWN
+	player:SetAttribute("HeavyReadyAt", t + heavyCd)
 	swings[player] = { step = 0, lastAt = os.clock() }
 
 	broadcastOthers(player, "playerHeavyAttack", root.Position)
@@ -1105,7 +1156,9 @@ function CombatService.dash(player: Player)
 	local t = now()
 	local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), t, hasDoubleDash(player))
 	local state = dashStates[player] or { charges = maxCharges, rechargeAt = 0 }
-	local dashCooldown = math.max(Config.DASH_COOLDOWN * upgradeCooldownMult(player), 0.35)
+	local dashCooldown = if player:GetAttribute("DebugNoCooldowns") == true
+		then 0.05
+		else math.max(Config.DASH_COOLDOWN * upgradeCooldownMult(player), 0.35)
 	local allowed, nextCharges, nextRechargeAt =
 		Drops.consumeDash(state.charges, state.rechargeAt, maxCharges, t, dashCooldown, COOLDOWN_SLACK)
 	if not allowed then
@@ -1671,6 +1724,66 @@ function CombatService.startSupportTick()
 			supportTick()
 		end
 	end)
+end
+
+--=============================================================================
+-- Admin debug hooks (called only through DebugService)
+--=============================================================================
+
+function CombatService.setDebugLogHook(fn: ((string, string, "info" | "hit" | "hurt" | "parry" | "warn", Player?) -> ())?)
+	debugLogHook = fn
+end
+
+function CombatService.debugSetGodMode(player: Player, enabled: boolean): (boolean, string?)
+	player:SetAttribute("DebugGodMode", enabled == true)
+	return true, if enabled then "God Mode ON" else "God Mode OFF"
+end
+
+function CombatService.debugSetNoCooldowns(player: Player, enabled: boolean): (boolean, string?)
+	local on = enabled == true
+	player:SetAttribute("DebugNoCooldowns", on)
+	if on then
+		player:SetAttribute("DashReadyAt", 0)
+		player:SetAttribute("BlockReadyAt", 0)
+		player:SetAttribute("HeavyReadyAt", 0)
+		player:SetAttribute("SpinReadyAt", 0)
+		player:SetAttribute("StingerReadyAt", 0)
+		player:SetAttribute("OverDriveReadyAt", 0)
+		for _, ability in pairs(Config.ABILITIES) do
+			player:SetAttribute(ability.readyAttribute, 0)
+		end
+		local maxCharges = Drops.maxDashCharges(player:GetAttribute("SpeedBuffUntil"), now(), hasDoubleDash(player))
+		dashStates[player] = { charges = maxCharges, rechargeAt = 0 }
+		player:SetAttribute("DashCharges", maxCharges)
+	end
+	return true, if on then "No Cooldowns ON" else "No Cooldowns OFF"
+end
+
+function CombatService.debugSetDamageMult(player: Player, mult: number): (boolean, string?)
+	local clamped = math.clamp(mult, 0.1, 1000)
+	player:SetAttribute("DebugDamageMult", clamped)
+	return true, `Damage Mult -> {clamped}x`
+end
+
+function CombatService.debugAdjustHealth(player: Player, mode: "full" | "damage" | "set1", amount: number?): (boolean, string?)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return false, "no living character"
+	end
+	if mode == "full" then
+		humanoid.Health = humanoid.MaxHealth
+		return true, `Healed to {math.floor(humanoid.MaxHealth)} HP`
+	elseif mode == "set1" then
+		humanoid.Health = 1
+		return true, "Health -> 1 HP"
+	elseif mode == "damage" then
+		local dmg = math.max(amount or 25, 1)
+		-- Intentionally bypasses God Mode so admins can self-damage to test heals & zero-regen (VS-05).
+		humanoid.Health = math.max(humanoid.Health - dmg, 0)
+		return true, `Self-damage -{math.floor(dmg)} HP`
+	end
+	return false, "unknown health mode"
 end
 
 return CombatService

@@ -26,6 +26,7 @@ local getDifficulty: (() -> string)? = nil
 
 -- Bumped by every `stop()` / `runRoom()`: any older loop sees a stale generation and exits cleanly.
 local generation = 0
+local sandboxMode = false
 
 local function spawnWave(waveSpec: { [string]: number })
 	local diffId = if getDifficulty then getDifficulty() else Config.DEFAULT_DIFFICULTY
@@ -52,9 +53,35 @@ function WaveDirector.stop()
 	end
 end
 
+function WaveDirector.isSandbox(): boolean
+	return sandboxMode
+end
+
+function WaveDirector.setSandbox(enabled: boolean)
+	sandboxMode = enabled == true
+	if world then
+		world:SetAttribute("DebugSandbox", sandboxMode)
+	end
+	if sandboxMode then
+		generation += 1
+		if world then
+			world:SetAttribute("RoomState", "fighting")
+			world:SetAttribute("EnemiesLeft", EnemyService.count())
+		end
+	end
+end
+
 function WaveDirector.runRoom(waves: { { [string]: number } }, onRoomCleared: () -> ())
 	generation += 1
 	local mine = generation
+
+	if sandboxMode then
+		world:SetAttribute("WaveCount", #waves)
+		world:SetAttribute("Wave", 1)
+		world:SetAttribute("RoomState", "fighting")
+		world:SetAttribute("EnemiesLeft", EnemyService.count())
+		return
+	end
 
 	task.spawn(function()
 		local function current(): boolean
@@ -100,6 +127,7 @@ function WaveDirector.start(dependencies: {
 	world:SetAttribute("WaveCount", 1)
 	world:SetAttribute("EnemiesLeft", 0)
 	world:SetAttribute("RoomState", "waiting")
+	world:SetAttribute("DebugSandbox", false)
 end
 
 return WaveDirector

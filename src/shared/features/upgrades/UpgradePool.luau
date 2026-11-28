@@ -390,6 +390,96 @@ function UpgradePool.autoResolveAll(build: PlayerBuild, rng: (() -> number)?): n
 end
 
 --=============================================================================
+-- Direct build editing helpers (used by admin DebugService)
+--=============================================================================
+
+-- Assigns `abilityId` at `level` (1..ABILITY_MAX_LEVEL) into `slot` (1..ABILITY_SLOTS), keeping
+-- `build.slots` compact (no nil holes) and preventing duplicate abilities across slots.
+function UpgradePool.setSlot(build: PlayerBuild, slot: number, abilityId: string, level: number?): boolean
+	if slot < 1 or slot > Config.ABILITY_SLOTS or math.floor(slot) ~= slot then
+		return false
+	end
+	if table.find(Config.UPGRADE_ABILITY_ORDER, abilityId) == nil then
+		return false
+	end
+	local clampedLevel = math.clamp(math.floor(level or 1), 1, Config.ABILITY_MAX_LEVEL)
+
+	local existingSlot = UpgradePool.slotOf(build, abilityId)
+	if existingSlot == slot then
+		build.levels[abilityId] = clampedLevel
+		return true
+	end
+	if existingSlot then
+		table.remove(build.slots, existingSlot)
+		if existingSlot < slot then
+			slot = math.max(1, slot - 1)
+		end
+	end
+
+	if slot <= #build.slots then
+		local oldId = build.slots[slot]
+		if oldId and oldId ~= abilityId then
+			build.levels[oldId] = nil
+		end
+		build.slots[slot] = abilityId
+	else
+		table.insert(build.slots, abilityId)
+	end
+	build.levels[abilityId] = clampedLevel
+	return true
+end
+
+function UpgradePool.clearSlot(build: PlayerBuild, slot: number): boolean
+	if slot < 1 or slot > Config.ABILITY_SLOTS or math.floor(slot) ~= slot then
+		return false
+	end
+	local oldId = build.slots[slot]
+	if not oldId then
+		return true
+	end
+	build.levels[oldId] = nil
+	table.remove(build.slots, slot)
+	return true
+end
+
+function UpgradePool.applyStatDirect(build: PlayerBuild, statId: string, count: number?): (boolean, number)
+	local def = findStatDef(statId)
+	if not def then
+		return false, 0
+	end
+	local n = math.clamp(math.floor(count or 1), 1, 10)
+	local healDelta = 0
+	for _ = 1, n do
+		if def.stat == "maxHealth" then
+			build.maxHealthBonus += def.amount
+			healDelta += def.amount
+		elseif def.stat == "damage" then
+			build.damageBonus += def.amount
+		elseif def.stat == "speed" then
+			build.speedBonus += def.amount
+		elseif def.stat == "cooldown" then
+			build.cooldownMult = math.max(build.cooldownMult * (1 - def.amount), Config.MIN_COOLDOWN_MULTIPLIER)
+		end
+	end
+	return true, healDelta
+end
+
+function UpgradePool.setPassiveDirect(build: PlayerBuild, passiveId: string, enabled: boolean): boolean
+	local def = findPassiveDef(passiveId)
+	if not def then
+		return false
+	end
+	if def.attribute == "HasDoubleJump" then
+		build.hasDoubleJump = enabled == true
+		return true
+	elseif def.attribute == "HasDoubleDash" then
+		build.hasDoubleDash = enabled == true
+		return true
+	end
+	return false
+end
+
+--=============================================================================
 -- Self test
 --=============================================================================
 
@@ -450,6 +540,19 @@ function UpgradePool.selfTest()
 	local d1, c1 = UpgradePool.levelMultipliers(1)
 	local d3, c3 = UpgradePool.levelMultipliers(3)
 	assert(d1 == 1 and c1 == 1 and d3 > d1 and c3 < c1, "ability levels boost damage and lower cooldown")
+
+	-- Direct debug build-editing helpers.
+	local dbg = UpgradePool.initial()
+	assert(UpgradePool.setSlot(dbg, 1, "spin", 2), "setSlot equips spin Lv.2")
+	assert(dbg.slots[1] == "spin" and dbg.levels.spin == 2, "slot 1 holds spin Lv.2")
+	assert(UpgradePool.setSlot(dbg, 2, "overdrive", 3), "setSlot equips overdrive Lv.3")
+	assert(UpgradePool.setSlot(dbg, 1, "overdrive", 3), "moving owned ability deduplicates slots")
+	assert(#dbg.slots == 1 and dbg.slots[1] == "overdrive", "no duplicate ability across slots")
+	assert(UpgradePool.clearSlot(dbg, 1) and #dbg.slots == 0 and dbg.levels.overdrive == nil, "clearSlot removes ability cleanly")
+	local statOk, heal = UpgradePool.applyStatDirect(dbg, "stat_hp", 2)
+	assert(statOk and heal == 50 and dbg.maxHealthBonus == 50, "applyStatDirect stacks HP bonus and heal")
+	assert(UpgradePool.setPassiveDirect(dbg, "passive_double_jump", true) and dbg.hasDoubleJump, "setPassiveDirect enables double jump")
+	assert(UpgradePool.setPassiveDirect(dbg, "passive_double_jump", false) and not dbg.hasDoubleJump, "setPassiveDirect disables double jump")
 end
 
 return UpgradePool

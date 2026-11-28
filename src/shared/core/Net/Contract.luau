@@ -52,4 +52,9 @@ return {
 	-- ends up in persistent storage, and a channel a client can write to a DataStore through is
 	-- one an exploiter will try to fill.
 	Diagnostic = { rate = Config.DIAG_CLIENT_RATE, args = { Validate.table } },
+
+	-- In-game admin dev/debug commands (action, payload). `admin = true` makes Dispatcher reject
+	-- non-admins silently before DebugService ever sees the call; DebugService additionally blocks
+	-- production unless `Config.DEBUG_ALLOW_IN_PRODUCTION` is explicitly enabled.
+	AdminCommand = { rate = Config.DEBUG_ADMIN_RATE, admin = true, args = { Validate.string, Validate.table } },
 }

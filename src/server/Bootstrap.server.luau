@@ -28,6 +28,7 @@ local Drops = require(Shared.features.drops.Drops)
 local Melee = require(Shared.features.combat.Melee)
 local Brain = require(Shared.features.enemies.Brain)
 local Classes = require(Shared.features.classes.Classes)
+local DebugCommands = require(Shared.features.debug.DebugCommands)
 local Difficulty = require(Shared.features.enemies.Difficulty)
 local EnemyAnim = require(Shared.features.enemies.EnemyAnim)
 local RunFlow = require(Shared.features.run.RunFlow)
@@ -42,6 +43,7 @@ local Dispatcher = require(Server.core.Net.Dispatcher)
 
 local ClassService = require(Server.features.classes.ClassService)
 local CombatService = require(Server.features.combat.CombatService)
+local DebugService = require(Server.features.debug.DebugService)
 local DropService = require(Server.features.drops.DropService)
 local EnemyService = require(Server.features.enemies.EnemyService)
 local FlagService = require(Server.features.flags.FlagService)
@@ -67,6 +69,7 @@ if RunService:IsStudio() then
 	Melee.selfTest()
 	Brain.selfTest()
 	Classes.selfTest()
+	DebugCommands.selfTest()
 	Difficulty.selfTest()
 	EnemyAnim.selfTest()
 	RunFlow.selfTest()
@@ -142,6 +145,18 @@ FlagService.start({
 	record = LogSink.record,
 })
 
+DebugService.start({
+	world = world,
+	runService = RunDirector,
+	waveDirector = WaveDirector,
+	enemyService = EnemyService,
+	combatService = CombatService,
+	upgradeService = UpgradeService,
+	dropService = DropService,
+	isAdmin = isAdmin,
+	record = LogSink.record,
+})
+
 -- Every client->server remote, through the contract. The Dispatcher refuses a remote with no
 -- contract entry, so this list cannot quietly grow an unmetered channel.
 --
@@ -180,12 +195,14 @@ Dispatcher.connect("PickUpgrade", UpgradeService.onPickUpgrade)
 Dispatcher.connect("ReplaceAbility", UpgradeService.onReplaceAbility)
 Dispatcher.connect("UseAbility", CombatService.useAbility)
 Dispatcher.connect("Diagnostic", LogSink.onClientReport)
+Dispatcher.connect("AdminCommand", DebugService.onCommand)
 
 local function onPlayerRemoving(player: Player)
 	-- Every feature holding per-player state forgets it here. One line per feature, in the
 	-- same file as the joins, so "what leaks when somebody leaves" is answerable by reading
 	-- rather than by grepping for PlayerRemoving.
 	CombatService.forget(player)
+	DebugService.forget(player)
 	EnemyService.forget(player)
 	UpgradeService.forget(player)
 end

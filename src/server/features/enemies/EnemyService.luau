@@ -102,6 +102,7 @@ export type Enemy = {
 	knockbackDir: Vector3?,
 	knockbackSpeed: number,
 	knockbackEndsAt: number,
+	passive: boolean?,
 }
 
 export type HitInfo = {
@@ -152,10 +153,18 @@ local grid = SpatialGrid.new(Config.ENEMY_GRID_CELL_SIZE)
 local separationScratch: { Enemy } = {}
 local neighborPosScratch: { Vector3 } = {}
 local maxEnemyRadius = 0
+local debugAiMode: "normal" | "noAttack" | "frozen" = "normal"
 
-local function pickVariant(kind: string, spec: any): (string?, string?, any?)
+local function pickVariant(kind: string, spec: any, requestedWeapon: string?): (string?, string?, any?)
 	local variants = spec.variants
 	if type(variants) == "table" and #variants > 0 then
+		if type(requestedWeapon) == "string" and requestedWeapon ~= "" then
+			for _, v in ipairs(variants) do
+				if v.weapon == requestedWeapon then
+					return v.model, v.weapon, v
+				end
+			end
+		end
 		local totalWeight = 0
 		local hasWeights = false
 		for _, v in ipairs(variants) do
@@ -1770,6 +1779,19 @@ local function step(dt: number)
 	-- Pass 2: execute each enemy's Brain + tactical movement.
 	for _, enemy in ipairs(enemies) do
 		if not enemy.dead then
+			if debugAiMode == "frozen" then
+				continue
+			end
+			if enemy.passive == true then
+				-- Passive training dummies stay anchored in place, recovering cleanly from hitstun.
+				if enemy.state.phase == "hitstun" and t >= enemy.state.endsAt then
+					enemy.state = Brain.initial(t)
+					enemy.staggerStacks = 0
+					enemy.model:SetAttribute("DazeStacks", 0)
+					syncPhase(enemy, t)
+				end
+				continue
+			end
 			local target = assignedTarget[enemy]
 			local dist = assignedDistance[enemy] or math.huge
 			local canAttack = true
@@ -1783,6 +1805,23 @@ local function step(dt: number)
 					sectorAngle = rangedSectors[enemy] or 0
 				else
 					sectorAngle = closeSectors[enemy] or 0
+				end
+			end
+			if debugAiMode == "noAttack" then
+				canAttack = false
+				if enemy.state.phase == "chase" then
+					enemy.state.nextFireAt = t + 1
+					enemy.state.nextBeamAt = t + 1
+					enemy.state.nextSpinAt = t + 1
+					enemy.state.nextPhantomStepAt = t + 1
+					enemy.state.nextSlamAt = t + 1
+					enemy.state.nextAxeThrowAt = t + 1
+					enemy.state.nextRushAt = t + 1
+					enemy.state.nextLeapAt = t + 1
+					enemy.state.nextNovaAt = t + 1
+					if enemy.kind == "exploder" or enemy.kind == "grabber" or enemy.kind == "bossOh" then
+						dist = math.max(dist, 999)
+					end
 				end
 			end
 			if enemy.shoveVelocity and t < enemy.shoveUntil then
@@ -1835,6 +1874,7 @@ function EnemyService.start(dependencies: {
 	folder = Instance.new("Folder")
 	folder.Name = "Enemies"
 	folder.Parent = dependencies.world
+	worldRef:SetAttribute("DebugAiMode", debugAiMode)
 	syncBossHud(nil)
 	RunService.Heartbeat:Connect(step)
 end
@@ -1863,7 +1903,14 @@ function EnemyService.forget(player: Player)
 	end
 end
 
-function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): Enemy?
+export type SpawnOptions = {
+	weapon: string?,
+	passive: boolean?,
+	maxHealth: number?,
+	isDummy: boolean?,
+}
+
+function EnemyService.spawn(kind: string, position: Vector3, diffId: string?, options: SpawnOptions?): Enemy?
 	local spec = Config.ENEMY_KINDS[kind]
 	if not spec then
 		warn(`no enemy kind "{kind}" in Config.ENEMY_KINDS`)
@@ -1872,7 +1919,7 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 
 	local model: Model
 	local body: BasePart
-	local modelName, weapon, variantSpec = pickVariant(kind, spec)
+	local modelName, weapon, variantSpec = pickVariant(kind, spec, options and options.weapon)
 	-- Merge variant-specific combat overrides onto a per-enemy copy of `spec`, then apply the
 	-- active difficulty multipliers (`Fácil`, `Normal`, `Difícil`, `Zona Muerta`).
 	local mergedSpec = table.clone(spec)
@@ -1884,6 +1931,10 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		end
 	end
 	local effectiveSpec = Difficulty.scaleSpec(mergedSpec, diffId)
+	if options and type(options.maxHealth) == "number" and options.maxHealth > 0 then
+		effectiveSpec = table.clone(effectiveSpec)
+		effectiveSpec.health = options.maxHealth
+	end
 	local hasJoints = false
 	local models = modelName and ReplicatedStorage:FindFirstChild("Models")
 	local template = models and models:FindFirstChild(modelName)
@@ -2023,10 +2074,20 @@ function EnemyService.spawn(kind: string, position: Vector3, diffId: string?): E
 		knockbackDir = nil,
 		knockbackSpeed = 0,
 		knockbackEndsAt = 0,
+		passive = options ~= nil and options.passive == true,
 	}
+	model:SetAttribute("Health", effectiveSpec.health)
+	model:SetAttribute("MaxHealth", effectiveSpec.health)
+	model:SetAttribute("DazeStacks", 0)
+	if options and options.isDummy then
+		model:SetAttribute("DebugDummy", true)
+	end
 	syncPhase(enemy, spawnNow)
 	model.Parent = folder
 	table.insert(enemies, enemy)
+	if worldRef then
+		worldRef:SetAttribute("EnemiesLeft", EnemyService.count())
+	end
 	grid:insert(enemy, body.Position.X, body.Position.Z)
 	if enemy.radius > maxEnemyRadius then
 		maxEnemyRadius = enemy.radius
@@ -2126,6 +2187,10 @@ function EnemyService.damage(enemy: Enemy, amount: number, hitInfo: HitInfo?)
 		return
 	end
 	enemy.health -= amount
+	if enemy.model:GetAttribute("DebugDummy") == true and enemy.health <= 100 then
+		enemy.health = enemy.spec.health
+	end
+	enemy.model:SetAttribute("Health", math.max(enemy.health, 0))
 	enemy.fill.Size = UDim2.fromScale(math.clamp(enemy.health / enemy.spec.health, 0, 1), 1)
 	if enemy.spec.isBoss == true then
 		syncBossHud(enemy)
@@ -2183,6 +2248,7 @@ function EnemyService.damage(enemy: Enemy, amount: number, hitInfo: HitInfo?)
 				setTelegraph(enemy, false)
 			end
 			enemy.model:SetAttribute("HitCount", enemy.hitCount)
+			enemy.model:SetAttribute("DazeStacks", enemy.staggerStacks)
 			syncPhase(enemy, t)
 
 			if hitInfo and hitInfo.sourcePos and knockbackDist > 0 then
@@ -2233,6 +2299,111 @@ function EnemyService.clear()
 	end
 	table.clear(projectiles)
 	syncBossHud(nil)
+end
+
+--=============================================================================
+-- Admin debug hooks (called only through DebugService)
+--=============================================================================
+
+function EnemyService.debugSetAiMode(mode: "normal" | "noAttack" | "frozen"): (boolean, string?)
+	debugAiMode = mode
+	if worldRef then
+		worldRef:SetAttribute("DebugAiMode", debugAiMode)
+	end
+	return true, `AI mode -> {mode}`
+end
+
+function EnemyService.debugKillAll(): (boolean, string?)
+	local count = EnemyService.count()
+	EnemyService.clear()
+	if worldRef then
+		worldRef:SetAttribute("EnemiesLeft", 0)
+	end
+	return true, `Cleared {count} enemies`
+end
+
+function EnemyService.debugSetBossHpPercent(percent: number): (boolean, string?)
+	local clamped = math.clamp(percent, 0.01, 1)
+	for _, enemy in ipairs(enemies) do
+		if not enemy.dead and enemy.spec.isBoss == true then
+			enemy.health = math.max(1, math.floor(enemy.spec.health * clamped + 0.5))
+			enemy.model:SetAttribute("Health", enemy.health)
+			enemy.fill.Size = UDim2.fromScale(math.clamp(enemy.health / enemy.spec.health, 0, 1), 1)
+			syncBossHud(enemy)
+			return true, `Boss HP -> {math.floor(clamped * 100 + 0.5)}% ({enemy.health}/{enemy.spec.health})`
+		end
+	end
+	return false, "no active boss"
+end
+
+function EnemyService.debugSpawnDummy(position: Vector3): (boolean, string?)
+	local clamped = Waves.clamp(position, Config.ROOM_SIZE, WALL_MARGIN + 2)
+	local safePos = Waves.avoidObstacles(clamped, 3.5, Config.ARENA_PILLARS)
+	local dummy = EnemyService.spawn("melee", safePos, "normal", {
+		weapon = "sword",
+		passive = true,
+		maxHealth = Config.DEBUG_DUMMY_HEALTH,
+		isDummy = true,
+	})
+	if not dummy then
+		return false, "failed to spawn dummy"
+	end
+	return true, "Spawned passive training dummy"
+end
+
+function EnemyService.debugForceSpecial(nearPos: Vector3, moveName: string?): (boolean, string?)
+	local targetEnemy: Enemy? = nil
+	local bestDist = math.huge
+	local wantBoss = moveName ~= nil and moveName ~= ""
+	for _, enemy in ipairs(enemies) do
+		if not enemy.dead and enemy.passive ~= true then
+			if wantBoss and enemy.kind ~= "bossOh" then
+				continue
+			end
+			local d = (enemy.body.Position - nearPos).Magnitude
+			if d < bestDist then
+				bestDist = d
+				targetEnemy = enemy
+			end
+		end
+	end
+	if not targetEnemy then
+		return false, if wantBoss then "no active Boss Oh" else "no live enemy"
+	end
+
+	local t = now()
+	local st = targetEnemy.state
+	st.nextFireAt = 0
+	st.nextSpinAt = 0
+	st.nextBeamAt = 0
+	st.nextEvadeAt = 0
+	st.nextPhantomStepAt = 0
+	st.nextSlamAt = 0
+	st.nextAxeThrowAt = 0
+	st.nextRushAt = 0
+	st.nextLeapAt = 0
+	st.nextNovaAt = 0
+
+	if targetEnemy.kind == "bossOh" and wantBoss then
+		if moveName == "cone" then
+			st.nextLeapAt = t + 10
+			st.nextNovaAt = t + 10
+		elseif moveName == "leap" then
+			st.nextLeapAt = 0
+			st.nextNovaAt = t + 10
+		elseif moveName == "nova" then
+			st.nextLeapAt = t + 10
+			st.nextNovaAt = 0
+		end
+	end
+
+	if st.phase == "recover" or st.phase == "hitstun" then
+		st.phase = "chase"
+		st.endsAt = 0
+		syncPhase(targetEnemy, t)
+	end
+	local label = targetEnemy.weapon or targetEnemy.kind
+	return true, if wantBoss then `Queued Boss Oh "{moveName}"` else `Reset specials on {label}`
 end
 
 return EnemyService
